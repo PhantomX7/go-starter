@@ -8,6 +8,9 @@ dev:
 	go build -o bin/${app-name} cmd/main.go
 	./bin/${app-name}
 
+create-migration:
+	atlas migrate diff --env gorm
+
 test:
 	go test ./... -coverprofile cp.out
 

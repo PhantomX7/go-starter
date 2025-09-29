@@ -6,6 +6,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 	"time"
 
@@ -169,15 +170,11 @@ func validateConfig(cfg *Config) error {
 	}
 
 	validEnvironments := []string{"development", "staging", "production"}
-	validEnv := false
-	for _, env := range validEnvironments {
-		if cfg.App.Environment == env {
-			validEnv = true
-			break
-		}
-	}
+	validEnv := slices.Contains(validEnvironments, cfg.App.Environment)
 	if !validEnv {
-		return fmt.Errorf("invalid environment: %s, must be one of %v", cfg.App.Environment, validEnvironments)
+		return fmt.Errorf("invalid environment: %s, must be one of %v",
+			cfg.App.Environment,
+			validEnvironments)
 	}
 
 	return nil

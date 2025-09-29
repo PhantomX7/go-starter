@@ -1,16 +1,76 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 
 	_ "ariga.io/atlas-provider-gorm/gormschema"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/fx"
 
 	"github.com/PhantomX7/go-starter/pkg/config"
 )
 
 func main() {
+	app := fx.New(
+		fx.NopLogger, // disable logger for fx
+		fx.Provide(
+			setUpConfig,
+			// setupDatabase,
+			// customValidator.New, // initiate custom validator
+			// middleware.New,      // initiate middleware
+			setupServer,
+		),
+		// modules.RepositoryModule,
+		// modules.ServiceModule,
+		// modules.ControllerModule,
+		// libs.Module,
+		// routes.Module,
+		fx.Invoke(
+			// startCron,
+			startServer,
+		),
+	)
+	app.Run()
+}
+
+func startServer(lc fx.Lifecycle, server *gin.Engine, cfg *config.Config) {
+
+	// Initialize HTTP server
+	srv := &http.Server{
+		Addr:         cfg.GetServerAddress(),
+		Handler:      server,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+		IdleTimeout:  cfg.Server.IdleTimeout,
+	}
+
+	// Start server
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			go func() {
+				log.Printf("Starting %s v%s on %s (environment: %s)",
+					cfg.App.Name,
+					cfg.App.Version,
+					cfg.GetServerAddress(),
+					cfg.App.Environment,
+				)
+
+				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					log.Fatalf("Failed to start server: %v", err)
+				}
+
+			}()
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			return nil
+		},
+	})
+}
+
+func setUpConfig() *config.Config {
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
@@ -20,64 +80,32 @@ func main() {
 	// Set Gin mode based on environment
 	if cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
-	} else if !cfg.App.Debug {
-		gin.SetMode(gin.TestMode)
+	} else if cfg.IsDevelopment() {
+		gin.SetMode(gin.DebugMode)
 	}
 
-	// Create Gin router
-	r := gin.Default()
+	// Return the loaded configuration
+	return cfg
+}
 
-	// Health check endpoint
-	r.GET("/ping", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"message":     "pong",
-			"app_name":    cfg.App.Name,
-			"version":     cfg.App.Version,
-			"environment": cfg.App.Environment,
-		})
-	})
+// setupServer configures and returns the Gin engine.
+// It sets up middleware including CORS and logging.
+func setupServer(cfg *config.Config) *gin.Engine {
 
-	// Configuration info endpoint (for development only)
-	if cfg.IsDevelopment() {
-		r.GET("/config", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{
-				"server": gin.H{
-					"host": cfg.Server.Host,
-					"port": cfg.Server.Port,
-				},
-				"app": gin.H{
-					"name":        cfg.App.Name,
-					"version":     cfg.App.Version,
-					"environment": cfg.App.Environment,
-					"debug":       cfg.App.Debug,
-				},
-				"database": gin.H{
-					"driver": cfg.Database.Driver,
-					"host":   cfg.Database.Host,
-					"port":   cfg.Database.Port,
-				},
-			})
-		})
-	}
+	server := gin.Default()
 
-	// Create HTTP server with configuration
-	server := &http.Server{
-		Addr:         cfg.GetServerAddress(),
-		Handler:      r,
-		ReadTimeout:  cfg.Server.ReadTimeout,
-		WriteTimeout: cfg.Server.WriteTimeout,
-		IdleTimeout:  cfg.Server.IdleTimeout,
-	}
-
-	log.Printf("Starting %s v%s on %s (environment: %s)",
-		cfg.App.Name,
-		cfg.App.Version,
-		cfg.GetServerAddress(),
-		cfg.App.Environment,
+	// Enable CORS middleware and custom logger
+	// the order is important
+	server.Use(
+	// m.CORS(),         // Your custom CORS middleware
+	// m.Logger(),       // Your custom detailed logger middleware
+	// m.ErrorHandler(), // Your custom error handler middleware
 	)
 
-	// Start server
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("Failed to start server: %v", err)
-	}
+	// register static files
+	server.Static("/assets", "./assets")
+	// Register Prometheus metrics endpoint
+	// server.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+	return server
 }
