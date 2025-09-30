@@ -3,7 +3,7 @@ data "external_schema" "gorm" {
     "go",
     "run",
     "-mod=mod",
-    "./database/migrations",
+    "./database",
   ]
 }
 env "gorm" {
@@ -11,6 +11,7 @@ env "gorm" {
   dev = "docker://postgres/15/dev"
   migration {
     dir = "file://database/migrations"
+    format = "golang-migrate"
   }
   format {
     migrate {

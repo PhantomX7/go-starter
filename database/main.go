@@ -12,7 +12,7 @@ import (
 // atlas migrate diff --env gorm
 // for auto creating migration file
 func main() {
-	stmts, err := gormschema.New("postgres").Load(&models.User{}, &models.Post{})
+	stmts, err := gormschema.New("postgres").Load(&models.Post{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load gorm schema: %v\n", err)
 		os.Exit(1)

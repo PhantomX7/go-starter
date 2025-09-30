@@ -11,4 +11,5 @@ type Post struct {
 	Content     string `gorm:"type:text;not null" json:"content"`
 	Description string `gorm:"type:text" json:"description"`
 	ImageUrl    string `gorm:"type:varchar(255)" json:"image_url"`
+	IsActive    bool   `gorm:"default:true" json:"is_active"`
 }
