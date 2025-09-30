@@ -9,6 +9,8 @@ import (
 	"github.com/common-nighthawk/go-figure"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 // SetupServer configures and returns the Gin engine.
@@ -93,4 +95,15 @@ func SetUpConfig() (*config.Config, error) {
 
 	// Return the loaded configuration
 	return cfg, nil
+}
+
+func SetUpDatabase(cfg *config.Config) (*gorm.DB, error) {
+	// Set up database connection
+	db, err := gorm.Open(postgres.Open(cfg.GetDatabaseURL()), &gorm.Config{})
+	// db, err := gorm.Open(cfg.Database.Dialect, cfg.Database.ConnectionString)
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
 }

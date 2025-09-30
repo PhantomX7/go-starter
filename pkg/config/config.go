@@ -39,13 +39,13 @@ type ServerConfig struct {
 
 // DatabaseConfig holds database-related configuration
 type DatabaseConfig struct {
-	Driver   string `mapstructure:"DB_DRIVER"`
-	Host     string `mapstructure:"DB_HOST"`
-	Port     int    `mapstructure:"DB_PORT"`
-	Username string `mapstructure:"DB_USERNAME"`
-	Password string `mapstructure:"DB_PASSWORD"`
-	Database string `mapstructure:"DB_DATABASE"`
-	SSLMode  string `mapstructure:"DB_SSLMODE"`
+	Driver   string `mapstructure:"DATABASE_DRIVER"`
+	Host     string `mapstructure:"DATABASE_HOST"`
+	Port     int    `mapstructure:"DATABASE_PORT"`
+	Username string `mapstructure:"DATABASE_USERNAME"`
+	Password string `mapstructure:"DATABASE_PASSWORD"`
+	Database string `mapstructure:"DATABASE_DATABASE"`
+	SSLMode  string `mapstructure:"DATABASE_SSLMODE"`
 }
 
 // JWTConfig holds JWT-related configuration
@@ -123,13 +123,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("SERVER_IDLE_TIMEOUT", "120s")
 
 	// Database defaults
-	v.SetDefault("DB_DRIVER", "postgres")
-	v.SetDefault("DB_HOST", "localhost")
-	v.SetDefault("DB_PORT", 5432)
-	v.SetDefault("DB_USERNAME", "postgres")
-	v.SetDefault("DB_PASSWORD", "")
-	v.SetDefault("DB_DATABASE", "starter")
-	v.SetDefault("DB_SSLMODE", "disable")
+	v.SetDefault("DATABASE_DRIVER", "postgres")
+	v.SetDefault("DATABASE_HOST", "localhost")
+	v.SetDefault("DATABASE_PORT", 5432)
+	v.SetDefault("DATABASE_USERNAME", "postgres")
+	v.SetDefault("DATABASE_PASSWORD", "")
+	v.SetDefault("DATABASE_DATABASE", "starter")
+	v.SetDefault("DATABASE_SSLMODE", "disable")
 
 	// JWT defaults
 	v.SetDefault("JWT_SECRET", "your-secret-key")
@@ -214,7 +214,7 @@ func GetDuration(key string) time.Duration {
 func (c *Config) GetDatabaseURL() string {
 	switch c.Database.Driver {
 	case "postgres":
-		return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s&TimeZone=Asia/Jakarta",
 			c.Database.Username,
 			c.Database.Password,
 			c.Database.Host,
