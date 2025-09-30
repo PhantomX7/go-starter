@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"context"
+
 	"github.com/PhantomX7/go-starter/internal/models"
 	"github.com/PhantomX7/go-starter/pkg/repository"
 
@@ -10,7 +12,7 @@ import (
 // UserRepository defines the interface for user repository operations
 type UserRepository interface {
 	repository.IRepository[models.User]
-	FindByToken(user *models.User, token string) error
+	FindByToken(ctx context.Context, user *models.User, token string) error
 }
 
 // userRepository implements the UserRepository interface
@@ -28,6 +30,6 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 }
 
 // FindByToken finds a user by their token
-func (r *userRepository) FindByToken(user *models.User, token string) error {
-	return r.DB.Where("token = ?", token).First(user).Error
+func (r *userRepository) FindByToken(ctx context.Context, user *models.User, token string) error {
+	return r.DB.WithContext(ctx).Where("token = ?", token).First(user).Error
 }
