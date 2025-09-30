@@ -31,19 +31,19 @@ migrate-create:
 
 migrate-up:
 	@echo "Applying migrations..."
-	@atlas migrate apply --dir file://database/migrations --url "$(DATABASE_URL)"
+	@atlas migrate apply --dir file://database/migrations?format=golang-migrate --url "$(DATABASE_URL)"
 
 migrate-down:
 	@echo "Reverting migrations..."
-	@atlas migrate down --dir file://database/migrations --url "$(DATABASE_URL)"
+	@atlas migrate down --dir file://database/migrations?format=golang-migrate --url "$(DATABASE_URL)"
 
 migrate-status:
 	@echo "Checking migration status..."
-	@atlas migrate status --dir file://database/migrations --url "$(DATABASE_URL)"
+	@atlas migrate status --dir file://database/migrations?format=golang-migrate --url "$(DATABASE_URL)"
 
 migrate-hash:
 	@echo "Re-hashing migration files..."
-	@atlas migrate hash --dir file://database/migrations
+	@atlas migrate hash --dir file://database/migrations?format=golang-migrate
 
 debug:
 	@echo "MIGRATION_NAME: $(MIGRATION_NAME)"
