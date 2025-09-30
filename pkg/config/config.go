@@ -59,9 +59,10 @@ type JWTConfig struct {
 type AppConfig struct {
 	Name        string `mapstructure:"APP_NAME"`
 	Version     string `mapstructure:"APP_VERSION"`
-	Environment string `mapstructure:"APP_ENV"`
+	Environment string `mapstructure:"APP_ENVIRONMENT"`
 	Debug       bool   `mapstructure:"APP_DEBUG"`
 	LogLevel    string `mapstructure:"APP_LOG_LEVEL"`
+	Assets      string `mapstructure:"APP_ASSETS"`
 }
 
 var (
@@ -127,20 +128,21 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("DB_PORT", 5432)
 	v.SetDefault("DB_USERNAME", "postgres")
 	v.SetDefault("DB_PASSWORD", "")
-	v.SetDefault("DB_DATABASE", "athleton")
+	v.SetDefault("DB_DATABASE", "starter")
 	v.SetDefault("DB_SSLMODE", "disable")
 
 	// JWT defaults
 	v.SetDefault("JWT_SECRET", "your-secret-key")
 	v.SetDefault("JWT_EXPIRATION", "24h")
-	v.SetDefault("JWT_ISSUER", "athleton")
+	v.SetDefault("JWT_ISSUER", "starter")
 
 	// App defaults
-	v.SetDefault("APP_NAME", "Athleton")
+	v.SetDefault("APP_NAME", "Starter")
 	v.SetDefault("APP_VERSION", "1.0.0")
 	v.SetDefault("APP_ENV", "development")
 	v.SetDefault("APP_DEBUG", true)
 	v.SetDefault("APP_LOG_LEVEL", "info")
+	v.SetDefault("APP_ASSETS", "./assets")
 }
 
 // validateConfig validates the loaded configuration

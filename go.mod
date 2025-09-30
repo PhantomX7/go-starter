@@ -6,6 +6,7 @@ toolchain go1.24.7
 
 require (
 	ariga.io/atlas-provider-gorm v0.6.0
+	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
 	github.com/gin-gonic/gin v1.11.0
 	github.com/spf13/viper v1.21.0
 	go.uber.org/fx v1.24.0

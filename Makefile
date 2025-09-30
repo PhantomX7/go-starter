@@ -8,10 +8,10 @@ DATABASE_DRIVER   ?= postgres
 DATABASE_HOST     ?= localhost
 DATABASE_PORT     ?= 5432
 DATABASE_USERNAME ?= postgres
-DATABASE_PASSWORD ?=
-DATABASE_DATABASE ?= athleton
+DATABASE_PASSWORD ?= postgres
+DATABASE_DATABASE ?= starter
 DATABASE_SSLMODE  ?= disable
-MIGRATION_NAME    ?= ""
+name    		  ?= new_migration
 
 # Construct database URL for Atlas
 DATABASE_URL := "$(DATABASE_DRIVER)://$(DATABASE_USERNAME):$(DATABASE_PASSWORD)@$(DATABASE_HOST):$(DATABASE_PORT)/$(DATABASE_DATABASE)?sslmode=$(DATABASE_SSLMODE)"
@@ -27,7 +27,7 @@ dev:
 # Usage: make migrate-create name=my_migration_name
 migrate-create:
 	@echo "Creating new migration file..."
-	atlas migrate diff $(MIGRATION_NAME) --env gorm 
+	atlas migrate diff $(name) --env gorm 
 
 migrate-up:
 	@echo "Applying migrations..."
@@ -35,7 +35,7 @@ migrate-up:
 
 migrate-down:
 	@echo "Reverting migrations..."
-	@atlas migrate down --dir file://database/migrations?format=golang-migrate --url "$(DATABASE_URL)"
+	@atlas migrate down --env gorm --dir file://database/migrations?format=golang-migrate --url "$(DATABASE_URL)"
 
 migrate-status:
 	@echo "Checking migration status..."
@@ -46,7 +46,7 @@ migrate-hash:
 	@atlas migrate hash --dir file://database/migrations?format=golang-migrate
 
 debug:
-	@echo "MIGRATION_NAME: $(MIGRATION_NAME)"
+	@echo "MIGRATION_NAME: $(name)"
 
 test:
 	go test ./... -coverprofile cp.out
