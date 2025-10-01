@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/PhantomX7/go-starter/docs"
+	"github.com/PhantomX7/go-starter/internal/middlewares"
 	"github.com/PhantomX7/go-starter/pkg/config"
 
 	"github.com/common-nighthawk/go-figure"
@@ -20,7 +21,7 @@ import (
 
 // SetupServer configures and returns the Gin engine.
 // It sets up middleware including CORS and logging.
-func SetupServer(cfg *config.Config) *gin.Engine {
+func SetupServer(cfg *config.Config, m *middlewares.Middleware) *gin.Engine {
 
 	// programmatically set swagger info
 	docs.SwaggerInfo.Title = "Go Starter API"
@@ -35,9 +36,9 @@ func SetupServer(cfg *config.Config) *gin.Engine {
 	// Enable CORS middleware and custom logger
 	// the order is important
 	server.Use(
-	// m.CORS(),         // Your custom CORS middleware
-	// m.Logger(),       // Your custom detailed logger middleware
-	// m.ErrorHandler(), // Your custom error handler middleware
+		// m.CORS(),         // Your custom CORS middleware
+		// m.Logger(),       // Your custom detailed logger middleware
+		m.ErrorHandler(), // Your custom error handler middleware
 	)
 	server.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 

@@ -41,14 +41,16 @@ func NewPostController(postService service.PostService) PostController {
 func (c *postController) Create(ctx *gin.Context) {
 	var req dto.PostCreateRequest
 	if err := ctx.ShouldBind(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ctx.Error(err).SetType(gin.ErrorTypeBind)
 		return
 	}
+
 	post, err := c.postService.Create(ctx.Request.Context(), &req)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ctx.Error(err)
 		return
 	}
+
 	ctx.JSON(http.StatusCreated, utils.BuildResponseSuccess("Post created successfully", post.ToResponse()))
 }
 
@@ -66,18 +68,21 @@ func (c *postController) Create(ctx *gin.Context) {
 func (c *postController) Update(ctx *gin.Context) {
 	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		// Let the error middleware handle the parameter parsing error
+		ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 
 	var req dto.PostUpdateRequest
 	if err = ctx.ShouldBind(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		// Let the error middleware handle the validation error
+		ctx.Error(err).SetType(gin.ErrorTypeBind)
 		return
 	}
 	post, err := c.postService.Update(ctx.Request.Context(), uint(postID), &req)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// Let the error middleware handle the internal error
+		ctx.Error(err)
 		return
 	}
 	ctx.JSON(http.StatusOK, utils.BuildResponseSuccess("Post updated successfully", post))
@@ -96,12 +101,14 @@ func (c *postController) Update(ctx *gin.Context) {
 func (c *postController) Delete(ctx *gin.Context) {
 	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		// Let the error middleware handle the parameter parsing error
+		ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 	err = c.postService.Delete(ctx.Request.Context(), uint(postID))
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// Let the error middleware handle the internal error
+		ctx.Error(err)
 		return
 	}
 	ctx.JSON(http.StatusOK, utils.BuildResponseSuccess("Post deleted successfully", nil))
@@ -120,12 +127,14 @@ func (c *postController) Delete(ctx *gin.Context) {
 func (c *postController) FindById(ctx *gin.Context) {
 	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		// Let the error middleware handle the parameter parsing error
+		ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 	post, err := c.postService.FindById(ctx.Request.Context(), uint(postID))
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// Let the error middleware handle the internal error
+		ctx.Error(err)
 		return
 	}
 	ctx.JSON(http.StatusOK, utils.BuildResponseSuccess("Post found successfully", post))
