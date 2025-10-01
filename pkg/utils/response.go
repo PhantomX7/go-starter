@@ -19,12 +19,11 @@ func BuildResponseSuccess(message string, data any) Response {
 	return res
 }
 
-func BuildResponseFailed(message string, err string, data any) Response {
+func BuildResponseFailed(message string, err string) Response {
 	res := Response{
 		Status:  false,
 		Message: message,
 		Error:   err,
-		Data:    data,
 	}
 	return res
 }
