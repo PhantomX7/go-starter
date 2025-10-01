@@ -48,6 +48,12 @@ migrate-hash:
 debug:
 	@echo "MIGRATION_NAME: $(name)"
 
+swag-init:
+	swag init -g cmd/main.go
+
+swag-format:
+	swag fmt
+
 test:
 	go test ./... -coverprofile cp.out
 
