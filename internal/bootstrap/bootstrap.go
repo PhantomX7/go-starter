@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"net/http"
 
@@ -97,13 +98,32 @@ func SetUpConfig() (*config.Config, error) {
 	return cfg, nil
 }
 
-func SetUpDatabase(cfg *config.Config) (*gorm.DB, error) {
+func SetUpDatabase(lc fx.Lifecycle, cfg *config.Config) (*gorm.DB, error) {
 	// Set up database connection
 	db, err := gorm.Open(postgres.Open(cfg.GetDatabaseURL()), &gorm.Config{})
 	// db, err := gorm.Open(cfg.Database.Dialect, cfg.Database.ConnectionString)
 	if err != nil {
 		return nil, err
 	}
+
+	var sqlDB *sql.DB
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			log.Println("Connecting to the database...")
+			sqlDB, err = db.DB()
+			if err != nil {
+				return err
+			}
+			return sqlDB.Ping()
+		},
+		OnStop: func(ctx context.Context) error {
+			log.Println("Closing database connection...")
+			if sqlDB != nil {
+				return sqlDB.Close()
+			}
+			return nil
+		},
+	})
 
 	return db, nil
 }
