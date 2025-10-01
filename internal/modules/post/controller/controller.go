@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strconv"
 
-	// _ "github.com/PhantomX7/go-starter/internal/models"
 	"github.com/PhantomX7/go-starter/internal/modules/post/dto"
 	"github.com/PhantomX7/go-starter/internal/modules/post/service"
 	"github.com/PhantomX7/go-starter/pkg/utils"
@@ -31,14 +30,14 @@ func NewPostController(postService service.PostService) PostController {
 
 // @Summary      Create a new post
 // @Description  Create a new post with the provided details
-// @Tags         posts
+// @Tags         post
 // @Accept       json
 // @Produce      json
 // @Param        post  body      dto.PostCreateRequest  true  "Post Create Request"
 // @Success      201  {object}  utils.Response{data=dto.PostResponse}
 // @Failure      400  {object}  utils.Response
 // @Failure      500  {object}  utils.Response
-// @Router       /posts [post]
+// @Router       /post [post]
 func (c *postController) Create(ctx *gin.Context) {
 	var req dto.PostCreateRequest
 	if err := ctx.ShouldBind(&req); err != nil {
@@ -55,7 +54,7 @@ func (c *postController) Create(ctx *gin.Context) {
 
 // @Summary      Update a post
 // @Description  Update a post with the provided details
-// @Tags         posts
+// @Tags         post
 // @Accept       json
 // @Produce      json
 // @Param        id    path      uint                  true  "Post ID"
@@ -63,7 +62,7 @@ func (c *postController) Create(ctx *gin.Context) {
 // @Success      200  {object}  utils.Response{data=dto.PostResponse}
 // @Failure      400  {object}  utils.Response
 // @Failure      500  {object}  utils.Response
-// @Router       /posts/{id} [put]
+// @Router       /post/{id} [put]
 func (c *postController) Update(ctx *gin.Context) {
 	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
@@ -72,7 +71,7 @@ func (c *postController) Update(ctx *gin.Context) {
 	}
 
 	var req dto.PostUpdateRequest
-	if err := ctx.ShouldBind(&req); err != nil {
+	if err = ctx.ShouldBind(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -86,14 +85,14 @@ func (c *postController) Update(ctx *gin.Context) {
 
 // @Summary      Delete a post
 // @Description  Delete a post with the provided ID
-// @Tags         posts
+// @Tags         post
 // @Accept       json
 // @Produce      json
 // @Param        id    path      uint                  true  "Post ID"
 // @Success      200  {object}  utils.Response{data=nil}
 // @Failure      400  {object}  utils.Response
 // @Failure      500  {object}  utils.Response
-// @Router       /posts/{id} [delete]
+// @Router       /post/{id} [delete]
 func (c *postController) Delete(ctx *gin.Context) {
 	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
@@ -110,14 +109,14 @@ func (c *postController) Delete(ctx *gin.Context) {
 
 // @Summary      Find a post by ID
 // @Description  Find a post with the provided ID
-// @Tags         posts
+// @Tags         post
 // @Accept       json
 // @Produce      json
 // @Param        id    path      uint                  true  "Post ID"
 // @Success      200  {object}  utils.Response{data=dto.PostResponse}
 // @Failure      400  {object}  utils.Response
 // @Failure      500  {object}  utils.Response
-// @Router       /posts/{id} [get]
+// @Router       /post/{id} [get]
 func (c *postController) FindById(ctx *gin.Context) {
 	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {

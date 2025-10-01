@@ -18,7 +18,7 @@ import (
 func main() {
 
 	app := fx.New(
-		// fx.NopLogger, // disable logger for fx
+		fx.NopLogger, // disable logger for fx
 		fx.Provide(
 			bootstrap.SetUpConfig,
 			bootstrap.SetUpDatabase,

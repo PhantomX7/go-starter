@@ -12,7 +12,7 @@ func RegisterRoutes(
 ) {
 	api := route.Group("/api")
 	{
-		postRoute := api.Group("/posts")
+		postRoute := api.Group("/post")
 		{
 			postRoute.POST("", PostController.Create)
 			postRoute.PUT("/:id", PostController.Update)
