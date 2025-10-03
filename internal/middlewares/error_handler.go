@@ -3,7 +3,9 @@ package middlewares
 import (
 	"net/http"
 
+	"github.com/PhantomX7/go-starter/pkg/errors"
 	"github.com/PhantomX7/go-starter/pkg/utils"
+
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 )
@@ -29,6 +31,13 @@ func (m *Middleware) ErrorHandler() gin.HandlerFunc {
 				c.AbortWithStatusJSON(http.StatusBadRequest, utils.BuildResponseValidationError(
 					e,
 				))
+			case *errors.AppError:
+				// If the error is a custom AppError, return it.
+				if e.Code == http.StatusInternalServerError {
+					c.AbortWithStatusJSON(e.Code, utils.BuildResponseFailed(e.Message, ""))
+				} else {
+					c.AbortWithStatusJSON(e.Code, utils.BuildResponseFailed(e.Message, e.Err.Error()))
+				}
 			default:
 				// For any other error, return a generic 500.
 				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
