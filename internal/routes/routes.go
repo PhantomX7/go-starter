@@ -15,6 +15,7 @@ func RegisterRoutes(
 	{
 		postRoute := api.Group("/post")
 		{
+			postRoute.GET("", PostController.Index)
 			postRoute.POST("", PostController.Create)
 			postRoute.PUT("/:id", PostController.Update)
 			postRoute.DELETE("/:id", PostController.Delete)

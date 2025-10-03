@@ -12,6 +12,7 @@ import (
 )
 
 type PostController interface {
+	Index(ctx *gin.Context)
 	Create(ctx *gin.Context)
 	Update(ctx *gin.Context)
 	Delete(ctx *gin.Context)
@@ -26,6 +27,19 @@ func NewPostController(postService service.PostService) PostController {
 	return &postController{
 		postService: postService,
 	}
+}
+
+func (c *postController) Index(ctx *gin.Context) {
+	posts, meta, err := c.postService.Index(
+		ctx.Request.Context(),
+		dto.NewPostPagination(ctx.Request.URL.Query()),
+	)
+	if err != nil {
+		ctx.Error(err)
+		return
+	}
+	ctx.JSON(http.StatusOK,
+		 response.BuildPaginationResponse(posts, meta))
 }
 
 // @Summary      Create a new post

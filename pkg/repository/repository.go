@@ -53,7 +53,7 @@ func (r *Repository[T]) Delete(ctx context.Context, entity *T) error {
 func (r *Repository[T]) FindAll(ctx context.Context, pg *pagination.Pagination) ([]T, error) {
 	entities := make([]T, 0)
 
-	err := r.DB.WithContext(ctx).
+	err := r.DB.Debug().WithContext(ctx).
 		Scopes(pg.Apply).
 		Find(&entities).Error
 	if err != nil {

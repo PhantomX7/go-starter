@@ -2,6 +2,7 @@ package pagination
 
 import (
 	"fmt"
+	"log"
 	"slices"
 	"strconv"
 	"strings"
@@ -203,6 +204,7 @@ func (p *Pagination) AddCustomScope(scopes ...func(*gorm.DB) *gorm.DB) {
 // Apply applies all generated filter and meta (limit, offset, order) scopes to the GORM query.
 func (p *Pagination) Apply(db *gorm.DB) *gorm.DB {
 	filterScopes, metaScopes := p.buildScopes()
+	log.Printf("filterScopes: %v, metaScopes: %v", filterScopes, metaScopes)
 
 	// Apply filter scopes first
 	for _, scope := range filterScopes {

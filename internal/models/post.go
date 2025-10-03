@@ -15,7 +15,7 @@ type Post struct {
 	IsActive    bool   `gorm:"default:true" json:"is_active"`
 }
 
-func (p Post) ToResponse() dto.PostResponse {
+func (p Post) ToResponse() any {
 	return dto.PostResponse{
 		ID:          p.ID,
 		Title:       p.Title,
