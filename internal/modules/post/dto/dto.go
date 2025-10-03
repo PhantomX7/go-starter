@@ -29,6 +29,7 @@ func NewPostPagination(conditions map[string][]string) *pagination.Pagination{
 	filterDefinition := pagination.NewFilterDefinition().
 		AddFilter("title", pagination.FilterConfig{
 			Field: "title",
+			TableName: "posts",
 			Type:  pagination.FilterTypeString,
 		}).
 		AddFilter("created_at", pagination.FilterConfig{

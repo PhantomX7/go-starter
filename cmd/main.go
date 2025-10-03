@@ -4,6 +4,7 @@ import (
 	"github.com/PhantomX7/go-starter/internal/bootstrap"
 	"github.com/PhantomX7/go-starter/internal/middlewares"
 	"github.com/PhantomX7/go-starter/internal/routes"
+	"github.com/PhantomX7/go-starter/libs"
 
 	postModule "github.com/PhantomX7/go-starter/internal/modules/post"
 
@@ -24,7 +25,8 @@ func main() {
 			bootstrap.SetUpConfig,
 			bootstrap.SetUpDatabase,
 			middlewares.NewMiddleware,
-			bootstrap.SetupServer,
+			bootstrap.SetupServer, 
+			libs.Module, // provide libs
 		),
 		postModule.Module,
 		fx.Invoke(
