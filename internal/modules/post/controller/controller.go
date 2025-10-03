@@ -6,7 +6,7 @@ import (
 
 	"github.com/PhantomX7/go-starter/internal/modules/post/dto"
 	"github.com/PhantomX7/go-starter/internal/modules/post/service"
-	"github.com/PhantomX7/go-starter/pkg/utils"
+	"github.com/PhantomX7/go-starter/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -51,7 +51,7 @@ func (c *postController) Create(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(http.StatusCreated, utils.BuildResponseSuccess("Post created successfully", post.ToResponse()))
+	ctx.JSON(http.StatusCreated, response.BuildResponseSuccess("Post created successfully", post.ToResponse()))
 }
 
 // @Summary      Update a post
@@ -85,7 +85,7 @@ func (c *postController) Update(ctx *gin.Context) {
 		ctx.Error(err)
 		return
 	}
-	ctx.JSON(http.StatusOK, utils.BuildResponseSuccess("Post updated successfully", post))
+	ctx.JSON(http.StatusOK, response.BuildResponseSuccess("Post updated successfully", post))
 }
 
 // @Summary      Delete a post
@@ -111,7 +111,7 @@ func (c *postController) Delete(ctx *gin.Context) {
 		ctx.Error(err)
 		return
 	}
-	ctx.JSON(http.StatusOK, utils.BuildResponseSuccess("Post deleted successfully", nil))
+	ctx.JSON(http.StatusOK, response.BuildResponseSuccess("Post deleted successfully", nil))
 }
 
 // @Summary      Find a post by ID
@@ -137,5 +137,5 @@ func (c *postController) FindById(ctx *gin.Context) {
 		ctx.Error(err)
 		return
 	}
-	ctx.JSON(http.StatusOK, utils.BuildResponseSuccess("Post found successfully", post))
+	ctx.JSON(http.StatusOK, response.BuildResponseSuccess("Post found successfully", post))
 }

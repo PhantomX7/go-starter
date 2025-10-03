@@ -1,6 +1,9 @@
-package utils
+package response
 
-import "github.com/go-playground/validator/v10"
+import (
+	"github.com/PhantomX7/go-starter/pkg/utils"
+	"github.com/go-playground/validator/v10"
+)
 
 type Response struct {
 	Status  bool   `json:"status"`
@@ -8,6 +11,13 @@ type Response struct {
 	Error   any    `json:"error,omitempty"`
 	Data    any    `json:"data,omitempty"`
 	Meta    any    `json:"meta,omitempty"`
+}
+
+// Response structures
+type Meta struct {
+	Limit  int   `json:"limit"`
+	Offset int   `json:"offset"`
+	Total  int64 `json:"total"`
 }
 
 func BuildResponseSuccess(message string, data any) Response {
@@ -32,7 +42,17 @@ func BuildResponseValidationError(err validator.ValidationErrors) Response {
 	res := Response{
 		Status:  false,
 		Message: "Validation failed",
-		Error:   FormatValidationErrors(err),
+		Error:   utils.FormatValidationErrors(err),
+	}
+	return res
+}
+
+func BuildPaginationResponse[Data any](data []Data, meta Meta) Response {
+	res := Response{
+		Status:  true,
+		Message: "Success",
+		Data:    data,
+		Meta:    meta,
 	}
 	return res
 }

@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/PhantomX7/go-starter/pkg/errors"
-	"github.com/PhantomX7/go-starter/pkg/utils"
+	"github.com/PhantomX7/go-starter/pkg/response"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -28,15 +28,15 @@ func (m *Middleware) ErrorHandler() gin.HandlerFunc {
 			switch e := err.(type) {
 			case validator.ValidationErrors:
 				// If the error is a validation error, format it.
-				c.AbortWithStatusJSON(http.StatusBadRequest, utils.BuildResponseValidationError(
+				c.AbortWithStatusJSON(http.StatusBadRequest, response.BuildResponseValidationError(
 					e,
 				))
 			case *errors.AppError:
 				// If the error is a custom AppError, return it.
 				if e.Code == http.StatusInternalServerError {
-					c.AbortWithStatusJSON(e.Code, utils.BuildResponseFailed(e.Message, ""))
+					c.AbortWithStatusJSON(e.Code, response.BuildResponseFailed(e.Message, ""))
 				} else {
-					c.AbortWithStatusJSON(e.Code, utils.BuildResponseFailed(e.Message, e.Err.Error()))
+					c.AbortWithStatusJSON(e.Code, response.BuildResponseFailed(e.Message, e.Err.Error()))
 				}
 			default:
 				// For any other error, return a generic 500.

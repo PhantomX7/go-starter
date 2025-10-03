@@ -388,7 +388,7 @@ func (p *Pagination) buildSingleStringScope(field string, op FilterOperation) fu
 func (p *Pagination) buildMultiStringScope(fields []string, op FilterOperation) func(*gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		var conditions []string
-		var args []interface{}
+		var args []any
 
 		for _, field := range fields {
 			switch op.Operator {
