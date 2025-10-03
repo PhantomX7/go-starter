@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/PhantomX7/go-starter/pkg/errors"
+	"github.com/PhantomX7/go-starter/pkg/pagination"
 
 	"gorm.io/gorm"
 )
@@ -14,6 +15,8 @@ type IRepository[T any] interface {
 	Update(ctx context.Context, entity *T) error
 	Delete(ctx context.Context, entity *T) error
 	FindById(ctx context.Context, entity *T, id uint) error
+	FindAll(ctx context.Context, pg *pagination.Pagination) ([]T, error)
+	Count(ctx context.Context, pg *pagination.Pagination) (int64, error)
 }
 
 type Repository[T any] struct {
@@ -45,6 +48,33 @@ func (r *Repository[T]) Delete(ctx context.Context, entity *T) error {
 		return errors.NewInternalServerError(errMessage, err)
 	}
 	return nil
+}
+
+func (r *Repository[T]) FindAll(ctx context.Context, pg *pagination.Pagination) ([]T, error) {
+	entities := make([]T, 0)
+
+	err := r.DB.WithContext(ctx).
+		Scopes(pg.Apply).
+		Find(&entities).Error
+	if err != nil {
+		errMessage := fmt.Sprintf("failed to find %T records", *new(T))
+		return nil, errors.NewInternalServerError(errMessage, err)
+	}
+
+	return entities, nil
+}
+
+func (r *Repository[T]) Count(ctx context.Context, pg *pagination.Pagination) (int64, error) {
+	var count int64
+
+	err := r.DB.WithContext(ctx).
+		Scopes(pg.ApplyWithoutMeta).
+		Model(new(T)).Count(&count).Error
+	if err != nil {
+		errMessage := fmt.Sprintf("failed to count %T records", *new(T))
+		return 0, errors.NewInternalServerError(errMessage, err)
+	}
+	return count, nil
 }
 
 func (r *Repository[T]) FindById(ctx context.Context, entity *T, id uint) error {
