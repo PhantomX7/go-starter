@@ -1,17 +1,26 @@
 package models
 
 import (
+	"github.com/PhantomX7/go-starter/internal/modules/user/dto"
 	"gorm.io/gorm"
 )
 
+// User represents the user entity
 type User struct {
 	gorm.Model
 
-	Name       string `gorm:"type:varchar(100);not null" json:"name"`
-	Email      string `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
-	TelpNumber string `gorm:"type:varchar(20);index" json:"telp_number"`
-	Password   string `gorm:"type:varchar(255);not null" json:"password"`
-	Role       string `gorm:"type:varchar(50);not null;default:'user'" json:"role"`
-	ImageUrl   string `gorm:"type:varchar(255)" json:"image_url"`
-	IsVerified bool   `gorm:"default:false" json:"is_verified"`
+	Name        string `gorm:"type:varchar(255);not null" json:"name"`
+	Description string `gorm:"type:text" json:"description"`
+	IsActive    bool   `gorm:"default:true" json:"is_active"`
+}
+
+// ToResponse converts the User model to a response DTO
+func (m User) ToResponse() any {
+	return dto.UserResponse{
+		ID:          m.ID,
+		Name:        m.Name,
+		Description: m.Description,
+		CreatedAt:   m.CreatedAt,
+		UpdatedAt:   m.UpdatedAt,
+	}
 }

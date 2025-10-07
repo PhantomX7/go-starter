@@ -8,7 +8,7 @@ import (
 	"go.uber.org/fx"
 )
 
-var UserModule = fx.Options(
+var Module = fx.Options(
 	fx.Provide(
 		controller.NewUserController,
 		service.NewUserService,
