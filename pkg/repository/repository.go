@@ -26,7 +26,7 @@ type Repository[T any] struct {
 func (r *Repository[T]) Create(ctx context.Context, entity *T) error {
 	err := r.DB.WithContext(ctx).Create(entity).Error
 	if err != nil {
-		errMessage := fmt.Sprintf("failed to create %T record", *entity)
+		errMessage := fmt.Sprintf("failed to create %T record", *new(T))
 		return errors.NewInternalServerError(errMessage, err)
 	}
 	return nil
@@ -35,7 +35,7 @@ func (r *Repository[T]) Create(ctx context.Context, entity *T) error {
 func (r *Repository[T]) Update(ctx context.Context, entity *T) error {
 	err := r.DB.WithContext(ctx).Save(entity).Error
 	if err != nil {
-		errMessage := fmt.Sprintf("failed to update %T record", *entity)
+		errMessage := fmt.Sprintf("failed to update %T record", *new(T))
 		return errors.NewInternalServerError(errMessage, err)
 	}
 	return nil
@@ -44,7 +44,7 @@ func (r *Repository[T]) Update(ctx context.Context, entity *T) error {
 func (r *Repository[T]) Delete(ctx context.Context, entity *T) error {
 	err := r.DB.WithContext(ctx).Delete(entity).Error
 	if err != nil {
-		errMessage := fmt.Sprintf("failed to delete %T record", *entity)
+		errMessage := fmt.Sprintf("failed to delete %T record", *new(T))
 		return errors.NewInternalServerError(errMessage, err)
 	}
 	return nil

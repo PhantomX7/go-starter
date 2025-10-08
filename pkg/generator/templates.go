@@ -256,8 +256,7 @@ func (s *{{.CamelCase}}Service) Create(ctx context.Context, req *dto.{{.PascalCa
 
 // Update implements {{.PascalCase}}Service.
 func (s *{{.CamelCase}}Service) Update(ctx context.Context, {{.LowerCase}}Id uint, req *dto.{{.PascalCase}}UpdateRequest) (models.{{.PascalCase}}, error) {
-	var {{.LowerCase}} models.{{.PascalCase}}
-	err := s.{{.CamelCase}}Repository.FindById(ctx, &{{.LowerCase}}, {{.LowerCase}}Id)
+	{{.LowerCase}}, err := s.{{.CamelCase}}Repository.FindById(ctx, {{.LowerCase}}Id)
 	if err != nil {
 		return {{.LowerCase}}, err
 	}
@@ -286,8 +285,7 @@ func (s *{{.CamelCase}}Service) Delete(ctx context.Context, {{.LowerCase}}Id uin
 
 // FindById implements {{.PascalCase}}Service.
 func (s *{{.CamelCase}}Service) FindById(ctx context.Context, {{.LowerCase}}Id uint) (models.{{.PascalCase}}, error) {
-	var {{.LowerCase}} models.{{.PascalCase}}
-	err := s.{{.CamelCase}}Repository.FindById(ctx, &{{.LowerCase}}, {{.LowerCase}}Id)
+	{{.LowerCase}}, err := s.{{.CamelCase}}Repository.FindById(ctx, {{.LowerCase}}Id)
 	if err != nil {
 		return {{.LowerCase}}, err
 	}
