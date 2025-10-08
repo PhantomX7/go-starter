@@ -7,6 +7,6 @@ import (
 
 var Module = fx.Options(
 	fx.Provide(
-		transaction_manager.New,
+		transaction_manager.NewTransactionManager,
 	),
 )

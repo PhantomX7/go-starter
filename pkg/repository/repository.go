@@ -14,7 +14,7 @@ type IRepository[T any] interface {
 	Create(ctx context.Context, entity *T) error
 	Update(ctx context.Context, entity *T) error
 	Delete(ctx context.Context, entity *T) error
-	FindById(ctx context.Context, entity *T, id uint) error
+	FindById(ctx context.Context, id uint) (T, error)
 	FindAll(ctx context.Context, pg *pagination.Pagination) ([]T, error)
 	Count(ctx context.Context, pg *pagination.Pagination) (int64, error)
 }
@@ -77,11 +77,12 @@ func (r *Repository[T]) Count(ctx context.Context, pg *pagination.Pagination) (i
 	return count, nil
 }
 
-func (r *Repository[T]) FindById(ctx context.Context, entity *T, id uint) error {
-	err := r.DB.WithContext(ctx).Where("id = ?", id).Take(entity).Error
+func (r *Repository[T]) FindById(ctx context.Context, id uint) (T, error) {
+	var entity T
+	err := r.DB.WithContext(ctx).Where("id = ?", id).Take(&entity).Error
 	if err != nil {
-		errMessage := fmt.Sprintf("failed to find %T record by id %v", *entity, id)
-		return errors.NewInternalServerError(errMessage, err)
+		errMessage := fmt.Sprintf("failed to find %T record by id %v", *new(T), id)
+		return entity, errors.NewInternalServerError(errMessage, err)
 	}
-	return nil
+	return entity, nil
 }

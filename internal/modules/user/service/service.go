@@ -71,8 +71,7 @@ func (s *userService) Create(ctx context.Context, req *dto.UserCreateRequest) (m
 
 // Update implements UserService.
 func (s *userService) Update(ctx context.Context, userId uint, req *dto.UserUpdateRequest) (models.User, error) {
-	var user models.User
-	err := s.userRepository.FindById(ctx, &user, userId)
+	user, err := s.userRepository.FindById(ctx, userId)
 	if err != nil {
 		return user, err
 	}
@@ -101,8 +100,7 @@ func (s *userService) Delete(ctx context.Context, userId uint) error {
 
 // FindById implements UserService.
 func (s *userService) FindById(ctx context.Context, userId uint) (models.User, error) {
-	var user models.User
-	err := s.userRepository.FindById(ctx, &user, userId)
+	user, err := s.userRepository.FindById(ctx, userId)
 	if err != nil {
 		return user, err
 	}

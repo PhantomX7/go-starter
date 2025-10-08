@@ -68,8 +68,7 @@ func (p *postService) Create(ctx context.Context, req *dto.PostCreateRequest) (m
 
 // Update implements PostService.
 func (p *postService) Update(ctx context.Context, postId uint, req *dto.PostUpdateRequest) (models.Post, error) {
-	var post models.Post
-	err := p.postRepository.FindById(ctx, &post, postId)
+	post, err := p.postRepository.FindById(ctx, postId)
 	if err != nil {
 		return post, err
 	}
@@ -98,8 +97,7 @@ func (p *postService) Delete(ctx context.Context, postId uint) error {
 
 // FindById implements PostService.
 func (p *postService) FindById(ctx context.Context, postId uint) (models.Post, error) {
-	var post models.Post
-	err := p.postRepository.FindById(ctx, &post, postId)
+	post, err := p.postRepository.FindById(ctx, postId)
 	if err != nil {
 		return post, err
 	}

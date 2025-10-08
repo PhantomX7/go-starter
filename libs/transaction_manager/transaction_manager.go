@@ -3,39 +3,43 @@ package transaction_manager
 import (
 	"context"
 
+	"github.com/PhantomX7/go-starter/pkg/utils"
+
 	"gorm.io/gorm"
 )
 
-type contextKey string
-
-const txKey contextKey = "db_transaction"
-
-type Client interface {
-	WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error
-	GetDB(ctx context.Context) *gorm.DB
+type TransactionManager interface {
+	ExecuteInTransaction(ctx context.Context, fn func(context.Context) error) error
 }
 
-type client struct {
-	db *gorm.DB
+type transactionManager struct {
+	DB *gorm.DB
 }
 
-func New(db *gorm.DB) Client {
-	return &client{db: db}
+func NewTransactionManager(db *gorm.DB) TransactionManager {
+	return &transactionManager{DB: db}
 }
 
-// WithTransaction executes function within a transaction
-// Automatically handles commit/rollback
-func (c *client) WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
-	return c.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		txCtx := context.WithValue(ctx, txKey, tx)
-		return fn(txCtx)
-	})
-}
-
-// GetDB returns transaction from context if exists, otherwise returns default DB
-func (c *client) GetDB(ctx context.Context) *gorm.DB {
-	if tx, ok := ctx.Value(txKey).(*gorm.DB); ok {
-		return tx
+func (tm *transactionManager) ExecuteInTransaction(ctx context.Context, fn func(context.Context) error) error {
+	tx := tm.DB.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		return tx.Error
 	}
-	return c.db
+
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			panic(r)
+		}
+	}()
+
+	// Set transaction in context
+	ctxWithTx := utils.SetTxToContext(ctx, tx)
+
+	if err := fn(ctxWithTx); err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit().Error
 }
