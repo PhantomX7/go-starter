@@ -24,6 +24,10 @@ dev:
 	go build -o bin/${app-name} cmd/main.go
 	./bin/${app-name}
 
+run:
+	@echo "Running the application..."
+	./bin/${app-name}
+
 # Usage: make migrate-create name=my_migration_name
 migrate-create:
 	@echo "Creating new migration file..."

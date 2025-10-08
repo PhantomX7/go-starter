@@ -28,8 +28,8 @@ func main() {
 			middlewares.NewMiddleware,
 			validator.New,
 			bootstrap.SetupServer, 
-			libs.Module, // provide libs
 		),
+		libs.Module, // provide libs
 		postModule.Module,
 		fx.Invoke(
 			routes.RegisterRoutes,
