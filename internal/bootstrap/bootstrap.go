@@ -9,9 +9,12 @@ import (
 	"github.com/PhantomX7/go-starter/docs"
 	"github.com/PhantomX7/go-starter/internal/middlewares"
 	"github.com/PhantomX7/go-starter/pkg/config"
+	custom_validator "github.com/PhantomX7/go-starter/pkg/validator"
 
 	"github.com/common-nighthawk/go-figure"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
 	swaggerFiles "github.com/swaggo/files"     // swagger embed files
 	ginSwagger "github.com/swaggo/gin-swagger" // gin-swagger middleware
 	"go.uber.org/fx"
@@ -21,7 +24,7 @@ import (
 
 // SetupServer configures and returns the Gin engine.
 // It sets up middleware including CORS and logging.
-func SetupServer(cfg *config.Config, m *middlewares.Middleware) *gin.Engine {
+func SetupServer(cfg *config.Config, m *middlewares.Middleware, cv custom_validator.CustomValidator) *gin.Engine {
 
 	// programmatically set swagger info
 	docs.SwaggerInfo.Title = "Go Starter API"
@@ -32,6 +35,14 @@ func SetupServer(cfg *config.Config, m *middlewares.Middleware) *gin.Engine {
 	docs.SwaggerInfo.Schemes = []string{"http", "https"}
 
 	server := gin.Default()
+
+	// list of custom validators
+	validators := map[string]validator.Func{
+		"unique": cv.Unique(),
+		"exist":  cv.Exist(),
+	}
+
+	registerValidators(validators)
 
 	// Enable CORS middleware and custom logger
 	// the order is important
@@ -140,4 +151,15 @@ func SetUpDatabase(lc fx.Lifecycle, cfg *config.Config) (*gorm.DB, error) {
 	})
 
 	return db, nil
+}
+
+func registerValidators(validators map[string]validator.Func) {
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+		// Register each validator
+		for name, fn := range validators {
+			if err := v.RegisterValidation(name, fn); err != nil {
+				log.Printf("error when applying %s validator: %v", name, err)
+			}
+		}
+	}
 }

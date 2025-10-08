@@ -5,6 +5,7 @@ import (
 	"github.com/PhantomX7/go-starter/internal/middlewares"
 	"github.com/PhantomX7/go-starter/internal/routes"
 	"github.com/PhantomX7/go-starter/libs"
+	"github.com/PhantomX7/go-starter/pkg/validator"
 
 	postModule "github.com/PhantomX7/go-starter/internal/modules/post"
 
@@ -25,6 +26,7 @@ func main() {
 			bootstrap.SetUpConfig,
 			bootstrap.SetUpDatabase,
 			middlewares.NewMiddleware,
+			validator.New,
 			bootstrap.SetupServer, 
 			libs.Module, // provide libs
 		),
