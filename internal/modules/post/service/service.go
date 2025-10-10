@@ -6,6 +6,8 @@ import (
 	"github.com/PhantomX7/go-starter/internal/models"
 	"github.com/PhantomX7/go-starter/internal/modules/post/dto"
 	"github.com/PhantomX7/go-starter/internal/modules/post/repository"
+	"github.com/PhantomX7/go-starter/libs/transaction_manager"
+	"github.com/PhantomX7/go-starter/pkg/errors"
 	"github.com/PhantomX7/go-starter/pkg/pagination"
 	"github.com/PhantomX7/go-starter/pkg/response"
 
@@ -22,11 +24,13 @@ type PostService interface {
 
 type postService struct {
 	postRepository repository.PostRepository
+	transactionManager transaction_manager.TransactionManager
 }
 
-func NewPostService(Repository repository.PostRepository) PostService {
+func NewPostService(Repository repository.PostRepository, tm transaction_manager.TransactionManager) PostService {
 	return &postService{
 		postRepository: Repository,
+		transactionManager: tm,
 	}
 }
 
@@ -58,9 +62,22 @@ func (p *postService) Create(ctx context.Context, req *dto.PostCreateRequest) (m
 		return post, err
 	}
 
-	err = p.postRepository.Create(ctx, &post)
+	err = p.transactionManager.ExecuteInTransaction(ctx, func(ctx context.Context) error {
+		err = p.postRepository.Create(ctx, &post)
+		if err != nil {
+			return err
+		}
+		
+		post.Description = "aaaaa"
+		err = p.postRepository.Update(ctx, &post)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
 	if err != nil {
-		return post, err
+		return post, errors.NewInternalServerError("failed to create post", err)
 	}
 
 	return post, nil

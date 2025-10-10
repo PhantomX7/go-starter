@@ -2,17 +2,16 @@ package models
 
 import (
 	"github.com/PhantomX7/go-starter/internal/modules/post/dto"
-	"gorm.io/gorm"
 )
 
 type Post struct {
-	gorm.Model
-
+	ID          uint   `gorm:"primaryKey" json:"id"`
 	Title       string `gorm:"type:varchar(255);not null" json:"title"`
 	Content     string `gorm:"type:text;not null" json:"content"`
 	Description string `gorm:"type:text" json:"description"`
 	ImageUrl    string `gorm:"type:varchar(255)" json:"image_url"`
 	IsActive    bool   `gorm:"default:true" json:"is_active"`
+	Timestamp
 }
 
 func (p Post) ToResponse() any {

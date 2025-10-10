@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/PhantomX7/go-starter/docs"
 	"github.com/PhantomX7/go-starter/internal/middlewares"
@@ -125,13 +126,16 @@ func SetUpConfig() (*config.Config, error) {
 
 func SetUpDatabase(lc fx.Lifecycle, cfg *config.Config) (*gorm.DB, error) {
 	// Set up database connection
-	db, err := gorm.Open(postgres.Open(cfg.GetDatabaseURL()), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(cfg.GetDatabaseURL()), &gorm.Config{
+		SkipDefaultTransaction: true,
+	})
 	// db, err := gorm.Open(cfg.Database.Dialect, cfg.Database.ConnectionString)
 	if err != nil {
 		return nil, err
 	}
 
 	var sqlDB *sql.DB
+
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			log.Println("Connecting to the database...")
@@ -139,6 +143,10 @@ func SetUpDatabase(lc fx.Lifecycle, cfg *config.Config) (*gorm.DB, error) {
 			if err != nil {
 				return err
 			}
+
+			// Configure connection pool
+			ConfigureConnectionPool(sqlDB)
+
 			return sqlDB.Ping()
 		},
 		OnStop: func(ctx context.Context) error {
@@ -150,7 +158,7 @@ func SetUpDatabase(lc fx.Lifecycle, cfg *config.Config) (*gorm.DB, error) {
 		},
 	})
 
-	return db, nil
+	return db.Debug(), nil
 }
 
 func registerValidators(validators map[string]validator.Func) {
@@ -162,4 +170,18 @@ func registerValidators(validators map[string]validator.Func) {
 			}
 		}
 	}
+}
+
+func ConfigureConnectionPool(sqlDB *sql.DB) {
+	// SetMaxIdleConns sets the maximum number of connections in the idle pool
+	sqlDB.SetMaxIdleConns(10)
+
+	// SetMaxOpenConns sets the maximum number of open connections
+	sqlDB.SetMaxOpenConns(100)
+
+	// SetConnMaxLifetime sets the maximum time a connection can be reused
+	sqlDB.SetConnMaxLifetime(time.Hour)
+
+	// SetConnMaxIdleTime sets the maximum time a connection can be idle
+	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
 }

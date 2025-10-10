@@ -9,7 +9,7 @@ import (
 )
 
 type TransactionManager interface {
-	ExecuteInTransaction(ctx context.Context, fn func(context.Context) error) error
+	ExecuteInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
 type transactionManager struct {
@@ -20,26 +20,18 @@ func NewTransactionManager(db *gorm.DB) TransactionManager {
 	return &transactionManager{DB: db}
 }
 
-func (tm *transactionManager) ExecuteInTransaction(ctx context.Context, fn func(context.Context) error) error {
-	tx := tm.DB.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-			panic(r)
+func (tm *transactionManager) ExecuteInTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	err := tm.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		ctxWithTx := utils.SetTxToContext(ctx, tx)
+		if err := fn(ctxWithTx); err != nil {
+			return err
 		}
-	}()
+		return nil
+	})
 
-	// Set transaction in context
-	ctxWithTx := utils.SetTxToContext(ctx, tx)
-
-	if err := fn(ctxWithTx); err != nil {
-		tx.Rollback()
+	if err != nil {
 		return err
 	}
 
-	return tx.Commit().Error
+	return nil
 }

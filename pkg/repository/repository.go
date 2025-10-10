@@ -6,6 +6,7 @@ import (
 
 	"github.com/PhantomX7/go-starter/pkg/errors"
 	"github.com/PhantomX7/go-starter/pkg/pagination"
+	"github.com/PhantomX7/go-starter/pkg/utils"
 
 	"gorm.io/gorm"
 )
@@ -23,8 +24,17 @@ type Repository[T any] struct {
 	DB *gorm.DB
 }
 
+// getDB checks context for transaction, falls back to default DB
+func (r *Repository[T]) getDB(ctx context.Context) *gorm.DB {
+	if tx := utils.GetTxFromContext(ctx); tx != nil {
+		return tx
+	}
+	return r.DB
+}
+
 func (r *Repository[T]) Create(ctx context.Context, entity *T) error {
-	err := r.DB.WithContext(ctx).Create(entity).Error
+	db := r.getDB(ctx)
+	err := db.WithContext(ctx).Create(entity).Error
 	if err != nil {
 		errMessage := fmt.Sprintf("failed to create %T record", *new(T))
 		return errors.NewInternalServerError(errMessage, err)
@@ -33,7 +43,8 @@ func (r *Repository[T]) Create(ctx context.Context, entity *T) error {
 }
 
 func (r *Repository[T]) Update(ctx context.Context, entity *T) error {
-	err := r.DB.WithContext(ctx).Save(entity).Error
+	db := r.getDB(ctx)
+	err := db.WithContext(ctx).Save(entity).Error
 	if err != nil {
 		errMessage := fmt.Sprintf("failed to update %T record", *new(T))
 		return errors.NewInternalServerError(errMessage, err)
@@ -42,7 +53,8 @@ func (r *Repository[T]) Update(ctx context.Context, entity *T) error {
 }
 
 func (r *Repository[T]) Delete(ctx context.Context, entity *T) error {
-	err := r.DB.WithContext(ctx).Delete(entity).Error
+	db := r.getDB(ctx)
+	err := db.WithContext(ctx).Delete(entity).Error
 	if err != nil {
 		errMessage := fmt.Sprintf("failed to delete %T record", *new(T))
 		return errors.NewInternalServerError(errMessage, err)
@@ -53,7 +65,8 @@ func (r *Repository[T]) Delete(ctx context.Context, entity *T) error {
 func (r *Repository[T]) FindAll(ctx context.Context, pg *pagination.Pagination) ([]T, error) {
 	entities := make([]T, 0)
 
-	err := r.DB.WithContext(ctx).
+	db := r.getDB(ctx)
+	err := db.WithContext(ctx).
 		Scopes(pg.Apply).
 		Find(&entities).Error
 	if err != nil {
@@ -66,8 +79,8 @@ func (r *Repository[T]) FindAll(ctx context.Context, pg *pagination.Pagination) 
 
 func (r *Repository[T]) Count(ctx context.Context, pg *pagination.Pagination) (int64, error) {
 	var count int64
-
-	err := r.DB.WithContext(ctx).
+	db := r.getDB(ctx)
+	err := db.WithContext(ctx).
 		Scopes(pg.ApplyWithoutMeta).
 		Model(new(T)).Count(&count).Error
 	if err != nil {
@@ -79,7 +92,8 @@ func (r *Repository[T]) Count(ctx context.Context, pg *pagination.Pagination) (i
 
 func (r *Repository[T]) FindById(ctx context.Context, id uint) (T, error) {
 	var entity T
-	err := r.DB.WithContext(ctx).Where("id = ?", id).Take(&entity).Error
+	db := r.getDB(ctx)
+	err := db.WithContext(ctx).Where("id = ?", id).Take(&entity).Error
 	if err != nil {
 		errMessage := fmt.Sprintf("failed to find %T record by id %v", *new(T), id)
 		return entity, errors.NewInternalServerError(errMessage, err)
