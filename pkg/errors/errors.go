@@ -18,6 +18,12 @@ func (e *AppError) Error() string {
 	return e.Message
 }
 
+// Unwrap returns the wrapped underlying error, making it compatible
+// with Go's standard errors package (errors.Is, errors.As).
+func (e *AppError) Unwrap() error {
+    return e.Err
+}
+
 // Predefined errors
 var (
 	ErrNotFound       = errors.New("resource not found")

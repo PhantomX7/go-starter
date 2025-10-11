@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/PhantomX7/go-starter/pkg/errors"
@@ -34,10 +35,9 @@ func (m *Middleware) ErrorHandler() gin.HandlerFunc {
 			case *errors.AppError:
 				// If the error is a custom AppError, return it.
 				if e.Code == http.StatusInternalServerError {
-					c.AbortWithStatusJSON(e.Code, response.BuildResponseFailed(e.Message, ""))
-				} else {
-					c.AbortWithStatusJSON(e.Code, response.BuildResponseFailed(e.Message, e.Err.Error()))
+					log.Printf("Internal server error: %v", e)
 				}
+				c.AbortWithStatusJSON(e.Code, response.BuildResponseFailed(e.Message))
 			default:
 				// For any other error, return a generic 500.
 				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{

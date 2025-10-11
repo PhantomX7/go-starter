@@ -4,9 +4,9 @@ package generator
 const moduleTemplate = `package {{.SnakeCase}}
 
 import (
-	"github.com/PhantomX7/go-starter/internal/modules/{{.SnakeCase}}/controller"
-	"github.com/PhantomX7/go-starter/internal/modules/{{.SnakeCase}}/repository"
-	"github.com/PhantomX7/go-starter/internal/modules/{{.SnakeCase}}/service"
+	"github.com/LezendaCom/komputermedan/internal/modules/{{.SnakeCase}}/controller"
+	"github.com/LezendaCom/komputermedan/internal/modules/{{.SnakeCase}}/repository"
+	"github.com/LezendaCom/komputermedan/internal/modules/{{.SnakeCase}}/service"
 
 	"go.uber.org/fx"
 )
@@ -27,9 +27,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/PhantomX7/go-starter/internal/modules/{{.SnakeCase}}/dto"
-	"github.com/PhantomX7/go-starter/internal/modules/{{.SnakeCase}}/service"
-	"github.com/PhantomX7/go-starter/pkg/response"
+	"github.com/LezendaCom/komputermedan/internal/modules/{{.SnakeCase}}/dto"
+	"github.com/LezendaCom/komputermedan/internal/modules/{{.SnakeCase}}/service"
+	"github.com/LezendaCom/komputermedan/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -188,11 +188,11 @@ const serviceTemplate = `package service
 import (
 	"context"
 
-	"github.com/PhantomX7/go-starter/internal/models"
-	"github.com/PhantomX7/go-starter/internal/modules/{{.SnakeCase}}/dto"
-	"github.com/PhantomX7/go-starter/internal/modules/{{.SnakeCase}}/repository"
-	"github.com/PhantomX7/go-starter/pkg/pagination"
-	"github.com/PhantomX7/go-starter/pkg/response"
+	"github.com/LezendaCom/komputermedan/internal/models"
+	"github.com/LezendaCom/komputermedan/internal/modules/{{.SnakeCase}}/dto"
+	"github.com/LezendaCom/komputermedan/internal/modules/{{.SnakeCase}}/repository"
+	"github.com/LezendaCom/komputermedan/pkg/pagination"
+	"github.com/LezendaCom/komputermedan/pkg/response"
 
 	"github.com/jinzhu/copier"
 )
@@ -212,9 +212,9 @@ type {{.CamelCase}}Service struct {
 }
 
 // New{{.PascalCase}}Service creates a new instance of {{.PascalCase}}Service
-func New{{.PascalCase}}Service(Repository repository.{{.PascalCase}}Repository) {{.PascalCase}}Service {
+func New{{.PascalCase}}Service(repository repository.{{.PascalCase}}Repository) {{.PascalCase}}Service {
 	return &{{.CamelCase}}Service{
-		{{.CamelCase}}Repository: Repository,
+		{{.CamelCase}}Repository: repository,
 	}
 }
 
@@ -297,8 +297,8 @@ func (s *{{.CamelCase}}Service) FindById(ctx context.Context, {{.LowerCase}}Id u
 const repositoryTemplate = `package repository
 
 import (
-	"github.com/PhantomX7/go-starter/internal/models"
-	"github.com/PhantomX7/go-starter/pkg/repository"
+	"github.com/LezendaCom/komputermedan/internal/models"
+	"github.com/LezendaCom/komputermedan/pkg/repository"
 
 	"gorm.io/gorm"
 )
@@ -329,7 +329,7 @@ const dtoTemplate = `package dto
 import (
 	"time"
 
-	"github.com/PhantomX7/go-starter/pkg/pagination"
+	"github.com/LezendaCom/komputermedan/pkg/pagination"
 )
 
 // {{.PascalCase}}CreateRequest defines the structure for creating a new {{.LowerCase}}
