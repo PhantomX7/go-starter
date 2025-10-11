@@ -7,6 +7,7 @@ import (
 	"github.com/PhantomX7/go-starter/libs"
 	"github.com/PhantomX7/go-starter/pkg/validator"
 
+	authModule "github.com/PhantomX7/go-starter/internal/modules/auth"
 	postModule "github.com/PhantomX7/go-starter/internal/modules/post"
 
 	"go.uber.org/fx"
@@ -30,6 +31,7 @@ func main() {
 			bootstrap.SetupServer, 
 		),
 		libs.Module, // provide libs
+		authModule.Module,
 		postModule.Module,
 		fx.Invoke(
 			routes.RegisterRoutes,

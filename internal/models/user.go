@@ -7,7 +7,7 @@ import (
 // User represents the user entity
 type User struct {
 	ID          uint   `gorm:"primaryKey" json:"id"`
-	Name        string `gorm:"type:varchar(255);not null" json:"name"`
+	Username        string `gorm:"type:varchar(255);not null" json:"name"`
 	Description string `gorm:"type:text" json:"description"`
 	IsActive    bool   `gorm:"default:true" json:"is_active"`
 	Timestamp
@@ -17,7 +17,7 @@ type User struct {
 func (m User) ToResponse() any {
 	return dto.UserResponse{
 		ID:          m.ID,
-		Name:        m.Name,
+		// Username:        m.Username,
 		Description: m.Description,
 		CreatedAt:   m.CreatedAt,
 		UpdatedAt:   m.UpdatedAt,

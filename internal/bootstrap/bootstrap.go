@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -16,6 +17,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
+	"github.com/gorilla/sessions"
+	"github.com/markbates/goth"
+	"github.com/markbates/goth/gothic"
+	"github.com/markbates/goth/providers/google"
 	swaggerFiles "github.com/swaggo/files"     // swagger embed files
 	ginSwagger "github.com/swaggo/gin-swagger" // gin-swagger middleware
 	"go.uber.org/fx"
@@ -69,6 +74,9 @@ func StartServer(lc fx.Lifecycle, server *gin.Engine, cfg *config.Config) {
 	// Print application information
 	myFigure := figure.NewColorFigure(cfg.App.Name, "", "green", true)
 	myFigure.Print()
+
+	// Initialize OAuth providers
+	InitOAuth(cfg)
 
 	// Initialize HTTP server
 	srv := &http.Server{
@@ -184,4 +192,20 @@ func ConfigureConnectionPool(sqlDB *sql.DB) {
 
 	// SetConnMaxIdleTime sets the maximum time a connection can be idle
 	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
+}
+
+func InitOAuth(cfg *config.Config) {
+	key := "your-secret-key"
+	store := sessions.NewCookieStore([]byte(key))
+	gothic.Store = store
+	
+	log.Println("Initialized OAuth providers", cfg.OAuth.GoogleClientID, cfg.OAuth.GoogleClientSecret)
+
+	goth.UseProviders(
+		google.New(
+			cfg.OAuth.GoogleClientID,
+			cfg.OAuth.GoogleClientSecret,
+			fmt.Sprintf("%s/api/auth/google/callback", cfg.OAuth.CallbackURL),
+		),
+	)
 }

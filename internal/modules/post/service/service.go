@@ -27,9 +27,9 @@ type postService struct {
 	transactionManager transaction_manager.TransactionManager
 }
 
-func NewPostService(Repository repository.PostRepository, tm transaction_manager.TransactionManager) PostService {
+func NewPostService(postRepository repository.PostRepository, tm transaction_manager.TransactionManager) PostService {
 	return &postService{
-		postRepository: Repository,
+		postRepository: postRepository,
 		transactionManager: tm,
 	}
 }

@@ -26,6 +26,9 @@ type Config struct {
 
 	// Application configuration
 	App AppConfig `mapstructure:",squash"`
+
+	// OAuth Google configuration
+	OAuth OAuthConfig `mapstructure:",squash"`
 }
 
 // ServerConfig holds server-related configuration
@@ -63,6 +66,13 @@ type AppConfig struct {
 	Debug       bool   `mapstructure:"APP_DEBUG"`
 	LogLevel    string `mapstructure:"APP_LOG_LEVEL"`
 	Assets      string `mapstructure:"APP_ASSETS"`
+}
+
+// OAuthConfig holds OAuth Google configuration
+type OAuthConfig struct {
+	CallbackURL        string `mapstructure:"OAUTH_CALLBACK_URL"`
+	GoogleClientID     string `mapstructure:"OAUTH_GOOGLE_CLIENT_ID"`
+	GoogleClientSecret string `mapstructure:"OAUTH_GOOGLE_CLIENT_SECRET"`
 }
 
 var (
@@ -143,6 +153,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("APP_DEBUG", true)
 	v.SetDefault("APP_LOG_LEVEL", "info")
 	v.SetDefault("APP_ASSETS", "./assets")
+
+	// OAuth Google defaults
+	v.SetDefault("OAUTH_CALLBACK_URL", "")
+	v.SetDefault("OAUTH_GOOGLE_CLIENT_ID", "")
+	v.SetDefault("OAUTH_GOOGLE_CLIENT_SECRET", "")
 }
 
 // validateConfig validates the loaded configuration
@@ -177,6 +192,11 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("invalid environment: %s, must be one of %v",
 			cfg.App.Environment,
 			validEnvironments)
+	}
+
+	// Validate OAuth Google configuration
+	if cfg.OAuth.GoogleClientID == "" || cfg.OAuth.GoogleClientSecret == "" {
+		return fmt.Errorf("OAuth Google client ID and secret are required")
 	}
 
 	return nil
