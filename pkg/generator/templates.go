@@ -4,9 +4,9 @@ package generator
 const moduleTemplate = `package {{.SnakeCase}}
 
 import (
-	"github.com/LezendaCom/komputermedan/internal/modules/{{.SnakeCase}}/controller"
-	"github.com/LezendaCom/komputermedan/internal/modules/{{.SnakeCase}}/repository"
-	"github.com/LezendaCom/komputermedan/internal/modules/{{.SnakeCase}}/service"
+	"github.com/PhantomX7/go-starter/internal/modules/{{.SnakeCase}}/controller"
+	"github.com/PhantomX7/go-starter/internal/modules/{{.SnakeCase}}/repository"
+	"github.com/PhantomX7/go-starter/internal/modules/{{.SnakeCase}}/service"
 
 	"go.uber.org/fx"
 )
@@ -27,14 +27,13 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/LezendaCom/komputermedan/internal/modules/{{.SnakeCase}}/dto"
-	"github.com/LezendaCom/komputermedan/internal/modules/{{.SnakeCase}}/service"
-	"github.com/LezendaCom/komputermedan/pkg/response"
+	"github.com/PhantomX7/go-starter/internal/modules/{{.SnakeCase}}/dto"
+	"github.com/PhantomX7/go-starter/internal/modules/{{.SnakeCase}}/service"
+	"github.com/PhantomX7/go-starter/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
 
-// {{.PascalCase}}Controller defines the interface for {{.LowerCase}} controller operations
 type {{.PascalCase}}Controller interface {
 	Index(ctx *gin.Context)
 	Create(ctx *gin.Context)
@@ -43,12 +42,10 @@ type {{.PascalCase}}Controller interface {
 	FindById(ctx *gin.Context)
 }
 
-// {{.CamelCase}}Controller implements the {{.PascalCase}}Controller interface
 type {{.CamelCase}}Controller struct {
 	{{.CamelCase}}Service service.{{.PascalCase}}Service
 }
 
-// New{{.PascalCase}}Controller creates a new instance of {{.PascalCase}}Controller
 func New{{.PascalCase}}Controller({{.CamelCase}}Service service.{{.PascalCase}}Service) {{.PascalCase}}Controller {
 	return &{{.CamelCase}}Controller{
 		{{.CamelCase}}Service: {{.CamelCase}}Service,
@@ -188,46 +185,43 @@ const serviceTemplate = `package service
 import (
 	"context"
 
-	"github.com/LezendaCom/komputermedan/internal/models"
-	"github.com/LezendaCom/komputermedan/internal/modules/{{.SnakeCase}}/dto"
-	"github.com/LezendaCom/komputermedan/internal/modules/{{.SnakeCase}}/repository"
-	"github.com/LezendaCom/komputermedan/pkg/pagination"
-	"github.com/LezendaCom/komputermedan/pkg/response"
+	"github.com/PhantomX7/go-starter/internal/models"
+	"github.com/PhantomX7/go-starter/internal/modules/{{.SnakeCase}}/dto"
+	"github.com/PhantomX7/go-starter/internal/modules/{{.SnakeCase}}/repository"
+	"github.com/PhantomX7/go-starter/pkg/pagination"
+	"github.com/PhantomX7/go-starter/pkg/response"
 
 	"github.com/jinzhu/copier"
 )
 
-// {{.PascalCase}}Service defines the interface for {{.LowerCase}} service operations
 type {{.PascalCase}}Service interface {
-	Index(ctx context.Context, req *pagination.Pagination) ([]models.{{.PascalCase}}, response.Meta, error)
-	Create(ctx context.Context, req *dto.{{.PascalCase}}CreateRequest) (models.{{.PascalCase}}, error)
-	Update(ctx context.Context, {{.LowerCase}}Id uint, req *dto.{{.PascalCase}}UpdateRequest) (models.{{.PascalCase}}, error)
+	Index(ctx context.Context, req *pagination.Pagination) ([]*models.{{.PascalCase}}, response.Meta, error)
+	Create(ctx context.Context, req *dto.{{.PascalCase}}CreateRequest) (*models.{{.PascalCase}}, error)
+	Update(ctx context.Context, {{.LowerCase}}Id uint, req *dto.{{.PascalCase}}UpdateRequest) (*models.{{.PascalCase}}, error)
 	Delete(ctx context.Context, {{.LowerCase}}Id uint) error
-	FindById(ctx context.Context, {{.LowerCase}}Id uint) (models.{{.PascalCase}}, error)
+	FindById(ctx context.Context, {{.LowerCase}}Id uint) (*models.{{.PascalCase}}, error)
 }
 
-// {{.CamelCase}}Service implements the {{.PascalCase}}Service interface
 type {{.CamelCase}}Service struct {
 	{{.CamelCase}}Repository repository.{{.PascalCase}}Repository
 }
 
-// New{{.PascalCase}}Service creates a new instance of {{.PascalCase}}Service
-func New{{.PascalCase}}Service(repository repository.{{.PascalCase}}Repository) {{.PascalCase}}Service {
+func New{{.PascalCase}}Service({{.CamelCase}}Repository repository.{{.PascalCase}}Repository) {{.PascalCase}}Service {
 	return &{{.CamelCase}}Service{
-		{{.CamelCase}}Repository: repository,
+		{{.CamelCase}}Repository: {{.CamelCase}}Repository,
 	}
 }
 
 // Index implements {{.PascalCase}}Service.
-func (s *{{.CamelCase}}Service) Index(ctx context.Context, pg *pagination.Pagination) ([]models.{{.PascalCase}}, response.Meta, error) {
+func (s *{{.CamelCase}}Service) Index(ctx context.Context, pg *pagination.Pagination) ([]*models.{{.PascalCase}}, response.Meta, error) {
 	{{.LowerCase}}s, err := s.{{.CamelCase}}Repository.FindAll(ctx, pg)
 	if err != nil {
-		return {{.LowerCase}}s, response.Meta{}, err
+		return nil, response.Meta{}, err
 	}
 
 	count, err := s.{{.CamelCase}}Repository.Count(ctx, pg)
 	if err != nil {
-		return {{.LowerCase}}s, response.Meta{}, err
+		return nil, response.Meta{}, err
 	}
 
 	return {{.LowerCase}}s, response.Meta{
@@ -238,24 +232,28 @@ func (s *{{.CamelCase}}Service) Index(ctx context.Context, pg *pagination.Pagina
 }
 
 // Create implements {{.PascalCase}}Service.
-func (s *{{.CamelCase}}Service) Create(ctx context.Context, req *dto.{{.PascalCase}}CreateRequest) (models.{{.PascalCase}}, error) {
-	var {{.LowerCase}} models.{{.PascalCase}}
+func (s *{{.CamelCase}}Service) Create(ctx context.Context, req *dto.{{.PascalCase}}CreateRequest) (*models.{{.PascalCase}}, error) {
+	var {{.LowerCase}} *models.{{.PascalCase}}
 
-	err := copier.Copy(&{{.LowerCase}}, &req)
+	err := copier.Copy({{.LowerCase}}, req)
 	if err != nil {
 		return {{.LowerCase}}, err
 	}
 
-	err = s.{{.CamelCase}}Repository.Create(ctx, &{{.LowerCase}})
+	err = s.{{.CamelCase}}Repository.Create(ctx, {{.LowerCase}})
 	if err != nil {
-		return {{.LowerCase}}, err
+		return nil, err
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	return {{.LowerCase}}, nil
 }
 
 // Update implements {{.PascalCase}}Service.
-func (s *{{.CamelCase}}Service) Update(ctx context.Context, {{.LowerCase}}Id uint, req *dto.{{.PascalCase}}UpdateRequest) (models.{{.PascalCase}}, error) {
+func (s *{{.CamelCase}}Service) Update(ctx context.Context, {{.LowerCase}}Id uint, req *dto.{{.PascalCase}}UpdateRequest) (*models.{{.PascalCase}}, error) {
 	{{.LowerCase}}, err := s.{{.CamelCase}}Repository.FindById(ctx, {{.LowerCase}}Id)
 	if err != nil {
 		return {{.LowerCase}}, err
@@ -266,7 +264,7 @@ func (s *{{.CamelCase}}Service) Update(ctx context.Context, {{.LowerCase}}Id uin
 		return {{.LowerCase}}, err
 	}
 
-	err = s.{{.CamelCase}}Repository.Update(ctx, &{{.LowerCase}})
+	err = s.{{.CamelCase}}Repository.Update(ctx, {{.LowerCase}})
 	if err != nil {
 		return {{.LowerCase}}, err
 	}
@@ -284,7 +282,7 @@ func (s *{{.CamelCase}}Service) Delete(ctx context.Context, {{.LowerCase}}Id uin
 }
 
 // FindById implements {{.PascalCase}}Service.
-func (s *{{.CamelCase}}Service) FindById(ctx context.Context, {{.LowerCase}}Id uint) (models.{{.PascalCase}}, error) {
+func (s *{{.CamelCase}}Service) FindById(ctx context.Context, {{.LowerCase}}Id uint) (*models.{{.PascalCase}}, error) {
 	{{.LowerCase}}, err := s.{{.CamelCase}}Repository.FindById(ctx, {{.LowerCase}}Id)
 	if err != nil {
 		return {{.LowerCase}}, err
@@ -297,8 +295,8 @@ func (s *{{.CamelCase}}Service) FindById(ctx context.Context, {{.LowerCase}}Id u
 const repositoryTemplate = `package repository
 
 import (
-	"github.com/LezendaCom/komputermedan/internal/models"
-	"github.com/LezendaCom/komputermedan/pkg/repository"
+	"github.com/PhantomX7/go-starter/internal/models"
+	"github.com/PhantomX7/go-starter/pkg/repository"
 
 	"gorm.io/gorm"
 )
@@ -329,7 +327,7 @@ const dtoTemplate = `package dto
 import (
 	"time"
 
-	"github.com/LezendaCom/komputermedan/pkg/pagination"
+	"github.com/PhantomX7/go-starter/pkg/pagination"
 )
 
 // {{.PascalCase}}CreateRequest defines the structure for creating a new {{.LowerCase}}
