@@ -19,10 +19,14 @@ func (cv customValidator) Unique() validator.Func {
 		}
 
 		table, column := arr[0], arr[1]
-		query := cv.db.Table(table).Where("`"+column+"` = ?", fl.Field().Interface())
+		
+		query := cv.db.Table(table).Where(column+" = ?", fl.Field().Interface())
+		
+		// Check for soft deletes
 		if cv.db.Migrator().HasColumn(table, "deleted_at") {
-			query = query.Where("`deleted_at` IS NULL")
+			query = query.Where("deleted_at IS NULL")
 		}
+		
 		err := query.Count(&count).Error
 
 		// If there's a database error, fail open (assume unique)
