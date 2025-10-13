@@ -36,28 +36,28 @@ func formatSingleError(e validator.FieldError) string {
 		
 	switch e.Tag() {
 	case "required":
-		return fmt.Sprintf("%s is required.", errorField)
+		return fmt.Sprintf("%s is required", errorField)
 	case "email":
-		return fmt.Sprintf("%s must be a valid email address.", errorField)
+		return fmt.Sprintf("%s must be a valid email address", errorField)
 	case "min":
 		if e.Kind().String() == "string" {
-			return fmt.Sprintf("%s must be at least %s characters long.", errorField, param)
+			return fmt.Sprintf("%s must be at least %s characters long", errorField, param)
 		}
-		return fmt.Sprintf("%s must be at least %s.", errorField, param)
+		return fmt.Sprintf("%s must be at least %s", errorField, param)
 	case "max":
 		if e.Kind().String() == "string" {
-			return fmt.Sprintf("%s must be no more than %s characters long.", errorField, param)
+			return fmt.Sprintf("%s must be no more than %s characters long", errorField, param)
 		}
-		return fmt.Sprintf("%s must be no more than %s.", errorField, param)
+		return fmt.Sprintf("%s must be no more than %s", errorField, param)
 	case "len":
-		return fmt.Sprintf("%s must be exactly %s characters long.", errorField, param)
+		return fmt.Sprintf("%s must be exactly %s characters long", errorField, param)
 	case "oneof":
-		return fmt.Sprintf("%s must be one of the following: %s.", errorField, strings.ReplaceAll(param, " ", ", "))
+		return fmt.Sprintf("%s must be one of the following: %s", errorField, strings.ReplaceAll(param, " ", ", "))
 	case "numeric":
-		return fmt.Sprintf("%s must be a numeric value.", errorField)
+		return fmt.Sprintf("%s must be a numeric value", errorField)
 	case "alphanum":
-		return fmt.Sprintf("%s must contain only letters and numbers.", errorField)
+		return fmt.Sprintf("%s must contain only letters and numbers", errorField)
 	default:
-		return fmt.Sprintf("%s is invalid.", errorField)
+		return fmt.Sprintf("%s is invalid", errorField)
 	}
 }
