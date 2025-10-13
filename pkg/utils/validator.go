@@ -37,6 +37,8 @@ func formatSingleError(e validator.FieldError) string {
 	switch e.Tag() {
 	case "required":
 		return fmt.Sprintf("%s is required", errorField)
+	case "exists":
+		return fmt.Sprintf("%s is required", errorField)
 	case "email":
 		return fmt.Sprintf("%s must be a valid email address", errorField)
 	case "min":
@@ -57,6 +59,10 @@ func formatSingleError(e validator.FieldError) string {
 		return fmt.Sprintf("%s must be a numeric value", errorField)
 	case "alphanum":
 		return fmt.Sprintf("%s must contain only letters and numbers", errorField)
+	case "unique":
+		return fmt.Sprintf("%s must be unique", errorField)
+	case "exist":
+		return fmt.Sprintf("%s does not exist", errorField)
 	default:
 		return fmt.Sprintf("%s is invalid", errorField)
 	}
