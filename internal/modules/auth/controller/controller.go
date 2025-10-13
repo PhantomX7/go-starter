@@ -3,8 +3,6 @@ package controller
 import (
 	"context"
 
-	"github.com/PhantomX7/go-starter/internal/modules/user/service"
-
 	"github.com/gin-gonic/gin"
 	"github.com/markbates/goth/gothic"
 )
@@ -17,7 +15,6 @@ type AuthController interface {
 
 // authController implements the AuthController interface
 type authController struct {
-	userService service.UserService
 }
 
 // NewAuthController creates a new instance of AuthController

@@ -15,8 +15,8 @@ type IRepository[T any] interface {
 	Create(ctx context.Context, entity *T) error
 	Update(ctx context.Context, entity *T) error
 	Delete(ctx context.Context, entity *T) error
-	FindById(ctx context.Context, id uint) (T, error)
-	FindAll(ctx context.Context, pg *pagination.Pagination) ([]T, error)
+	FindById(ctx context.Context, id uint) (*T, error)
+	FindAll(ctx context.Context, pg *pagination.Pagination) ([]*T, error)
 	Count(ctx context.Context, pg *pagination.Pagination) (int64, error)
 }
 
@@ -62,8 +62,8 @@ func (r *Repository[T]) Delete(ctx context.Context, entity *T) error {
 	return nil
 }
 
-func (r *Repository[T]) FindAll(ctx context.Context, pg *pagination.Pagination) ([]T, error) {
-	entities := make([]T, 0)
+func (r *Repository[T]) FindAll(ctx context.Context, pg *pagination.Pagination) ([]*T, error) {
+	entities := make([]*T, 0)
 
 	db := r.getDB(ctx)
 	err := db.WithContext(ctx).
@@ -90,13 +90,13 @@ func (r *Repository[T]) Count(ctx context.Context, pg *pagination.Pagination) (i
 	return count, nil
 }
 
-func (r *Repository[T]) FindById(ctx context.Context, id uint) (T, error) {
-	var entity T
+func (r *Repository[T]) FindById(ctx context.Context, id uint) (*T, error) {
+	var entity *T
 	db := r.getDB(ctx)
-	err := db.WithContext(ctx).Where("id = ?", id).Take(&entity).Error
+	err := db.WithContext(ctx).Where("id = ?", id).Take(entity).Error
 	if err != nil {
 		errMessage := fmt.Sprintf("failed to find %T record by id %v", *new(T), id)
-		return entity, errors.NewInternalServerError(errMessage, err)
+		return nil, errors.NewInternalServerError(errMessage, err)
 	}
 	return entity, nil
 }
