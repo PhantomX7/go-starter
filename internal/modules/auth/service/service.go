@@ -10,13 +10,14 @@ import (
 	"strings"
 	"time"
 
+	refreshtokenrepo "github.com/PhantomX7/go-starter/internal/modules/refresh_token/repository"
+	userrepo "github.com/PhantomX7/go-starter/internal/modules/user/repository"
+	tx "github.com/PhantomX7/go-starter/libs/transaction_manager"
+	cerrors "github.com/PhantomX7/go-starter/pkg/errors"
+
 	"github.com/PhantomX7/go-starter/internal/models"
 	"github.com/PhantomX7/go-starter/internal/modules/auth/dto"
-	refresh_token_repository "github.com/PhantomX7/go-starter/internal/modules/refresh_token/repository"
-	user_repository "github.com/PhantomX7/go-starter/internal/modules/user/repository"
-	"github.com/PhantomX7/go-starter/libs/transaction_manager"
 	"github.com/PhantomX7/go-starter/pkg/config"
-	c_errors "github.com/PhantomX7/go-starter/pkg/errors"
 	"github.com/PhantomX7/go-starter/pkg/utils"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -54,17 +55,17 @@ type AuthService interface {
 // authService implements the AuthService interface
 type authService struct {
 	config                 *config.Config
-	userRepository         user_repository.UserRepository
-	refreshTokenRepository refresh_token_repository.RefreshTokenRepository
-	transactionManager     transaction_manager.TransactionManager
+	userRepository         userrepo.UserRepository
+	refreshTokenRepository refreshtokenrepo.RefreshTokenRepository
+	transactionManager     tx.TransactionManager
 }
 
 // NewAuthService creates a new instance of AuthService with enhanced validation
 func NewAuthService(
 	config *config.Config,
-	userRepository user_repository.UserRepository,
-	refreshTokenRepository refresh_token_repository.RefreshTokenRepository,
-	transactionManager transaction_manager.TransactionManager) AuthService {
+	userRepository userrepo.UserRepository,
+	refreshTokenRepository refreshtokenrepo.RefreshTokenRepository,
+	transactionManager tx.TransactionManager) AuthService {
 
 	JWTIssuer = config.JWT.Issuer
 
@@ -90,7 +91,7 @@ func (s *authService) GetMe(ctx context.Context) (*dto.MeResponse, error) {
 
 	// Additional security check
 	if !user.IsActive {
-		return nil, c_errors.NewForbiddenError("user account is inactive")
+		return nil, cerrors.NewForbiddenError("user account is inactive")
 	}
 
 	return &dto.MeResponse{
@@ -117,13 +118,13 @@ func (s *authService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 
 	// Use copier to safely copy fields
 	if err := copier.Copy(&user, &req); err != nil {
-		return nil, c_errors.NewInternalServerError("failed to process user data", err)
+		return nil, cerrors.NewInternalServerError("failed to process user data", err)
 	}
 
 	// Hash password with enhanced cost
 	password, err := bcrypt.GenerateFromPassword([]byte(req.Password), BcryptCost)
 	if err != nil {
-		return nil, c_errors.NewInternalServerError("failed to process password", err)
+		return nil, cerrors.NewInternalServerError("failed to process password", err)
 	}
 	user.Password = string(password)
 
@@ -176,11 +177,11 @@ func (s *authService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Au
 	user, err := s.userRepository.FindByUsername(ctx, req.Username)
 	if err != nil {
 		// Use constant-time comparison to prevent timing attacks
-		if errors.Is(err, c_errors.ErrNotFound) {
+		if errors.Is(err, cerrors.ErrNotFound) {
 			log.Printf("user not found for username: %s", req.Username)
 			// Perform dummy bcrypt operation to maintain consistent timing
 			bcrypt.CompareHashAndPassword([]byte("$2a$12$dummy.hash.to.prevent.timing.attacks"), []byte(req.Password))
-			return nil, c_errors.NewBadRequestError("invalid credentials")
+			return nil, cerrors.NewBadRequestError("invalid credentials")
 		}
 		return nil, err
 	}
@@ -189,12 +190,12 @@ func (s *authService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Au
 	if !user.IsActive {
 		// Perform dummy bcrypt operation to maintain consistent timing
 		bcrypt.CompareHashAndPassword([]byte("$2a$12$dummy.hash.to.prevent.timing.attacks"), []byte(req.Password))
-		return nil, c_errors.NewBadRequestError("invalid credentials")
+		return nil, cerrors.NewBadRequestError("invalid credentials")
 	}
 
 	// Verify password
 	if err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
-		return nil, c_errors.NewBadRequestError("invalid credentials")
+		return nil, cerrors.NewBadRequestError("invalid credentials")
 	}
 
 	// Generate tokens
@@ -232,21 +233,21 @@ func (s *authService) Refresh(ctx context.Context, req *dto.RefreshRequest) (*dt
 	token, err := jwt.ParseWithClaims(req.RefreshToken, claims, func(token *jwt.Token) (any, error) {
 		// Validate signing method
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, c_errors.NewBadRequestError("invalid token signing method")
+			return nil, cerrors.NewBadRequestError("invalid token signing method")
 		}
 		return []byte(s.config.JWT.Secret), nil
 	})
 	if err != nil {
-		return nil, c_errors.NewBadRequestError("invalid refresh token")
+		return nil, cerrors.NewBadRequestError("invalid refresh token")
 	}
 
 	if !token.Valid {
-		return nil, c_errors.NewBadRequestError("invalid refresh token claims")
+		return nil, cerrors.NewBadRequestError("invalid refresh token claims")
 	}
 
 	// Validate token expiration
 	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
-		return nil, c_errors.NewBadRequestError("refresh token has expired")
+		return nil, cerrors.NewBadRequestError("refresh token has expired")
 	}
 
 	// Check if refresh token exists and is not revoked
@@ -257,7 +258,7 @@ func (s *authService) Refresh(ctx context.Context, req *dto.RefreshRequest) (*dt
 
 	// Check if token is expired or revoked
 	if refreshTokenM.ExpiresAt.Before(time.Now()) || refreshTokenM.RevokedAt != nil {
-		return nil, c_errors.NewBadRequestError("refresh token has expired or been revoked")
+		return nil, cerrors.NewBadRequestError("refresh token has expired or been revoked")
 	}
 
 	// Verify user still exists and is active
@@ -267,7 +268,7 @@ func (s *authService) Refresh(ctx context.Context, req *dto.RefreshRequest) (*dt
 	}
 
 	if !user.IsActive {
-		return nil, c_errors.NewBadRequestError("user account is inactive")
+		return nil, cerrors.NewBadRequestError("user account is inactive")
 	}
 
 	// Generate new tokens
@@ -316,7 +317,7 @@ func (s *authService) Refresh(ctx context.Context, req *dto.RefreshRequest) (*dt
 // GenerateAccessToken creates a JWT access token with enhanced security
 func (s *authService) GenerateAccessToken(userID uint, role models.UserRole) (string, error) {
 	if role == "" {
-		return "", c_errors.NewBadRequestError("user does not have role")
+		return "", cerrors.NewBadRequestError("user does not have role")
 	}
 
 	now := time.Now()
@@ -338,7 +339,7 @@ func (s *authService) GenerateAccessToken(userID uint, role models.UserRole) (st
 	// Generate encoded token
 	tokenString, err := token.SignedString([]byte(s.config.JWT.Secret))
 	if err != nil {
-		return "", c_errors.NewInternalServerError("failed to generate access token", err)
+		return "", cerrors.NewInternalServerError("failed to generate access token", err)
 	}
 
 	return tokenString, nil
@@ -364,7 +365,7 @@ func (s *authService) GenerateRefreshToken(userID uint) (string, error) {
 	// Generate encoded token
 	tokenString, err := token.SignedString([]byte(s.config.JWT.Secret))
 	if err != nil {
-		return "", c_errors.NewInternalServerError("failed to generate refresh token", err)
+		return "", cerrors.NewInternalServerError("failed to generate refresh token", err)
 	}
 
 	return tokenString, nil
@@ -373,7 +374,7 @@ func (s *authService) GenerateRefreshToken(userID uint) (string, error) {
 // ValidatePassword validates password strength and requirements (optional)
 func (s *authService) ValidatePassword(password string) error {
 	if len(password) < MinPasswordLength {
-		return c_errors.NewBadRequestError(fmt.Sprintf("password must be at least %d characters long", MinPasswordLength))
+		return cerrors.NewBadRequestError(fmt.Sprintf("password must be at least %d characters long", MinPasswordLength))
 	}
 
 	// Check for at least one uppercase letter
@@ -399,16 +400,16 @@ func (s *authService) ValidatePassword(password string) error {
 	}
 
 	if !hasUpper {
-		return c_errors.NewBadRequestError("password must contain at least one uppercase letter")
+		return cerrors.NewBadRequestError("password must contain at least one uppercase letter")
 	}
 	if !hasLower {
-		return c_errors.NewBadRequestError("password must contain at least one lowercase letter")
+		return cerrors.NewBadRequestError("password must contain at least one lowercase letter")
 	}
 	if !hasDigit {
-		return c_errors.NewBadRequestError("password must contain at least one digit")
+		return cerrors.NewBadRequestError("password must contain at least one digit")
 	}
 	if !hasSpecial {
-		return c_errors.NewBadRequestError("password must contain at least one special character")
+		return cerrors.NewBadRequestError("password must contain at least one special character")
 	}
 
 	return nil

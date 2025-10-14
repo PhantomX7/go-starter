@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	c_errors "github.com/PhantomX7/go-starter/pkg/errors"
+	cerrors "github.com/PhantomX7/go-starter/pkg/errors"
 	"github.com/PhantomX7/go-starter/pkg/pagination"
 	"github.com/PhantomX7/go-starter/pkg/utils"
 
@@ -38,7 +38,7 @@ func (r *Repository[T]) Create(ctx context.Context, entity *T) error {
 	err := db.WithContext(ctx).Create(entity).Error
 	if err != nil {
 		errMessage := fmt.Sprintf("failed to create %T record", *new(T))
-		return c_errors.NewInternalServerError(errMessage, err)
+		return cerrors.NewInternalServerError(errMessage, err)
 	}
 	return nil
 }
@@ -48,7 +48,7 @@ func (r *Repository[T]) Update(ctx context.Context, entity *T) error {
 	err := db.WithContext(ctx).Save(entity).Error
 	if err != nil {
 		errMessage := fmt.Sprintf("failed to update %T record", *new(T))
-		return c_errors.NewInternalServerError(errMessage, err)
+		return cerrors.NewInternalServerError(errMessage, err)
 	}
 	return nil
 }
@@ -58,7 +58,7 @@ func (r *Repository[T]) Delete(ctx context.Context, entity *T) error {
 	err := db.WithContext(ctx).Delete(entity).Error
 	if err != nil {
 		errMessage := fmt.Sprintf("failed to delete %T record", *new(T))
-		return c_errors.NewInternalServerError(errMessage, err)
+		return cerrors.NewInternalServerError(errMessage, err)
 	}
 	return nil
 }
@@ -72,7 +72,7 @@ func (r *Repository[T]) FindAll(ctx context.Context, pg *pagination.Pagination) 
 		Find(&entities).Error
 	if err != nil {
 		errMessage := fmt.Sprintf("failed to find %T records", *new(T))
-		return nil, c_errors.NewInternalServerError(errMessage, err)
+		return nil, cerrors.NewInternalServerError(errMessage, err)
 	}
 
 	return entities, nil
@@ -87,7 +87,7 @@ func (r *Repository[T]) Count(ctx context.Context, pg *pagination.Pagination) (i
 		Model(new(T)).Count(&count).Error
 	if err != nil {
 		errMessage := fmt.Sprintf("failed to count %T records", *new(T))
-		return 0, c_errors.NewInternalServerError(errMessage, err)
+		return 0, cerrors.NewInternalServerError(errMessage, err)
 	}
 	return count, nil
 }
@@ -100,10 +100,10 @@ func (r *Repository[T]) FindById(ctx context.Context, id uint) (*T, error) {
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			errMessage := fmt.Sprintf("%T record with id %v not found", *new(T), id)
-			return &entity, c_errors.NewNotFoundError(errMessage)
+			return &entity, cerrors.NewNotFoundError(errMessage)
 		}
 		errMessage := fmt.Sprintf("failed to find %T record by id %v", *new(T), id)
-		return &entity, c_errors.NewInternalServerError(errMessage, err)
+		return &entity, cerrors.NewInternalServerError(errMessage, err)
 	}
 	return &entity, nil
 }

@@ -54,7 +54,7 @@ migrate-hash:
 debug:
 	@echo "MIGRATION_NAME: $(name)"
 
-swag-init:
+swag:
 	swag init -g cmd/main.go
 
 swag-format:
@@ -74,6 +74,3 @@ sync-permission:
 
 build:
 	set GOOS=linux&& set GOARCH=amd64&& go build -o bin/${app-name} cmd/main.go
-
-swag:
-	swag init -d app

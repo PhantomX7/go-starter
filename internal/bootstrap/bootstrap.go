@@ -10,14 +10,14 @@ import (
 	"github.com/PhantomX7/go-starter/docs"
 	"github.com/PhantomX7/go-starter/internal/middlewares"
 	"github.com/PhantomX7/go-starter/pkg/config"
-	custom_validator "github.com/PhantomX7/go-starter/pkg/validator"
+	cvalidator "github.com/PhantomX7/go-starter/pkg/validator"
 
 	"github.com/common-nighthawk/go-figure"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
-	swaggerFiles "github.com/swaggo/files"     // swagger embed files
-	ginSwagger "github.com/swaggo/gin-swagger" // gin-swagger middleware
+	swaggerfiles "github.com/swaggo/files"     // swagger embed files
+	ginswagger "github.com/swaggo/gin-swagger" // gin-swagger middleware
 	"go.uber.org/fx"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -25,7 +25,7 @@ import (
 
 // SetupServer configures and returns the Gin engine.
 // It sets up middleware including CORS and logging.
-func SetupServer(cfg *config.Config, m *middlewares.Middleware, cv custom_validator.CustomValidator) *gin.Engine {
+func SetupServer(cfg *config.Config, m *middlewares.Middleware, cv cvalidator.CustomValidator) *gin.Engine {
 
 	// programmatically set swagger info
 	docs.SwaggerInfo.Title = "Go Starter API"
@@ -52,7 +52,7 @@ func SetupServer(cfg *config.Config, m *middlewares.Middleware, cv custom_valida
 		// m.Logger(),       // Your custom detailed logger middleware
 		m.ErrorHandler(), // Your custom error handler middleware
 	)
-	server.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	server.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
 
 	// register static files
 	server.Static("/assets", cfg.App.Assets)

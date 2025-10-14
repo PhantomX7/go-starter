@@ -233,7 +233,7 @@ func (s *{{.CamelCase}}Service) Index(ctx context.Context, pg *pagination.Pagina
 
 // Create implements {{.PascalCase}}Service.
 func (s *{{.CamelCase}}Service) Create(ctx context.Context, req *dto.{{.PascalCase}}CreateRequest) (*models.{{.PascalCase}}, error) {
-	var {{.LowerCase}} *models.{{.PascalCase}}
+	{{.LowerCase}} := &models.{{.PascalCase}}{}
 
 	err := copier.Copy({{.LowerCase}}, req)
 	if err != nil {
