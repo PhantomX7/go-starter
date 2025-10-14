@@ -26,9 +26,6 @@ type Config struct {
 
 	// Application configuration
 	App AppConfig `mapstructure:",squash"`
-
-	// OAuth Google configuration
-	OAuth OAuthConfig `mapstructure:",squash"`
 }
 
 // ServerConfig holds server-related configuration
@@ -53,9 +50,10 @@ type DatabaseConfig struct {
 
 // JWTConfig holds JWT-related configuration
 type JWTConfig struct {
-	Secret     string        `mapstructure:"JWT_SECRET"`
-	Expiration time.Duration `mapstructure:"JWT_EXPIRATION"`
-	Issuer     string        `mapstructure:"JWT_ISSUER"`
+	Secret            string        `mapstructure:"JWT_SECRET"`
+	Expiration        time.Duration `mapstructure:"JWT_EXPIRATION"`
+	RefreshExpiration time.Duration `mapstructure:"JWT_REFRESH_EXPIRATION"`
+	Issuer            string        `mapstructure:"JWT_ISSUER"`
 }
 
 // AppConfig holds general application configuration
@@ -66,13 +64,6 @@ type AppConfig struct {
 	Debug       bool   `mapstructure:"APP_DEBUG"`
 	LogLevel    string `mapstructure:"APP_LOG_LEVEL"`
 	Assets      string `mapstructure:"APP_ASSETS"`
-}
-
-// OAuthConfig holds OAuth Google configuration
-type OAuthConfig struct {
-	CallbackURL        string `mapstructure:"OAUTH_CALLBACK_URL"`
-	GoogleClientID     string `mapstructure:"OAUTH_GOOGLE_CLIENT_ID"`
-	GoogleClientSecret string `mapstructure:"OAUTH_GOOGLE_CLIENT_SECRET"`
 }
 
 var (
@@ -143,7 +134,8 @@ func setDefaults(v *viper.Viper) {
 
 	// JWT defaults
 	v.SetDefault("JWT_SECRET", "your-secret-key")
-	v.SetDefault("JWT_EXPIRATION", "24h")
+	v.SetDefault("JWT_EXPIRATION", "10m")
+	v.SetDefault("JWT_REFRESH_EXPIRATION", "72h")
 	v.SetDefault("JWT_ISSUER", "starter")
 
 	// App defaults
@@ -153,11 +145,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("APP_DEBUG", true)
 	v.SetDefault("APP_LOG_LEVEL", "info")
 	v.SetDefault("APP_ASSETS", "./assets")
-
-	// OAuth Google defaults
-	v.SetDefault("OAUTH_CALLBACK_URL", "")
-	v.SetDefault("OAUTH_GOOGLE_CLIENT_ID", "")
-	v.SetDefault("OAUTH_GOOGLE_CLIENT_SECRET", "")
 }
 
 // validateConfig validates the loaded configuration
@@ -181,6 +168,14 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("JWT secret must be set and not use default value")
 	}
 
+	if cfg.JWT.Expiration <= 0 {
+		return fmt.Errorf("JWT expiration must be greater than 0")
+	}
+
+	if cfg.JWT.RefreshExpiration <= 0 {
+		return fmt.Errorf("JWT refresh expiration must be greater than 0")
+	}
+
 	// Validate app configuration
 	if cfg.App.Name == "" {
 		return fmt.Errorf("app name is required")
@@ -192,11 +187,6 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("invalid environment: %s, must be one of %v",
 			cfg.App.Environment,
 			validEnvironments)
-	}
-
-	// Validate OAuth Google configuration
-	if cfg.OAuth.GoogleClientID == "" || cfg.OAuth.GoogleClientSecret == "" {
-		return fmt.Errorf("OAuth Google client ID and secret are required")
 	}
 
 	return nil

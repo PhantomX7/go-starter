@@ -1,4 +1,4 @@
-package post
+package auth
 
 import (
 	"github.com/PhantomX7/go-starter/internal/modules/auth/controller"

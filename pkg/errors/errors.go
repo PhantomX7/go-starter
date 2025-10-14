@@ -21,7 +21,7 @@ func (e *AppError) Error() string {
 // Unwrap returns the wrapped underlying error, making it compatible
 // with Go's standard errors package (errors.Is, errors.As).
 func (e *AppError) Unwrap() error {
-    return e.Err
+	return e.Err
 }
 
 // Predefined errors
@@ -31,6 +31,7 @@ var (
 	ErrDatabase       = errors.New("database error")
 	ErrUnauthorized   = errors.New("unauthorized")
 	ErrInternalServer = errors.New("internal server error")
+	ErrForbidden      = errors.New("forbidden")
 )
 
 func NewAppError(code int, message string, err error) *AppError {
@@ -57,10 +58,30 @@ func NewBadRequestError(message string) *AppError {
 	}
 }
 
+func NewUnauthorizedError(message string) *AppError {
+	return &AppError{
+		Code:    http.StatusUnauthorized,
+		Message: message,
+		Err:     ErrUnauthorized,
+	}
+}
+
+func NewForbiddenError(message string) *AppError {
+	return &AppError{
+		Code:    http.StatusForbidden,
+		Message: message,
+		Err:     ErrForbidden,
+	}
+}
+
 func NewInternalServerError(message string, err error) *AppError {
 	return &AppError{
 		Code:    http.StatusInternalServerError,
 		Message: message,
 		Err:     err,
 	}
+}
+
+func IsNotFound(err AppError) bool {
+	return errors.Is(err.Err, ErrNotFound)
 }

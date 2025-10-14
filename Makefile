@@ -18,6 +18,8 @@ DATABASE_URL := "$(DATABASE_DRIVER)://$(DATABASE_USERNAME):$(DATABASE_PASSWORD)@
 
 dep:
 	go mod tidy
+
+vendor:
 	go mod vendor
 
 dev:

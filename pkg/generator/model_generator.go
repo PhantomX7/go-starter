@@ -22,13 +22,13 @@ func NewModelGenerator(modelsPath string) *ModelGenerator {
 // GenerateModel creates a model file for the given module
 func (g *ModelGenerator) GenerateModel(moduleName string) error {
 	moduleData := prepareModuleData(moduleName)
-	
+
 	modelPath := filepath.Join(g.modelsPath, fmt.Sprintf("%s.go", moduleData.LowerCase))
-	
+
 	if err := g.generateModelFile(modelPath, modelTemplate, moduleData); err != nil {
 		return fmt.Errorf("failed to generate model file: %w", err)
 	}
-	
+
 	fmt.Printf("Model '%s' generated successfully!\n", moduleData.PascalCase)
 	return nil
 }
@@ -39,17 +39,17 @@ func (g *ModelGenerator) generateModelFile(filePath string, templateContent stri
 	if err != nil {
 		return fmt.Errorf("failed to parse model template: %w", err)
 	}
-	
+
 	file, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to create model file %s: %w", filePath, err)
 	}
 	defer file.Close()
-	
+
 	if err := tmpl.Execute(file, data); err != nil {
 		return fmt.Errorf("failed to execute model template: %w", err)
 	}
-	
+
 	return nil
 }
 

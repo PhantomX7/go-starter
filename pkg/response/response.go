@@ -20,8 +20,8 @@ type Meta struct {
 	Total  int64 `json:"total"`
 }
 
-type ModelResponse interface {
-	ToResponse() any
+type ModelResponse[T any] interface {
+	ToResponse() T
 }
 
 func BuildResponseSuccess(message string, data any) Response {
@@ -30,14 +30,14 @@ func BuildResponseSuccess(message string, data any) Response {
 		Message: message,
 		Data:    data,
 	}
-	
+
 	return res
 }
 
 func BuildResponseFailed(message string) Response {
 	res := Response{
-		Status:  false,
-		Message: message,
+		Status: false,
+		Error:  message,
 	}
 
 	return res
@@ -53,11 +53,11 @@ func BuildResponseValidationError(err validator.ValidationErrors) Response {
 	return res
 }
 
-func BuildPaginationResponse[Data ModelResponse](data []Data, meta Meta) Response {
+func BuildPaginationResponse[Data ModelResponse[T], T any](data []Data, meta Meta) Response {
 	res := Response{
 		Status:  true,
 		Message: "Success",
-		Data: utils.Map(data, func(item Data) any {
+		Data: utils.Map(data, func(item Data) T {
 			return item.ToResponse()
 		}),
 		Meta: meta,

@@ -31,7 +31,36 @@ definitions:
       title:
         type: string
     type: object
-  utils.Response:
+  dto.UserCreateRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+    required:
+    - name
+    type: object
+  dto.UserResponse:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.UserUpdateRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+    type: object
+  response.Response:
     properties:
       data: {}
       error: {}
@@ -50,7 +79,7 @@ info:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
 paths:
-  /posts:
+  /post:
     post:
       consumes:
       - application/json
@@ -69,7 +98,7 @@ paths:
           description: Created
           schema:
             allOf:
-            - $ref: '#/definitions/utils.Response'
+            - $ref: '#/definitions/response.Response'
             - properties:
                 data:
                   $ref: '#/definitions/dto.PostResponse'
@@ -77,15 +106,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/utils.Response'
+            $ref: '#/definitions/response.Response'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/utils.Response'
+            $ref: '#/definitions/response.Response'
       summary: Create a new post
       tags:
-      - posts
-  /posts/{id}:
+      - post
+  /post/{id}:
     delete:
       consumes:
       - application/json
@@ -103,7 +132,7 @@ paths:
           description: OK
           schema:
             allOf:
-            - $ref: '#/definitions/utils.Response'
+            - $ref: '#/definitions/response.Response'
             - properties:
                 data:
                   type: object
@@ -111,14 +140,14 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/utils.Response'
+            $ref: '#/definitions/response.Response'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/utils.Response'
+            $ref: '#/definitions/response.Response'
       summary: Delete a post
       tags:
-      - posts
+      - post
     get:
       consumes:
       - application/json
@@ -136,7 +165,7 @@ paths:
           description: OK
           schema:
             allOf:
-            - $ref: '#/definitions/utils.Response'
+            - $ref: '#/definitions/response.Response'
             - properties:
                 data:
                   $ref: '#/definitions/dto.PostResponse'
@@ -144,14 +173,14 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/utils.Response'
+            $ref: '#/definitions/response.Response'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/utils.Response'
+            $ref: '#/definitions/response.Response'
       summary: Find a post by ID
       tags:
-      - posts
+      - post
     put:
       consumes:
       - application/json
@@ -175,7 +204,7 @@ paths:
           description: OK
           schema:
             allOf:
-            - $ref: '#/definitions/utils.Response'
+            - $ref: '#/definitions/response.Response'
             - properties:
                 data:
                   $ref: '#/definitions/dto.PostResponse'
@@ -183,12 +212,153 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/utils.Response'
+            $ref: '#/definitions/response.Response'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/utils.Response'
+            $ref: '#/definitions/response.Response'
       summary: Update a post
       tags:
-      - posts
+      - post
+  /user:
+    post:
+      consumes:
+      - application/json
+      description: Create a new user with the provided details
+      parameters:
+      - description: User Create Request
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UserCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.UserResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Create a new user
+      tags:
+      - user
+  /user/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a user with the provided ID
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Delete a user
+      tags:
+      - user
+    get:
+      consumes:
+      - application/json
+      description: Find a user with the provided ID
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.UserResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Find a user by ID
+      tags:
+      - user
+    put:
+      consumes:
+      - application/json
+      description: Update a user with the provided details
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: User Update Request
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UserUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.UserResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Update a user
+      tags:
+      - user
 swagger: "2.0"

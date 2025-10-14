@@ -48,9 +48,9 @@ func (c *postController) Index(ctx *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        post  body      dto.PostCreateRequest  true  "Post Create Request"
-// @Success      201  {object}  utils.Response{data=dto.PostResponse}
-// @Failure      400  {object}  utils.Response
-// @Failure      500  {object}  utils.Response
+// @Success      201  {object}  response.Response{data=dto.PostResponse}
+// @Failure      400  {object}  response.Response
+// @Failure      500  {object}  response.Response
 // @Router       /post [post]
 func (c *postController) Create(ctx *gin.Context) {
 	var req dto.PostCreateRequest
@@ -75,9 +75,9 @@ func (c *postController) Create(ctx *gin.Context) {
 // @Produce      json
 // @Param        id    path      uint                  true  "Post ID"
 // @Param        post  body      dto.PostUpdateRequest  true  "Post Update Request"
-// @Success      200  {object}  utils.Response{data=dto.PostResponse}
-// @Failure      400  {object}  utils.Response
-// @Failure      500  {object}  utils.Response
+// @Success      200  {object}  response.Response{data=dto.PostResponse}
+// @Failure      400  {object}  response.Response
+// @Failure      500  {object}  response.Response
 // @Router       /post/{id} [put]
 func (c *postController) Update(ctx *gin.Context) {
 	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
@@ -108,9 +108,9 @@ func (c *postController) Update(ctx *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id    path      uint                  true  "Post ID"
-// @Success      200  {object}  utils.Response{data=nil}
-// @Failure      400  {object}  utils.Response
-// @Failure      500  {object}  utils.Response
+// @Success      200  {object}  response.Response{data=nil}
+// @Failure      400  {object}  response.Response
+// @Failure      500  {object}  response.Response
 // @Router       /post/{id} [delete]
 func (c *postController) Delete(ctx *gin.Context) {
 	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
@@ -134,9 +134,9 @@ func (c *postController) Delete(ctx *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id    path      uint                  true  "Post ID"
-// @Success      200  {object}  utils.Response{data=dto.PostResponse}
-// @Failure      400  {object}  utils.Response
-// @Failure      500  {object}  utils.Response
+// @Success      200  {object}  response.Response{data=dto.PostResponse}
+// @Failure      400  {object}  response.Response
+// @Failure      500  {object}  response.Response
 // @Router       /post/{id} [get]
 func (c *postController) FindById(ctx *gin.Context) {
 	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)

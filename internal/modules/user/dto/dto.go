@@ -21,8 +21,11 @@ type UserUpdateRequest struct {
 // UserResponse defines the structure for user response
 type UserResponse struct {
 	ID          uint      `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
+	Username    string    `json:"username"`
+	Email       string    `json:"email"`
+	Phone       string    `json:"phone"`
+	IsActive    bool      `json:"is_active"`
+	Role        string    `json:"role"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }

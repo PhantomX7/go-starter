@@ -10,23 +10,27 @@ import (
 func RegisterRoutes(
 	route *gin.Engine,
 	middlewares *middlewares.Middleware,
-	PostController post.PostController,
-	AuthController auth.AuthController,
+	postController post.PostController,
+	authController auth.AuthController,
 ) {
 	api := route.Group("/api")
 	{
 		authRoute := api.Group("/auth")
 		{
-			authRoute.GET("/:provider", AuthController.LoginOauth)
-			authRoute.GET("/:provider/callback", AuthController.CallbackOauth)
+			authRoute.POST("/register", authController.Register)
+			authRoute.POST("/login", authController.Login)
+			authRoute.POST("/refresh", authController.Refresh)
+			authRoute.GET("/me", middlewares.AuthHandle(), authController.GetMe)
+			// authRoute.GET("/:provider", authHandler.OAuthLogin)
+			// authRoute.GET("/:provider/callback", authHandler.OAuthCallback)
 		}
 		postRoute := api.Group("/post")
 		{
-			postRoute.GET("", PostController.Index)
-			postRoute.POST("", PostController.Create)
-			postRoute.PUT("/:id", PostController.Update)
-			postRoute.DELETE("/:id", PostController.Delete)
-			postRoute.GET("/:id", PostController.FindById)
+			postRoute.GET("", postController.Index)
+			postRoute.POST("", postController.Create)
+			postRoute.PUT("/:id", postController.Update)
+			postRoute.DELETE("/:id", postController.Delete)
+			postRoute.GET("/:id", postController.FindById)
 		}
 	}
 }

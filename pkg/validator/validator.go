@@ -5,7 +5,6 @@ import (
 	"gorm.io/gorm"
 )
 
-
 type CustomValidator interface {
 	Unique() validator.Func
 	Exist() validator.Func

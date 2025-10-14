@@ -7,8 +7,10 @@ import (
 	"github.com/PhantomX7/go-starter/libs"
 	"github.com/PhantomX7/go-starter/pkg/validator"
 
-	authModule "github.com/PhantomX7/go-starter/internal/modules/auth"
-	postModule "github.com/PhantomX7/go-starter/internal/modules/post"
+	"github.com/PhantomX7/go-starter/internal/modules/auth"
+	"github.com/PhantomX7/go-starter/internal/modules/post"
+	"github.com/PhantomX7/go-starter/internal/modules/refresh_token"
+	"github.com/PhantomX7/go-starter/internal/modules/user"
 
 	"go.uber.org/fx"
 )
@@ -22,7 +24,7 @@ import (
 func main() {
 
 	app := fx.New(
-		fx.NopLogger, // disable logger for fx
+		// fx.NopLogger, // disable logger for fx
 		fx.Provide(
 			bootstrap.SetUpConfig,
 			bootstrap.SetUpDatabase,
@@ -31,8 +33,10 @@ func main() {
 			bootstrap.SetupServer, 
 		),
 		libs.Module, // provide libs
-		authModule.Module,
-		postModule.Module,
+		auth.Module,
+		post.Module,
+		refresh_token.Module,
+		user.Module,
 		fx.Invoke(
 			routes.RegisterRoutes,
 			bootstrap.StartServer,

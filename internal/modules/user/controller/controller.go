@@ -49,9 +49,9 @@ func (c *userController) Index(ctx *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        user  body      dto.UserCreateRequest  true  "User Create Request"
-// @Success      201  {object}  utils.Response{data=dto.UserResponse}
-// @Failure      400  {object}  utils.Response
-// @Failure      500  {object}  utils.Response
+// @Success      201  {object}  response.Response{data=dto.UserResponse}
+// @Failure      400  {object}  response.Response
+// @Failure      500  {object}  response.Response
 // @Router       /user [post]
 func (c *userController) Create(ctx *gin.Context) {
 	var req dto.UserCreateRequest
@@ -76,9 +76,9 @@ func (c *userController) Create(ctx *gin.Context) {
 // @Produce      json
 // @Param        id    path      uint                  true  "User ID"
 // @Param        user  body      dto.UserUpdateRequest  true  "User Update Request"
-// @Success      200  {object}  utils.Response{data=dto.UserResponse}
-// @Failure      400  {object}  utils.Response
-// @Failure      500  {object}  utils.Response
+// @Success      200  {object}  response.Response{data=dto.UserResponse}
+// @Failure      400  {object}  response.Response
+// @Failure      500  {object}  response.Response
 // @Router       /user/{id} [put]
 func (c *userController) Update(ctx *gin.Context) {
 	userID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
@@ -109,9 +109,9 @@ func (c *userController) Update(ctx *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id    path      uint                  true  "User ID"
-// @Success      200  {object}  utils.Response{data=nil}
-// @Failure      400  {object}  utils.Response
-// @Failure      500  {object}  utils.Response
+// @Success      200  {object}  response.Response{data=nil}
+// @Failure      400  {object}  response.Response
+// @Failure      500  {object}  response.Response
 // @Router       /user/{id} [delete]
 func (c *userController) Delete(ctx *gin.Context) {
 	userID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
@@ -135,9 +135,9 @@ func (c *userController) Delete(ctx *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id    path      uint                  true  "User ID"
-// @Success      200  {object}  utils.Response{data=dto.UserResponse}
-// @Failure      400  {object}  utils.Response
-// @Failure      500  {object}  utils.Response
+// @Success      200  {object}  response.Response{data=dto.UserResponse}
+// @Failure      400  {object}  response.Response
+// @Failure      500  {object}  response.Response
 // @Router       /user/{id} [get]
 func (c *userController) FindById(ctx *gin.Context) {
 	userID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)

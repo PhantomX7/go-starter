@@ -33,7 +33,7 @@ func formatSingleError(e validator.FieldError) string {
 	// e.Param() gets the value associated with the tag, e.g., '8' for 'min=8'.
 	param := e.Param()
 	errorField := strcase.SnakeCase(e.Field())
-		
+
 	switch e.Tag() {
 	case "required":
 		return fmt.Sprintf("%s is required", errorField)

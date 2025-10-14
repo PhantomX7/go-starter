@@ -24,17 +24,17 @@ func NewModuleGenerator(modulesPath string) *ModuleGenerator {
 func (g *ModuleGenerator) GenerateModule(moduleName string) error {
 	// Convert module name to different cases
 	moduleData := g.prepareModuleData(moduleName)
-	
+
 	// Create module directory structure
 	if err := g.createDirectoryStructure(moduleData.SnakeCase); err != nil {
 		return fmt.Errorf("failed to create directory structure: %w", err)
 	}
-	
+
 	// Generate all module files
 	if err := g.generateModuleFiles(moduleData); err != nil {
 		return fmt.Errorf("failed to generate module files: %w", err)
 	}
-	
+
 	fmt.Printf("Module '%s' generated successfully!\n", moduleData.PascalCase)
 	return nil
 }
@@ -51,16 +51,16 @@ type ModuleData struct {
 func (g *ModuleGenerator) prepareModuleData(moduleName string) ModuleData {
 	// Convert to snake_case (package name)
 	snakeCase := g.toSnakeCase(moduleName)
-	
+
 	// Convert to camelCase (variable names)
 	camelCase := g.toCamelCase(moduleName)
-	
+
 	// Convert to PascalCase (type names)
 	pascalCase := g.toPascalCase(moduleName)
-	
+
 	// Convert to lowercase (for some contexts)
 	lowerCase := strings.ToLower(strings.ReplaceAll(moduleName, "_", ""))
-	
+
 	return ModuleData{
 		SnakeCase:  snakeCase,
 		CamelCase:  camelCase,
@@ -72,7 +72,7 @@ func (g *ModuleGenerator) prepareModuleData(moduleName string) ModuleData {
 // createDirectoryStructure creates the necessary directories for the module
 func (g *ModuleGenerator) createDirectoryStructure(moduleName string) error {
 	basePath := filepath.Join(g.modulesPath, moduleName)
-	
+
 	directories := []string{
 		basePath,
 		filepath.Join(basePath, "controller"),
@@ -80,45 +80,45 @@ func (g *ModuleGenerator) createDirectoryStructure(moduleName string) error {
 		filepath.Join(basePath, "repository"),
 		filepath.Join(basePath, "dto"),
 	}
-	
+
 	for _, dir := range directories {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
 	}
-	
+
 	return nil
 }
 
 // generateModuleFiles generates all the necessary files for the module
 func (g *ModuleGenerator) generateModuleFiles(data ModuleData) error {
 	basePath := filepath.Join(g.modulesPath, data.SnakeCase)
-	
+
 	// Generate module.go
 	if err := g.generateFile(filepath.Join(basePath, "module.go"), moduleTemplate, data); err != nil {
 		return err
 	}
-	
+
 	// Generate controller
 	if err := g.generateFile(filepath.Join(basePath, "controller", "controller.go"), controllerTemplate, data); err != nil {
 		return err
 	}
-	
+
 	// Generate service
 	if err := g.generateFile(filepath.Join(basePath, "service", "service.go"), serviceTemplate, data); err != nil {
 		return err
 	}
-	
+
 	// Generate repository
 	if err := g.generateFile(filepath.Join(basePath, "repository", "repository.go"), repositoryTemplate, data); err != nil {
 		return err
 	}
-	
+
 	// Generate DTO
 	if err := g.generateFile(filepath.Join(basePath, "dto", "dto.go"), dtoTemplate, data); err != nil {
 		return err
 	}
-	
+
 	return nil
 }
 
@@ -128,17 +128,17 @@ func (g *ModuleGenerator) generateFile(filePath string, templateContent string, 
 	if err != nil {
 		return fmt.Errorf("failed to parse template: %w", err)
 	}
-	
+
 	file, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to create file %s: %w", filePath, err)
 	}
 	defer file.Close()
-	
+
 	if err := tmpl.Execute(file, data); err != nil {
 		return fmt.Errorf("failed to execute template: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -158,11 +158,11 @@ func (g *ModuleGenerator) toCamelCase(s string) string {
 	words := strings.FieldsFunc(s, func(r rune) bool {
 		return r == '_' || r == '-' || r == ' '
 	})
-	
+
 	if len(words) == 0 {
 		return s
 	}
-	
+
 	result := strings.ToLower(words[0])
 	for i := 1; i < len(words); i++ {
 		result += strings.Title(strings.ToLower(words[i]))
@@ -174,7 +174,7 @@ func (g *ModuleGenerator) toPascalCase(s string) string {
 	words := strings.FieldsFunc(s, func(r rune) bool {
 		return r == '_' || r == '-' || r == ' '
 	})
-	
+
 	var result strings.Builder
 	for _, word := range words {
 		result.WriteString(strings.Title(strings.ToLower(word)))
@@ -198,11 +198,11 @@ func ToCamelCase(s string) string {
 	words := strings.FieldsFunc(s, func(r rune) bool {
 		return r == '_' || r == '-' || r == ' '
 	})
-	
+
 	if len(words) == 0 {
 		return s
 	}
-	
+
 	result := strings.ToLower(words[0])
 	for i := 1; i < len(words); i++ {
 		result += strings.Title(strings.ToLower(words[i]))
@@ -214,7 +214,7 @@ func ToPascalCase(s string) string {
 	words := strings.FieldsFunc(s, func(r rune) bool {
 		return r == '_' || r == '-' || r == ' '
 	})
-	
+
 	var result strings.Builder
 	for _, word := range words {
 		result.WriteString(strings.Title(strings.ToLower(word)))
