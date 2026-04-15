@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"text/template"
 )
 
@@ -45,28 +44,13 @@ type ModuleData struct {
 	CamelCase  string // e.g., "userProfile"
 	PascalCase string // e.g., "UserProfile"
 	LowerCase  string // e.g., "userprofile"
+	KebabCase  string // e.g., "user-profile"
 }
 
 // prepareModuleData converts the module name to different cases
 func (g *ModuleGenerator) prepareModuleData(moduleName string) ModuleData {
-	// Convert to snake_case (package name)
-	snakeCase := g.toSnakeCase(moduleName)
-
-	// Convert to camelCase (variable names)
-	camelCase := g.toCamelCase(moduleName)
-
-	// Convert to PascalCase (type names)
-	pascalCase := g.toPascalCase(moduleName)
-
-	// Convert to lowercase (for some contexts)
-	lowerCase := strings.ToLower(strings.ReplaceAll(moduleName, "_", ""))
-
-	return ModuleData{
-		SnakeCase:  snakeCase,
-		CamelCase:  camelCase,
-		PascalCase: pascalCase,
-		LowerCase:  lowerCase,
-	}
+	converter := NewCaseConverter()
+	return converter.ConvertModuleData(moduleName)
 }
 
 // createDirectoryStructure creates the necessary directories for the module
@@ -78,7 +62,6 @@ func (g *ModuleGenerator) createDirectoryStructure(moduleName string) error {
 		filepath.Join(basePath, "controller"),
 		filepath.Join(basePath, "service"),
 		filepath.Join(basePath, "repository"),
-		filepath.Join(basePath, "dto"),
 	}
 
 	for _, dir := range directories {
@@ -114,11 +97,6 @@ func (g *ModuleGenerator) generateModuleFiles(data ModuleData) error {
 		return err
 	}
 
-	// Generate DTO
-	if err := g.generateFile(filepath.Join(basePath, "dto", "dto.go"), dtoTemplate, data); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -140,88 +118,4 @@ func (g *ModuleGenerator) generateFile(filePath string, templateContent string, 
 	}
 
 	return nil
-}
-
-// Helper functions for case conversion
-func (g *ModuleGenerator) toSnakeCase(s string) string {
-	var result strings.Builder
-	for i, r := range s {
-		if i > 0 && (r >= 'A' && r <= 'Z') {
-			result.WriteRune('_')
-		}
-		result.WriteRune(r)
-	}
-	return strings.ToLower(result.String())
-}
-
-func (g *ModuleGenerator) toCamelCase(s string) string {
-	words := strings.FieldsFunc(s, func(r rune) bool {
-		return r == '_' || r == '-' || r == ' '
-	})
-
-	if len(words) == 0 {
-		return s
-	}
-
-	result := strings.ToLower(words[0])
-	for i := 1; i < len(words); i++ {
-		result += strings.Title(strings.ToLower(words[i]))
-	}
-	return result
-}
-
-func (g *ModuleGenerator) toPascalCase(s string) string {
-	words := strings.FieldsFunc(s, func(r rune) bool {
-		return r == '_' || r == '-' || r == ' '
-	})
-
-	var result strings.Builder
-	for _, word := range words {
-		result.WriteString(strings.Title(strings.ToLower(word)))
-	}
-	return result.String()
-}
-
-// Public helper functions for external use
-func ToSnakeCase(s string) string {
-	var result strings.Builder
-	for i, r := range s {
-		if i > 0 && (r >= 'A' && r <= 'Z') {
-			result.WriteRune('_')
-		}
-		result.WriteRune(r)
-	}
-	return strings.ToLower(result.String())
-}
-
-func ToCamelCase(s string) string {
-	words := strings.FieldsFunc(s, func(r rune) bool {
-		return r == '_' || r == '-' || r == ' '
-	})
-
-	if len(words) == 0 {
-		return s
-	}
-
-	result := strings.ToLower(words[0])
-	for i := 1; i < len(words); i++ {
-		result += strings.Title(strings.ToLower(words[i]))
-	}
-	return result
-}
-
-func ToPascalCase(s string) string {
-	words := strings.FieldsFunc(s, func(r rune) bool {
-		return r == '_' || r == '-' || r == ' '
-	})
-
-	var result strings.Builder
-	for _, word := range words {
-		result.WriteString(strings.Title(strings.ToLower(word)))
-	}
-	return result.String()
-}
-
-func ToLowerCase(s string) string {
-	return strings.ToLower(strings.ReplaceAll(s, "_", ""))
 }

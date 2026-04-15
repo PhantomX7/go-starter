@@ -1,7 +1,7 @@
 package refresh_token
 
 import (
-	"github.com/PhantomX7/go-starter/internal/modules/refresh_token/repository"
+	"github.com/PhantomX7/athleton/internal/modules/refresh_token/repository"
 
 	"go.uber.org/fx"
 )

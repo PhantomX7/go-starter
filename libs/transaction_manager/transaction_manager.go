@@ -3,7 +3,7 @@ package transaction_manager
 import (
 	"context"
 
-	"github.com/PhantomX7/go-starter/pkg/utils"
+	"github.com/PhantomX7/athleton/pkg/utils"
 
 	"gorm.io/gorm"
 )

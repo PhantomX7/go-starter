@@ -1,4 +1,4 @@
-app-name=starter
+app-name=athleton
 
 include .env
 export
@@ -9,7 +9,7 @@ DATABASE_HOST     ?= localhost
 DATABASE_PORT     ?= 5432
 DATABASE_USERNAME ?= postgres
 DATABASE_PASSWORD ?= postgres
-DATABASE_DATABASE ?= starter
+DATABASE_DATABASE ?= athleton
 DATABASE_SSLMODE  ?= disable
 name    		  ?= new_migration
 
@@ -28,7 +28,7 @@ dev:
 
 run:
 	@echo "Running the application..."
-	./bin/${app-name}
+	go run cmd/main.go
 
 # Usage: make migrate-create name=my_migration_name
 migrate-create:
@@ -55,6 +55,7 @@ debug:
 	@echo "MIGRATION_NAME: $(name)"
 
 swag:
+	swag fmt
 	swag init -g cmd/main.go
 
 swag-format:
@@ -66,11 +67,12 @@ test:
 test-html:
 	go test $(go list ./... | grep -v /mock/) -coverprofile cp.out
 	go tool cover -html=cp.out
-seed:
-	go run ./seeder/main.go
 
-sync-permission:
-	cd ./tools/permgen&& go run main.go
+module:
+	go run ./cmd/generate/main.go -name $(name) -model -dto
+
+seed:
+	go run ./database/seeder/main.go
 
 build:
 	set GOOS=linux&& set GOARCH=amd64&& go build -o bin/${app-name} cmd/main.go

@@ -23,7 +23,7 @@ func NewModelGenerator(modelsPath string) *ModelGenerator {
 func (g *ModelGenerator) GenerateModel(moduleName string) error {
 	moduleData := prepareModuleData(moduleName)
 
-	modelPath := filepath.Join(g.modelsPath, fmt.Sprintf("%s.go", moduleData.LowerCase))
+	modelPath := filepath.Join(g.modelsPath, fmt.Sprintf("%s.go", moduleData.SnakeCase))
 
 	if err := g.generateModelFile(modelPath, modelTemplate, moduleData); err != nil {
 		return fmt.Errorf("failed to generate model file: %w", err)
@@ -55,21 +55,16 @@ func (g *ModelGenerator) generateModelFile(filePath string, templateContent stri
 
 // prepareModuleData is a helper function to prepare module data
 func prepareModuleData(moduleName string) ModuleData {
-	gen := &ModuleGenerator{}
-	return gen.prepareModuleData(moduleName)
-}
-
-// Helper function to convert module name to different cases (duplicated for standalone use)
-func (g *ModelGenerator) prepareModuleData(moduleName string) ModuleData {
-	gen := &ModuleGenerator{}
-	return gen.prepareModuleData(moduleName)
+	converter := NewCaseConverter()
+	return converter.ConvertModuleData(moduleName)
 }
 
 // modelTemplate defines the model file template
 const modelTemplate = `package models
 
 import (
-	"github.com/PhantomX7/go-starter/internal/modules/{{.SnakeCase}}/dto"
+	"github.com/PhantomX7/athleton/internal/dto"
+	
 	"gorm.io/gorm"
 )
 

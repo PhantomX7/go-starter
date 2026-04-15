@@ -1,25 +1,22 @@
+// internal/middlewares/middleware.go
 package middlewares
 
 import (
-	refreshtokenrepo "github.com/PhantomX7/go-starter/internal/modules/refresh_token/repository"
-	userrepo "github.com/PhantomX7/go-starter/internal/modules/user/repository"
-	"github.com/PhantomX7/go-starter/pkg/config"
+	authjwt "github.com/PhantomX7/athleton/internal/modules/auth/jwt"
+	"github.com/PhantomX7/athleton/libs/casbin"
 )
 
 type Middleware struct {
-	cfg              *config.Config
-	userRepo         userrepo.UserRepository
-	refreshTokenRepo refreshtokenrepo.RefreshTokenRepository
+	authJWT      *authjwt.AuthJWT
+	casbinClient casbin.Client
 }
 
 func NewMiddleware(
-	cfg *config.Config,
-	userRepo userrepo.UserRepository,
-	refreshTokenRepo refreshtokenrepo.RefreshTokenRepository,
+	authJWT *authjwt.AuthJWT,
+	casbinClient casbin.Client,
 ) *Middleware {
 	return &Middleware{
-		cfg:              cfg,
-		userRepo:         userRepo,
-		refreshTokenRepo: refreshTokenRepo,
+		authJWT:      authJWT,
+		casbinClient: casbinClient,
 	}
 }

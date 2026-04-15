@@ -1,426 +1,270 @@
+// internal/modules/auth/service/service.go
 package service
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"errors"
 	"fmt"
-	"log"
 	"strings"
-	"time"
 
-	refreshtokenrepo "github.com/PhantomX7/go-starter/internal/modules/refresh_token/repository"
-	userrepo "github.com/PhantomX7/go-starter/internal/modules/user/repository"
-	tx "github.com/PhantomX7/go-starter/libs/transaction_manager"
-	cerrors "github.com/PhantomX7/go-starter/pkg/errors"
+	"github.com/PhantomX7/athleton/internal/dto"
+	"github.com/PhantomX7/athleton/internal/models"
+	authjwt "github.com/PhantomX7/athleton/internal/modules/auth/jwt"
+	logRepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
+	userrepo "github.com/PhantomX7/athleton/internal/modules/user/repository"
+	"github.com/PhantomX7/athleton/libs/casbin"
+	"github.com/PhantomX7/athleton/libs/transaction_manager"
+	cerrors "github.com/PhantomX7/athleton/pkg/errors"
+	"github.com/PhantomX7/athleton/pkg/logger"
+	"github.com/PhantomX7/athleton/pkg/utils"
 
-	"github.com/PhantomX7/go-starter/internal/models"
-	"github.com/PhantomX7/go-starter/internal/modules/auth/dto"
-	"github.com/PhantomX7/go-starter/pkg/config"
-	"github.com/PhantomX7/go-starter/pkg/utils"
-
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 	"github.com/jinzhu/copier"
+	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Constants for improved maintainability
-var (
-	// Token type constant
-	TokenTypeBearer = "Bearer"
-
-	// Bcrypt cost for password hashing
+const (
 	BcryptCost = 12
-
-	// Minimum password length
-	MinPasswordLength = 8
-
-	// JWT issuer identifier
-	JWTIssuer = ""
 )
 
 // AuthService defines the interface for auth service operations
 type AuthService interface {
 	GetMe(ctx context.Context) (*dto.MeResponse, error)
 	Register(ctx context.Context, req *dto.RegisterRequest) (*dto.AuthResponse, error)
-	Login(ctx context.Context, req *dto.LoginRequest) (*dto.AuthResponse, error)
 	Refresh(ctx context.Context, req *dto.RefreshRequest) (*dto.AuthResponse, error)
-	// Additional methods for enhanced security
-	ValidatePassword(password string) error
-	GenerateSecureToken() (string, error)
+	ChangePassword(ctx context.Context, req *dto.ChangePasswordRequest) error
+	Logout(ctx context.Context, req *dto.LogoutRequest) error
 }
 
-// authService implements the AuthService interface
 type authService struct {
-	config                 *config.Config
-	userRepository         userrepo.UserRepository
-	refreshTokenRepository refreshtokenrepo.RefreshTokenRepository
-	transactionManager     tx.TransactionManager
+	userRepo      userrepo.UserRepository
+	logRepository logRepository.LogRepository
+	authJWT       *authjwt.AuthJWT
+	casbinClient  casbin.Client
+	txManager     transaction_manager.TransactionManager
 }
 
-// NewAuthService creates a new instance of AuthService with enhanced validation
 func NewAuthService(
-	config *config.Config,
-	userRepository userrepo.UserRepository,
-	refreshTokenRepository refreshtokenrepo.RefreshTokenRepository,
-	transactionManager tx.TransactionManager) AuthService {
-
-	JWTIssuer = config.JWT.Issuer
-
+	userRepo userrepo.UserRepository,
+	logRepository logRepository.LogRepository,
+	authJWT *authjwt.AuthJWT,
+	casbinClient casbin.Client,
+	txManager transaction_manager.TransactionManager,
+) AuthService {
 	return &authService{
-		config:                 config,
-		userRepository:         userRepository,
-		refreshTokenRepository: refreshTokenRepository,
-		transactionManager:     transactionManager,
+		userRepo:      userRepo,
+		logRepository: logRepository,
+		authJWT:       authJWT,
+		casbinClient:  casbinClient,
+		txManager:     txManager,
 	}
 }
 
-// GetMe retrieves the current user's information from context
+// GetMe retrieves the authenticated user's profile
 func (s *authService) GetMe(ctx context.Context) (*dto.MeResponse, error) {
+	requestID := utils.GetRequestIDFromContext(ctx)
 	values, err := utils.ValuesFromContext(ctx)
 	if err != nil {
+		logger.Error("Failed to get user from context", zap.String("request_id", requestID), zap.Error(err))
 		return nil, err
 	}
 
-	user, err := s.userRepository.FindById(ctx, values.UserID)
+	user, err := s.userRepo.FindById(ctx, values.UserID, "AdminRole")
 	if err != nil {
+		logger.Error("Failed to find user", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID), zap.Error(err))
 		return nil, err
 	}
 
-	// Additional security check
 	if !user.IsActive {
+		logger.Warn("Inactive user access attempt", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID))
 		return nil, cerrors.NewForbiddenError("user account is inactive")
 	}
 
-	return &dto.MeResponse{
-		UserResponse: user.ToResponse(),
-	}, nil
+	if user.AdminRoleID != nil {
+		// Get permissions for response
+		rolePermissions := s.casbinClient.GetRolePermissions(*user.AdminRoleID)
+		user.AdminRole.Permissions = rolePermissions
+	}
+
+	return &dto.MeResponse{UserResponse: *user.ToResponse()}, nil
 }
 
-// Register creates a new user account with enhanced security validation
+// Register creates a new user account
 func (s *authService) Register(ctx context.Context, req *dto.RegisterRequest) (*dto.AuthResponse, error) {
-	// Validate password strength (optional)
-	// if err := s.ValidatePassword(req.Password); err != nil {
-	// 	return nil, err
-	// }
+	requestID := utils.GetRequestIDFromContext(ctx)
+	logger.Info("User registration initiated", zap.String("request_id", requestID))
 
-	// Sanitize and validate input
-	req.Username = strings.ToLower(strings.TrimSpace(req.Username))
+	// Normalize inputs
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	req.Phone = strings.TrimSpace(req.Phone)
 
-	user := &models.User{
-		Role:     models.UserRoleUser,
-		IsActive: true,
-	}
-
-	// Use copier to safely copy fields
+	// Create user model
+	user := &models.User{Role: models.UserRoleUser, IsActive: true, Username: req.Email}
 	if err := copier.Copy(&user, &req); err != nil {
+		logger.Error("Failed to copy user data", zap.String("request_id", requestID), zap.Error(err))
 		return nil, cerrors.NewInternalServerError("failed to process user data", err)
 	}
 
-	// Hash password with enhanced cost
-	password, err := bcrypt.GenerateFromPassword([]byte(req.Password), BcryptCost)
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), BcryptCost)
 	if err != nil {
+		logger.Error("Failed to hash password", zap.String("request_id", requestID), zap.Error(err))
 		return nil, cerrors.NewInternalServerError("failed to process password", err)
 	}
-	user.Password = string(password)
+	user.Password = string(hashedPassword)
 
-	var accessToken, refreshToken string
-	err = s.transactionManager.ExecuteInTransaction(ctx, func(ctx context.Context) error {
-		// Create user
-		if err = s.userRepository.Create(ctx, user); err != nil {
+	// Create user and tokens in transaction
+	var authResponse *dto.AuthResponse
+	err = s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.userRepo.Create(txCtx, user); err != nil {
 			return err
 		}
 
-		// Generate tokens
-		accessToken, err = s.GenerateAccessToken(user.ID, user.Role)
-		if err != nil {
-			return err
-		}
-
-		refreshToken, err = s.GenerateRefreshToken(user.ID)
-		if err != nil {
-			return err
-		}
-
-		// Store refresh token
-		if err = s.refreshTokenRepository.Create(ctx, &models.RefreshToken{
-			ID:        uuid.New(),
-			UserID:    user.ID,
-			Token:     refreshToken,
-			ExpiresAt: time.Now().Add(s.config.JWT.RefreshExpiration),
-		}); err != nil {
-			return err
-		}
-
-		return nil
+		// Generate tokens using AuthJWT
+		authResponse, err = s.authJWT.GenerateTokensForUser(txCtx, user)
+		return err
 	})
 	if err != nil {
+		logger.Error("Failed to register user", zap.String("request_id", requestID), zap.Error(err))
 		return nil, err
 	}
 
-	return &dto.AuthResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		TokenType:    TokenTypeBearer,
-	}, nil
+	logger.Info("User registered successfully", zap.String("request_id", requestID), zap.Uint("user_id", user.ID))
+	return authResponse, nil
 }
 
-// Login authenticates a user and returns access tokens with enhanced security
-func (s *authService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.AuthResponse, error) {
-	// Sanitize input
-	req.Username = strings.ToLower(strings.TrimSpace(req.Username))
-
-	user, err := s.userRepository.FindByUsername(ctx, req.Username)
-	if err != nil {
-		// Use constant-time comparison to prevent timing attacks
-		if errors.Is(err, cerrors.ErrNotFound) {
-			log.Printf("user not found for username: %s", req.Username)
-			// Perform dummy bcrypt operation to maintain consistent timing
-			bcrypt.CompareHashAndPassword([]byte("$2a$12$dummy.hash.to.prevent.timing.attacks"), []byte(req.Password))
-			return nil, cerrors.NewBadRequestError("invalid credentials")
-		}
-		return nil, err
-	}
-
-	// Check if user is active before password verification
-	if !user.IsActive {
-		// Perform dummy bcrypt operation to maintain consistent timing
-		bcrypt.CompareHashAndPassword([]byte("$2a$12$dummy.hash.to.prevent.timing.attacks"), []byte(req.Password))
-		return nil, cerrors.NewBadRequestError("invalid credentials")
-	}
-
-	// Verify password
-	if err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
-		return nil, cerrors.NewBadRequestError("invalid credentials")
-	}
-
-	// Generate tokens
-	accessToken, err := s.GenerateAccessToken(user.ID, user.Role)
-	if err != nil {
-		return nil, err
-	}
-
-	refreshToken, err := s.GenerateRefreshToken(user.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Store refresh token
-	if err = s.refreshTokenRepository.Create(ctx, &models.RefreshToken{
-		ID:        uuid.New(),
-		UserID:    user.ID,
-		Token:     refreshToken,
-		ExpiresAt: time.Now().Add(s.config.JWT.RefreshExpiration),
-	}); err != nil {
-		return nil, err
-	}
-
-	return &dto.AuthResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		TokenType:    TokenTypeBearer,
-	}, nil
-}
-
-// Refresh validates a refresh token and issues new access/refresh tokens with enhanced security
+// Refresh validates a refresh token and issues new tokens
 func (s *authService) Refresh(ctx context.Context, req *dto.RefreshRequest) (*dto.AuthResponse, error) {
-	// Parse and validate refresh token
-	claims := &models.RefreshClaims{}
-	token, err := jwt.ParseWithClaims(req.RefreshToken, claims, func(token *jwt.Token) (any, error) {
-		// Validate signing method
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, cerrors.NewBadRequestError("invalid token signing method")
-		}
-		return []byte(s.config.JWT.Secret), nil
-	})
+	requestID := utils.GetRequestIDFromContext(ctx)
+	logger.Info("Token refresh initiated", zap.String("request_id", requestID))
+
+	authResponse, err := s.authJWT.ValidateAndRotateRefreshToken(ctx, req.RefreshToken)
 	if err != nil {
-		return nil, cerrors.NewBadRequestError("invalid refresh token")
-	}
-
-	if !token.Valid {
-		return nil, cerrors.NewBadRequestError("invalid refresh token claims")
-	}
-
-	// Validate token expiration
-	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
-		return nil, cerrors.NewBadRequestError("refresh token has expired")
-	}
-
-	// Check if refresh token exists and is not revoked
-	refreshTokenM, err := s.refreshTokenRepository.FindByToken(ctx, req.RefreshToken)
-	if err != nil {
+		logger.Warn("Token refresh failed", zap.String("request_id", requestID), zap.Error(err))
 		return nil, err
 	}
 
-	// Check if token is expired or revoked
-	if refreshTokenM.ExpiresAt.Before(time.Now()) || refreshTokenM.RevokedAt != nil {
-		return nil, cerrors.NewBadRequestError("refresh token has expired or been revoked")
-	}
+	logger.Info("Token refresh successful", zap.String("request_id", requestID))
+	return authResponse, nil
+}
 
-	// Verify user still exists and is active
-	user, err := s.userRepository.FindById(ctx, claims.UserID)
+// ChangePassword updates the user's password
+func (s *authService) ChangePassword(ctx context.Context, req *dto.ChangePasswordRequest) error {
+	requestID := utils.GetRequestIDFromContext(ctx)
+	values, err := utils.ValuesFromContext(ctx)
 	if err != nil {
-		return nil, err
+		logger.Error("Failed to get user from context", zap.String("request_id", requestID), zap.Error(err))
+		return err
 	}
 
-	if !user.IsActive {
-		return nil, cerrors.NewBadRequestError("user account is inactive")
-	}
+	logger.Info("Password change initiated", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID))
 
-	// Generate new tokens
-	accessToken, err := s.GenerateAccessToken(claims.UserID, models.UserRole(user.Role))
+	user, err := s.userRepo.FindById(ctx, values.UserID)
 	if err != nil {
-		return nil, err
+		logger.Error("Failed to find user", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID), zap.Error(err))
+		return err
 	}
-	refreshToken, err := s.GenerateRefreshToken(claims.UserID)
+
+	// Verify old password
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.OldPassword)); err != nil {
+		logger.Warn("Password change failed - incorrect password", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID))
+		return cerrors.NewBadRequestError("current password is incorrect")
+	}
+
+	// Ensure new password is different
+	if req.OldPassword == req.NewPassword {
+		logger.Warn("Password change failed - same password", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID))
+		return cerrors.NewBadRequestError("new password must be different from current password")
+	}
+
+	// Hash new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), BcryptCost)
 	if err != nil {
-		return nil, err
+		logger.Error("Failed to hash password", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID), zap.Error(err))
+		return cerrors.NewInternalServerError("failed to process new password", err)
 	}
 
-	// Start transaction for token rotation
-	err = s.transactionManager.ExecuteInTransaction(ctx, func(ctx context.Context) error {
-		now := time.Now()
-		refreshTokenM.RevokedAt = &now
-
-		// revoke previous refresh token
-		if err = s.refreshTokenRepository.Update(ctx, refreshTokenM); err != nil {
+	// Update password and revoke tokens in transaction
+	err = s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
+		user.Password = string(hashedPassword)
+		if err := s.userRepo.Update(txCtx, user); err != nil {
 			return err
 		}
-
-		// save current refresh token
-		if err = s.refreshTokenRepository.Create(ctx, &models.RefreshToken{
-			ID:        uuid.New(),
-			UserID:    claims.UserID,
-			Token:     refreshToken,
-			ExpiresAt: time.Now().Add(s.config.JWT.RefreshExpiration),
-		}); err != nil {
-			return err
-		}
-
-		return nil
+		return s.authJWT.RevokeAllUserTokensExcept(txCtx, user.ID, req.ExceptToken)
 	})
 	if err != nil {
-		return nil, err
+		logger.Error("Failed to change password", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID), zap.Error(err))
+		return err
 	}
 
-	return &dto.AuthResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		TokenType:    TokenTypeBearer,
-	}, nil
-}
+	logger.Info("Password changed successfully", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID))
 
-// GenerateAccessToken creates a JWT access token with enhanced security
-func (s *authService) GenerateAccessToken(userID uint, role models.UserRole) (string, error) {
-	if role == "" {
-		return "", cerrors.NewBadRequestError("user does not have role")
-	}
-
-	now := time.Now()
-	claims := models.AccessClaims{
-		UserID: userID,
-		Role:   role.ToString(),
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    JWTIssuer,
-			Subject:   fmt.Sprintf("%d", userID),
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(s.config.JWT.Expiration)),
-			NotBefore: jwt.NewNumericDate(now),
-		},
-	}
-
-	// Create token with claims
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	// Generate encoded token
-	tokenString, err := token.SignedString([]byte(s.config.JWT.Secret))
-	if err != nil {
-		return "", cerrors.NewInternalServerError("failed to generate access token", err)
-	}
-
-	return tokenString, nil
-}
-
-// GenerateRefreshToken creates a JWT refresh token with enhanced security
-func (s *authService) GenerateRefreshToken(userID uint) (string, error) {
-	now := time.Now()
-	claims := models.RefreshClaims{
-		UserID: userID,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    JWTIssuer,
-			Subject:   fmt.Sprintf("%d", userID),
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(s.config.JWT.RefreshExpiration)),
-			NotBefore: jwt.NewNumericDate(now),
-		},
-	}
-
-	// Create token with claims
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	// Generate encoded token
-	tokenString, err := token.SignedString([]byte(s.config.JWT.Secret))
-	if err != nil {
-		return "", cerrors.NewInternalServerError("failed to generate refresh token", err)
-	}
-
-	return tokenString, nil
-}
-
-// ValidatePassword validates password strength and requirements (optional)
-func (s *authService) ValidatePassword(password string) error {
-	if len(password) < MinPasswordLength {
-		return cerrors.NewBadRequestError(fmt.Sprintf("password must be at least %d characters long", MinPasswordLength))
-	}
-
-	// Check for at least one uppercase letter
-	hasUpper := false
-	// Check for at least one lowercase letter
-	hasLower := false
-	// Check for at least one digit
-	hasDigit := false
-	// Check for at least one special character
-	hasSpecial := false
-
-	for _, char := range password {
-		switch {
-		case 'A' <= char && char <= 'Z':
-			hasUpper = true
-		case 'a' <= char && char <= 'z':
-			hasLower = true
-		case '0' <= char && char <= '9':
-			hasDigit = true
-		case strings.ContainsRune("!@#$%^&*()_+-=[]{}|;:,.<>?", char):
-			hasSpecial = true
-		}
-	}
-
-	if !hasUpper {
-		return cerrors.NewBadRequestError("password must contain at least one uppercase letter")
-	}
-	if !hasLower {
-		return cerrors.NewBadRequestError("password must contain at least one lowercase letter")
-	}
-	if !hasDigit {
-		return cerrors.NewBadRequestError("password must contain at least one digit")
-	}
-	if !hasSpecial {
-		return cerrors.NewBadRequestError("password must contain at least one special character")
+	// Create audit log for admin users only
+	if user.Role == models.UserRoleAdmin {
+		s.createLog(ctx, models.LogActionChangePassword, user.ID, user.Name)
 	}
 
 	return nil
 }
 
-// GenerateSecureToken generates a cryptographically secure random token
-func (s *authService) GenerateSecureToken() (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", fmt.Errorf("failed to generate secure token: %w", err)
+// Logout revokes a specific refresh token
+func (s *authService) Logout(ctx context.Context, req *dto.LogoutRequest) error {
+	requestID := utils.GetRequestIDFromContext(ctx)
+	values, err := utils.ValuesFromContext(ctx)
+	if err != nil {
+		logger.Error("Failed to get user from context", zap.String("request_id", requestID), zap.Error(err))
+		return err
 	}
 
-	return hex.EncodeToString(bytes), nil
+	logger.Info("Logout initiated", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID))
+
+	err = s.authJWT.RevokeRefreshToken(ctx, req.RefreshToken, values.UserID)
+	if err != nil {
+		logger.Error("Failed to revoke token", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID), zap.Error(err))
+		return err
+	}
+
+	logger.Info("Logout successful", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID))
+	return nil
+}
+
+// createLog creates an audit log entry for auth operations (admin only)
+func (s *authService) createLog(ctx context.Context, action models.LogAction, entityID uint, entityName string) {
+	var userID *uint
+	if id, ok := utils.GetUserIDFromContext(ctx); ok {
+		userID = &id
+	}
+
+	userName, _ := utils.GetUserNameFromContext(ctx)
+	if userName == "" {
+		userName = "Unknown"
+	}
+
+	var message string
+	switch action {
+	case models.LogActionChangePassword:
+		message = fmt.Sprintf("%s changed password for: %s", userName, entityName)
+	case models.LogActionLogin:
+		message = fmt.Sprintf("%s logged in", entityName)
+	default:
+		message = fmt.Sprintf("%s performed %s on user: %s", userName, action, entityName)
+	}
+
+	log := &models.Log{
+		UserID:     userID,
+		Action:     action,
+		EntityType: models.LogEntityTypeUser,
+		EntityID:   entityID,
+		Message:    message,
+	}
+
+	go func() {
+		if err := s.logRepository.Create(context.Background(), log); err != nil {
+			logger.Error("Failed to create audit log",
+				zap.String("entity_type", models.LogEntityTypeUser),
+				zap.Uint("entity_id", entityID),
+				zap.String("action", string(action)),
+				zap.Error(err),
+			)
+		}
+	}()
 }

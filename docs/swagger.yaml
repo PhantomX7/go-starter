@@ -19,38 +19,6 @@ definitions:
     - password
     - username
     type: object
-  dto.PostCreateRequest:
-    properties:
-      content:
-        type: string
-      title:
-        type: string
-    required:
-    - content
-    - title
-    type: object
-  dto.PostResponse:
-    properties:
-      content:
-        type: string
-      created_at:
-        type: string
-      description:
-        type: string
-      id:
-        type: integer
-      title:
-        type: string
-      updated_at:
-        type: string
-    type: object
-  dto.PostUpdateRequest:
-    properties:
-      content:
-        type: string
-      title:
-        type: string
-    type: object
   dto.RefreshRequest:
     properties:
       refresh_token:
@@ -98,8 +66,6 @@ definitions:
         type: string
       role:
         type: string
-      updated_at:
-        type: string
       username:
         type: string
     type: object
@@ -122,8 +88,8 @@ definitions:
     type: object
 info:
   contact:
-    email: zrphntm@gmail.com
-    name: PhantomX7
+    email: tester@lezenda.com
+    name: Lezenda
     url: https://github.com/PhantomX7
   license:
     name: Apache 2.0
@@ -278,147 +244,6 @@ paths:
       summary: Register
       tags:
       - Auth
-  /post:
-    post:
-      consumes:
-      - application/json
-      description: Create a new post with the provided details
-      parameters:
-      - description: Post Create Request
-        in: body
-        name: post
-        required: true
-        schema:
-          $ref: '#/definitions/dto.PostCreateRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/dto.PostResponse'
-              type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.Response'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      summary: Create a new post
-      tags:
-      - post
-  /post/{id}:
-    delete:
-      consumes:
-      - application/json
-      description: Delete a post with the provided ID
-      parameters:
-      - description: Post ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  type: object
-              type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.Response'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      summary: Delete a post
-      tags:
-      - post
-    get:
-      consumes:
-      - application/json
-      description: Find a post with the provided ID
-      parameters:
-      - description: Post ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/dto.PostResponse'
-              type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.Response'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      summary: Find a post by ID
-      tags:
-      - post
-    put:
-      consumes:
-      - application/json
-      description: Update a post with the provided details
-      parameters:
-      - description: Post ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: Post Update Request
-        in: body
-        name: post
-        required: true
-        schema:
-          $ref: '#/definitions/dto.PostUpdateRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/dto.PostResponse'
-              type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.Response'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.Response'
-      summary: Update a post
-      tags:
-      - post
   /user:
     post:
       consumes:
@@ -560,4 +385,10 @@ paths:
       summary: Update a user
       tags:
       - user
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

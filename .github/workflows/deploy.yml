@@ -1,0 +1,70 @@
+name: Build and Deploy to VPS
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.0'
+          cache: true
+
+      - name: Build project
+        env:
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          go build -o bin/athleton cmd/main.go
+          go build -o bin/seeder database/seeder/main.go
+
+      - name: Prepare Deployment Files
+        run: |
+          # Zip the necessary files for the deployment
+          tar -czf deploy.tar.gz bin/ Makefile database/ atlas.hcl
+
+      - name: Copy to VPS via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "deploy.tar.gz"
+          target: "/root/athleton"
+
+      - name: Extract, Migrate and Restart PM2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /root/athleton
+            
+            # Extract the new build
+            tar -xzf deploy.tar.gz
+            rm deploy.tar.gz
+
+            source ~/.bashrc || source ~/.profile
+            
+            # Make bin executable
+            chmod +x ./bin/athleton
+            chmod +x ./bin/seeder
+            
+            # Apply database migrations
+            # Assuming .env matches Makefile required vars
+            make migrate-hash
+            make migrate-up
+            ./bin/seeder
+            
+            # Restart the app with PM2
+            pm2 delete api || true
+            pm2 start ./bin/athleton --name "api" --cwd "/root/athleton" -i 1 --max-memory-restart 500M
+            pm2 save

@@ -54,7 +54,7 @@ func formatSingleError(e validator.FieldError) string {
 	case "len":
 		return fmt.Sprintf("%s must be exactly %s characters long", errorField, param)
 	case "oneof":
-		return fmt.Sprintf("%s must be one of the following: %s", errorField, strings.ReplaceAll(param, " ", ", "))
+		return fmt.Sprintf("%s must be one of the following: %s", errorField, strings.ReplaceAll(param, " ", ","))
 	case "numeric":
 		return fmt.Sprintf("%s must be a numeric value", errorField)
 	case "alphanum":
@@ -63,6 +63,10 @@ func formatSingleError(e validator.FieldError) string {
 		return fmt.Sprintf("%s must be unique", errorField)
 	case "exist":
 		return fmt.Sprintf("%s does not exist", errorField)
+	case "filesize":
+		return fmt.Sprintf("%s exceeds maximum size of %s bytes", errorField, param)
+	case "fileext":
+		return fmt.Sprintf("%s must be one of: %s", errorField, strings.ReplaceAll(param, "&", ","))
 	default:
 		return fmt.Sprintf("%s is invalid", errorField)
 	}

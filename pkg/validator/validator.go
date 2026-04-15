@@ -8,6 +8,8 @@ import (
 type CustomValidator interface {
 	Unique() validator.Func
 	Exist() validator.Func
+	FileSize() validator.Func
+	FileExtension() validator.Func
 }
 
 type customValidator struct {

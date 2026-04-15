@@ -1,7 +1,7 @@
 package response
 
 import (
-	"github.com/PhantomX7/go-starter/pkg/utils"
+	"github.com/PhantomX7/athleton/pkg/utils"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -18,6 +18,7 @@ type Meta struct {
 	Limit  int   `json:"limit"`
 	Offset int   `json:"offset"`
 	Total  int64 `json:"total"`
+	Facet  any   `json:"facet,omitempty"`
 }
 
 type ModelResponse[T any] interface {
@@ -36,8 +37,8 @@ func BuildResponseSuccess(message string, data any) Response {
 
 func BuildResponseFailed(message string) Response {
 	res := Response{
-		Status: false,
-		Error:  message,
+		Status:  false,
+		Message: message,
 	}
 
 	return res

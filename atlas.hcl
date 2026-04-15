@@ -1,3 +1,6 @@
+# atlas.hcl
+
+# Combined schema from static SQL + GORM
 data "external_schema" "gorm" {
   program = [
     "go",
@@ -7,22 +10,16 @@ data "external_schema" "gorm" {
   ]
 }
 
-data "composite_schema" "all" {
-  schema "public" {
-    url = "file://database/schema/schema.sql"
-  }
-  schema "public" {
-    url = data.external_schema.gorm.url
-  }
-}
-
+# GORM environment
 env "gorm" {
-  src = data.composite_schema.all.url
-  dev = "docker://postgres/15/dev"
+  src = data.external_schema.gorm.url
+  dev = "docker://postgres/15/dev?search_path=public"
+  
   migration {
     dir = "file://database/migrations"
     format = "golang-migrate"
   }
+  
   format {
     migrate {
       diff = "{{ sql . \"  \" }}"

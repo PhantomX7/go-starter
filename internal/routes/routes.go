@@ -1,36 +1,106 @@
+// internal/routes/routes.go
 package routes
 
 import (
-	"github.com/PhantomX7/go-starter/internal/middlewares"
-	auth "github.com/PhantomX7/go-starter/internal/modules/auth/controller"
-	post "github.com/PhantomX7/go-starter/internal/modules/post/controller"
+	"github.com/PhantomX7/athleton/internal/middlewares"
+	"github.com/PhantomX7/athleton/pkg/constants/permissions"
+
+	adminrole "github.com/PhantomX7/athleton/internal/modules/admin_role/controller"
+	auth "github.com/PhantomX7/athleton/internal/modules/auth/controller"
+	config "github.com/PhantomX7/athleton/internal/modules/config/controller"
+	log "github.com/PhantomX7/athleton/internal/modules/log/controller"
+	user "github.com/PhantomX7/athleton/internal/modules/user/controller"
+
 	"github.com/gin-gonic/gin"
 )
 
 func RegisterRoutes(
 	route *gin.Engine,
-	middlewares *middlewares.Middleware,
-	postController post.PostController,
+	middleware *middlewares.Middleware,
+	adminRoleController adminrole.AdminRoleController,
 	authController auth.AuthController,
+	configController config.ConfigController,
+	logController log.LogController,
+	userController user.UserController,
 ) {
-	api := route.Group("/api")
+	api := route.Group("/api/v1")
 	{
+		// ============================================================
+		// AUTH ROUTES (Public + Authenticated)
+		// ============================================================
 		authRoute := api.Group("/auth")
 		{
 			authRoute.POST("/register", authController.Register)
-			authRoute.POST("/login", authController.Login)
+			authRoute.POST("/login", middleware.LoginHandler())
 			authRoute.POST("/refresh", authController.Refresh)
-			authRoute.GET("/me", middlewares.AuthHandle(), authController.GetMe)
-			// authRoute.GET("/:provider", authHandler.OAuthLogin)
-			// authRoute.GET("/:provider/callback", authHandler.OAuthCallback)
+
+			authenticatedAuthRoute := authRoute.Group("", middleware.RequireAuth())
+			{
+				authenticatedAuthRoute.GET("/me", authController.GetMe)
+				authenticatedAuthRoute.POST("/change-password", authController.ChangePassword)
+				authenticatedAuthRoute.POST("/logout", authController.Logout)
+			}
 		}
-		postRoute := api.Group("/post")
+
+		// ============================================================
+		// ADMIN ROUTES (Requires Auth + Permission)
+		// ============================================================
+		adminApi := api.Group("/admin", middleware.RequireAuth())
 		{
-			postRoute.GET("", postController.Index)
-			postRoute.POST("", postController.Create)
-			postRoute.PUT("/:id", postController.Update)
-			postRoute.DELETE("/:id", postController.Delete)
-			postRoute.GET("/:id", postController.FindById)
+			// ---------------------------------------------------------
+			// Admin Role Management (Root only - no permission check)
+			// ---------------------------------------------------------
+			adminRoleRoute := adminApi.Group("/admin-role")
+			{
+				adminRoleRoute.GET("", middleware.RequirePermission(permissions.AdminRoleRead), adminRoleController.Index)
+				adminRoleRoute.GET("/permissions", middleware.RequirePermission(permissions.AdminRoleRead), adminRoleController.GetAllPermissions)
+				adminRoleRoute.GET("/:id", middleware.RequirePermission(permissions.AdminRoleRead), adminRoleController.FindById)
+				adminRoleRoute.POST("", middleware.RequirePermission(permissions.AdminRoleCreate), adminRoleController.Create)
+				adminRoleRoute.PATCH("/:id", middleware.RequirePermission(permissions.AdminRoleUpdate), adminRoleController.Update)
+				adminRoleRoute.DELETE("/:id", middleware.RequirePermission(permissions.AdminRoleDelete), adminRoleController.Delete)
+			}
+
+			// ---------------------------------------------------------
+			// Config Management
+			// ---------------------------------------------------------
+			configRoute := adminApi.Group("/config")
+			{
+				configRoute.GET("", configController.Index)
+				configRoute.GET("/key/:key", configController.FindByKey)
+				configRoute.PATCH("/:id", configController.Update, middleware.RequireRole("root"))
+			}
+
+			// ---------------------------------------------------------
+			// Log Management (Audit Logs)
+			// ---------------------------------------------------------
+			logRoute := adminApi.Group("/log")
+			{
+				logRoute.GET("", middleware.RequirePermission(permissions.LogRead), logController.Index)
+			}
+
+			// ---------------------------------------------------------
+			// User Management
+			// ---------------------------------------------------------
+			userRoute := adminApi.Group("/user")
+			{
+				userRoute.GET("", middleware.RequirePermission(permissions.UserRead), userController.Index)
+				userRoute.GET("/:id", middleware.RequirePermission(permissions.UserRead), userController.FindById)
+				userRoute.PATCH("/:id", middleware.RequirePermission(permissions.UserUpdate), userController.Update)
+				userRoute.POST("/:id/admin-role", middleware.RequirePermission(permissions.UserAssignRole), userController.AssignAdminRole)
+				userRoute.POST("/:id/change-password", middleware.RequirePermission(permissions.AdminUserChangePassword), userController.ChangePassword)
+			}
+		}
+
+		// ============================================================
+		// PUBLIC ROUTES
+		// ============================================================
+		publicApi := api.Group("/public")
+		{
+			configRoute := publicApi.Group("/config")
+			{
+				configRoute.GET("", configController.Index)
+				configRoute.GET("/key/:key", configController.FindByKey)
+			}
 		}
 	}
 }
