@@ -27,7 +27,8 @@ type User struct {
 
 type PaginationTestSuite struct {
 	suite.Suite
-	db *gorm.DB
+	db  *gorm.DB
+	now time.Time
 }
 
 func (suite *PaginationTestSuite) SetupSuite() {
@@ -40,23 +41,25 @@ func (suite *PaginationTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 
 	suite.db = db
+	suite.now = time.Date(2026, 4, 21, 10, 0, 0, 0, time.UTC)
 
 	// Seed test data
 	suite.seedData()
 }
 
 func (suite *PaginationTestSuite) seedData() {
+	now := suite.now
 	users := []User{
-		{ID: 1, Name: "John Doe", Email: "john@example.com", Age: 25, Status: "active", IsActive: true, Role: "admin", CreatedAt: time.Now().AddDate(0, 0, -10)},
-		{ID: 2, Name: "Jane Smith", Email: "jane@example.com", Age: 30, Status: "active", IsActive: true, Role: "user", CreatedAt: time.Now().AddDate(0, 0, -9)},
-		{ID: 3, Name: "Bob Johnson", Email: "bob@example.com", Age: 35, Status: "inactive", IsActive: false, Role: "user", CreatedAt: time.Now().AddDate(0, 0, -8)},
-		{ID: 4, Name: "Alice Brown", Email: "alice@example.com", Age: 28, Status: "active", IsActive: true, Role: "moderator", CreatedAt: time.Now().AddDate(0, 0, -7)},
-		{ID: 5, Name: "Charlie Wilson", Email: "charlie@example.com", Age: 32, Status: "pending", IsActive: true, Role: "user", CreatedAt: time.Now().AddDate(0, 0, -6)},
-		{ID: 6, Name: "Diana Davis", Email: "diana@example.com", Age: 27, Status: "active", IsActive: true, Role: "user", CreatedAt: time.Now().AddDate(0, 0, -5)},
-		{ID: 7, Name: "Eve Miller", Email: "eve@example.com", Age: 29, Status: "inactive", IsActive: false, Role: "user", CreatedAt: time.Now().AddDate(0, 0, -4)},
-		{ID: 8, Name: "Frank Moore", Email: "frank@example.com", Age: 31, Status: "active", IsActive: true, Role: "user", CreatedAt: time.Now().AddDate(0, 0, -3)},
-		{ID: 9, Name: "Grace Taylor", Email: "grace@example.com", Age: 26, Status: "active", IsActive: true, Role: "admin", CreatedAt: time.Now().AddDate(0, 0, -2)},
-		{ID: 10, Name: "Henry Anderson", Email: "henry@example.com", Age: 33, Status: "pending", IsActive: true, Role: "user", CreatedAt: time.Now().AddDate(0, 0, -1)},
+		{ID: 1, Name: "John Doe", Email: "john@example.com", Age: 25, Status: "active", IsActive: true, Role: "admin", CreatedAt: now.AddDate(0, 0, -10)},
+		{ID: 2, Name: "Jane Smith", Email: "jane@example.com", Age: 30, Status: "active", IsActive: true, Role: "user", CreatedAt: now.AddDate(0, 0, -9)},
+		{ID: 3, Name: "Bob Johnson", Email: "bob@example.com", Age: 35, Status: "inactive", IsActive: false, Role: "user", CreatedAt: now.AddDate(0, 0, -8)},
+		{ID: 4, Name: "Alice Brown", Email: "alice@example.com", Age: 28, Status: "active", IsActive: true, Role: "moderator", CreatedAt: now.AddDate(0, 0, -7)},
+		{ID: 5, Name: "Charlie Wilson", Email: "charlie@example.com", Age: 32, Status: "pending", IsActive: true, Role: "user", CreatedAt: now.AddDate(0, 0, -6)},
+		{ID: 6, Name: "Diana Davis", Email: "diana@example.com", Age: 27, Status: "active", IsActive: true, Role: "user", CreatedAt: now.AddDate(0, 0, -5)},
+		{ID: 7, Name: "Eve Miller", Email: "eve@example.com", Age: 29, Status: "inactive", IsActive: false, Role: "user", CreatedAt: now.AddDate(0, 0, -4)},
+		{ID: 8, Name: "Frank Moore", Email: "frank@example.com", Age: 31, Status: "active", IsActive: true, Role: "user", CreatedAt: now.AddDate(0, 0, -3)},
+		{ID: 9, Name: "Grace Taylor", Email: "grace@example.com", Age: 26, Status: "active", IsActive: true, Role: "admin", CreatedAt: now.AddDate(0, 0, -2)},
+		{ID: 10, Name: "Henry Anderson", Email: "henry@example.com", Age: 33, Status: "pending", IsActive: true, Role: "user", CreatedAt: now.AddDate(0, 0, -1)},
 	}
 
 	suite.db.Create(&users)
@@ -226,7 +229,11 @@ func (suite *PaginationTestSuite) TestMultiFieldSearch() {
 	err := pg.Apply(suite.db).Find(&users).Error
 
 	suite.NoError(err)
-	suite.Greater(len(users), 0)
+	suite.Len(users, 2)
+	for _, user := range users {
+		joined := strings.ToLower(user.Name + " " + user.Email)
+		suite.Contains(joined, "john")
+	}
 }
 
 // Test Number Filter - Greater Than
@@ -358,8 +365,8 @@ func (suite *PaginationTestSuite) TestInvalidEnumValue() {
 
 // Test Date Filter - Between
 func (suite *PaginationTestSuite) TestDateFilterBetween() {
-	startDate := time.Now().AddDate(0, 0, -7).Format("2006-01-02")
-	endDate := time.Now().Format("2006-01-02")
+	startDate := suite.now.AddDate(0, 0, -7).Format("2006-01-02")
+	endDate := suite.now.Format("2006-01-02")
 
 	conditions := map[string][]string{
 		"created_at": {fmt.Sprintf("between:%s,%s", startDate, endDate)},
@@ -378,7 +385,11 @@ func (suite *PaginationTestSuite) TestDateFilterBetween() {
 	err := pg.Apply(suite.db).Find(&users).Error
 
 	suite.NoError(err)
-	suite.Greater(len(users), 0)
+	suite.Len(users, 7)
+	for _, user := range users {
+		suite.False(user.CreatedAt.Before(suite.now.AddDate(0, 0, -7)))
+		suite.False(user.CreatedAt.After(suite.now))
+	}
 }
 
 // Test Sorting
@@ -425,7 +436,16 @@ func (suite *PaginationTestSuite) TestMultipleSortFields() {
 	err := pg.Apply(suite.db).Find(&users).Error
 
 	suite.NoError(err)
-	suite.Greater(len(users), 0)
+	suite.Greater(len(users), 1)
+	for i := 0; i < len(users)-1; i++ {
+		current := users[i]
+		next := users[i+1]
+		if current.Status == next.Status {
+			suite.GreaterOrEqual(current.Age, next.Age)
+			continue
+		}
+		suite.LessOrEqual(current.Status, next.Status)
+	}
 }
 
 // Test Invalid Sort Field
@@ -591,6 +611,11 @@ func (suite *PaginationTestSuite) TestFilterConfigGetAllowedOperators() {
 	suite.Greater(len(operators2), 0)
 	suite.Contains(operators2, pagination.OperatorEquals)
 	suite.Contains(operators2, pagination.OperatorLike)
+
+	operators2[0] = pagination.OperatorBetween
+	fresh := config2.GetAllowedOperators()
+	suite.Contains(fresh, pagination.OperatorEquals)
+	suite.NotEqual(pagination.OperatorBetween, fresh[0], "returned slice must be cloned")
 }
 
 func (suite *PaginationTestSuite) TestFilterConfigGetFields() {
@@ -1879,7 +1904,7 @@ func (suite *PaginationTestSuite) TestGetConditionsReturnsClone() {
 	)
 
 	got := pg.GetConditions()
-	got["status"] = []string{"inactive"}
+	got["status"][0] = "inactive"
 	got["injected"] = []string{"evil"}
 
 	// A fresh read must still show the original values.

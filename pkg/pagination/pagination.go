@@ -1,7 +1,6 @@
 package pagination
 
 import (
-	"maps"
 	"slices"
 	"sort"
 	"strconv"
@@ -149,8 +148,16 @@ func isQualifiedIdent(s string) bool {
 
 // likeEscaper escapes the LIKE wildcard characters and the escape char itself
 // so user input such as "50%" matches the literal string instead of acting as
-// a wildcard. Used together with the "ESCAPE '\'" clause.
-var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+// a wildcard. Used together with the "ESCAPE '!'" clause.
+//
+// '!' is the escape character rather than '\' because MySQL in its default
+// SQL mode (NO_BACKSLASH_ESCAPES off) treats '\' specially inside string
+// literals: the SQL fragment ESCAPE '\' is an unterminated literal there and
+// the query errors out. '!' is literal in MySQL, Postgres, and SQLite, so
+// the same LIKE predicate works unchanged across all three drivers in
+// go.mod. Any input character that is '!' is doubled ('!!') so it survives
+// the escape round-trip and matches a literal '!' in the target column.
+var likeEscaper = strings.NewReplacer(`!`, `!!`, `%`, `!%`, `_`, `!_`)
 
 // FilterConfig defines filterable field configuration.
 //
@@ -211,12 +218,14 @@ func (fc FilterConfig) normalizeTyped() FilterConfig {
 	return fc
 }
 
-// GetAllowedOperators returns operators for this filter
+// GetAllowedOperators returns the operators valid for this filter. The result
+// is a fresh slice — callers may mutate it without poisoning the shared
+// package-level operatorsByType lookup table or the config's own Operators.
 func (fc FilterConfig) GetAllowedOperators() []FilterOperator {
 	if len(fc.Operators) > 0 {
-		return fc.Operators
+		return slices.Clone(fc.Operators)
 	}
-	return operatorsByType[fc.Type]
+	return slices.Clone(operatorsByType[fc.Type])
 }
 
 // GetFields returns the fully-resolved (optionally table-prefixed) field
@@ -419,13 +428,14 @@ type Pagination struct {
 	scopes     []func(*gorm.DB) *gorm.DB
 }
 
-// NewPagination creates a pagination instance
+// NewPagination creates a pagination instance.
+//
+// The caller's conditions map is deep-copied so subsequent mutations of the
+// original (including mutations of the inner []string values) cannot change
+// the query shape the Pagination was constructed with.
 func NewPagination(conditions map[string][]string, filterDef *FilterDefinition, options PaginationOptions) *Pagination {
 	if filterDef == nil {
 		filterDef = NewFilterDefinition()
-	}
-	if conditions == nil {
-		conditions = map[string][]string{}
 	}
 
 	if options.DefaultLimit <= 0 {
@@ -434,6 +444,12 @@ func NewPagination(conditions map[string][]string, filterDef *FilterDefinition, 
 	if options.MaxLimit <= 0 {
 		options.MaxLimit = 100
 	}
+	// MaxLimit is the hard cap. A caller-configured DefaultLimit that exceeds
+	// it would otherwise slip through for requests without ?limit=, silently
+	// widening the response past the stated cap.
+	if options.DefaultLimit > options.MaxLimit {
+		options.DefaultLimit = options.MaxLimit
+	}
 	if !isValidOrderLiteral(options.DefaultOrder) {
 		options.DefaultOrder = safeDefaultOrder
 	}
@@ -441,15 +457,28 @@ func NewPagination(conditions map[string][]string, filterDef *FilterDefinition, 
 		options.Timezone = defaultTimezone()
 	}
 
+	internal := deepCloneConditions(conditions)
+
 	return &Pagination{
-		conditions: conditions,
+		conditions: internal,
 		filterDef:  filterDef,
 		options:    options,
-		Limit:      parseLimit(conditions, options.DefaultLimit, options.MaxLimit),
-		Offset:     parseOffset(conditions),
-		Order:      parseOrder(conditions, options.DefaultOrder, filterDef),
+		Limit:      parseLimit(internal, options.DefaultLimit, options.MaxLimit),
+		Offset:     parseOffset(internal),
+		Order:      parseOrder(internal, options.DefaultOrder, filterDef),
 		scopes:     make([]func(*gorm.DB) *gorm.DB, 0),
 	}
+}
+
+// deepCloneConditions copies the outer map AND each inner []string so the
+// result shares no mutable state with the input. Used at both ingress
+// (NewPagination) and egress (GetConditions).
+func deepCloneConditions(in map[string][]string) map[string][]string {
+	out := make(map[string][]string, len(in))
+	for k, v := range in {
+		out[k] = slices.Clone(v)
+	}
+	return out
 }
 
 // AddCustomScope adds custom GORM scopes
@@ -505,11 +534,11 @@ func (p *Pagination) applyFilters(db *gorm.DB) *gorm.DB {
 	return db
 }
 
-// GetConditions returns a shallow clone of the query conditions so callers
-// can't mutate pagination state. The inner []string slices are shared — they
-// are treated as read-only by the rest of the package.
+// GetConditions returns a deep clone of the query conditions so callers can
+// freely mutate either the outer map or any inner []string without affecting
+// the pagination's internal state.
 func (p *Pagination) GetConditions() map[string][]string {
-	return maps.Clone(p.conditions)
+	return deepCloneConditions(p.conditions)
 }
 
 // GetPage returns the current page number (1-indexed)
@@ -765,7 +794,7 @@ func (p *Pagination) buildSingleStringScope(field string, op FilterOperation) fu
 	case OperatorLike:
 		pattern := "%" + likeEscaper.Replace(op.Values[0]) + "%"
 		return func(db *gorm.DB) *gorm.DB {
-			return db.Where("LOWER("+field+") LIKE LOWER(?) ESCAPE '\\'", pattern)
+			return db.Where("LOWER("+field+") LIKE LOWER(?) ESCAPE '!'", pattern)
 		}
 	case OperatorIn:
 		return func(db *gorm.DB) *gorm.DB { return db.Where(field+" IN ?", op.Values) }
@@ -824,7 +853,7 @@ func (p *Pagination) buildMultiStringScope(fields []string, op FilterOperation) 
 		case OperatorLike:
 			sb.WriteString("LOWER(")
 			sb.WriteString(field)
-			sb.WriteString(") LIKE LOWER(?) ESCAPE '\\'")
+			sb.WriteString(") LIKE LOWER(?) ESCAPE '!'")
 			args = append(args, likePattern)
 		case OperatorIn:
 			sb.WriteString(field)
@@ -931,7 +960,17 @@ func (p *Pagination) buildDateScope(field string, op FilterOperation) func(*gorm
 	return nil
 }
 
-// buildDateTimeScope builds datetime filter scope
+// buildDateTimeScope builds datetime filter scope.
+//
+// The input grammar "YYYY-MM-DD HH:MM:SS" is 1-second resolution, but the
+// underlying column can store fractional seconds (Postgres timestamptz keeps
+// microseconds, MySQL DATETIME(6) keeps microseconds). A closed range like
+// "BETWEEN '…23:59:59' AND '…23:59:59'" silently drops any row whose
+// fractional component is non-zero — the user thinks they asked "all rows in
+// that second" but only got rows stored at exactly *.000000. The same
+// precision trap that buildDateScope avoids for day boundaries applies at
+// every second boundary here, so the same fix applies: half-open
+// [t, t + 1s). This works identically on Postgres, MySQL, and SQLite.
 func (p *Pagination) buildDateTimeScope(field string, op FilterOperation) func(*gorm.DB) *gorm.DB {
 	parseDateTime := func(s string) (time.Time, error) {
 		return time.ParseInLocation("2006-01-02 15:04:05", s, p.options.Timezone)
@@ -943,7 +982,10 @@ func (p *Pagination) buildDateTimeScope(field string, op FilterOperation) func(*
 		if err != nil {
 			return nil
 		}
-		return func(db *gorm.DB) *gorm.DB { return db.Where(field+" = ?", t) }
+		nextSec := t.Add(time.Second)
+		return func(db *gorm.DB) *gorm.DB {
+			return db.Where(field+" >= ? AND "+field+" < ?", t, nextSec)
+		}
 
 	case OperatorBetween:
 		start, err := parseDateTime(op.Values[0])
@@ -954,8 +996,9 @@ func (p *Pagination) buildDateTimeScope(field string, op FilterOperation) func(*
 		if err != nil {
 			return nil
 		}
+		endExclusive := end.Add(time.Second)
 		return func(db *gorm.DB) *gorm.DB {
-			return db.Where(field+" BETWEEN ? AND ?", start, end)
+			return db.Where(field+" >= ? AND "+field+" < ?", start, endExclusive)
 		}
 
 	case OperatorGte:
@@ -970,7 +1013,10 @@ func (p *Pagination) buildDateTimeScope(field string, op FilterOperation) func(*
 		if err != nil {
 			return nil
 		}
-		return func(db *gorm.DB) *gorm.DB { return db.Where(field+" <= ?", t) }
+		endExclusive := t.Add(time.Second)
+		return func(db *gorm.DB) *gorm.DB {
+			return db.Where(field+" < ?", endExclusive)
+		}
 	case OperatorIsNull:
 		return func(db *gorm.DB) *gorm.DB { return db.Where(field + " IS NULL") }
 	case OperatorIsNotNull:
