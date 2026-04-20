@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/models"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/logger"
@@ -16,37 +17,33 @@ import (
 	"gorm.io/gorm"
 )
 
-// AdminRoleRepository defines the interface for admin role repository operations
+// AdminRoleRepository defines the interface for admin role repository operations.
 type AdminRoleRepository interface {
 	repository.IRepository[models.AdminRole]
 	FindByName(ctx context.Context, name string) (*models.AdminRole, error)
 	CountUsersWithRole(ctx context.Context, roleID uint) (int64, error)
 }
 
-// adminRoleRepository implements the AdminRoleRepository interface
 type adminRoleRepository struct {
 	repository.Repository[models.AdminRole]
 }
 
-// NewAdminRoleRepository creates a new instance of AdminRoleRepository
 func NewAdminRoleRepository(db *gorm.DB) AdminRoleRepository {
 	return &adminRoleRepository{
-		Repository: repository.Repository[models.AdminRole]{
-			DB: db,
-		},
+		Repository: repository.Repository[models.AdminRole]{DB: db},
 	}
 }
 
-// FindByName finds an admin role by name
+// FindByName returns the admin role whose name matches exactly (the column is
+// uniquely indexed so at most one row comes back).
 func (r *adminRoleRepository) FindByName(ctx context.Context, name string) (*models.AdminRole, error) {
-	var entity models.AdminRole
 	start := time.Now()
 
-	err := r.GetDB(ctx).WithContext(ctx).
-		Where("name = ?", name).
-		Take(&entity).Error
+	entity, err := gorm.G[models.AdminRole](r.GetDB(ctx)).
+		Where(generated.AdminRole.Name.Eq(name)).
+		First(ctx)
 
-	duration := time.Since(start)
+	r.LogSlowQuery(ctx, "FindByName", time.Since(start), 500*time.Millisecond)
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -55,21 +52,20 @@ func (r *adminRoleRepository) FindByName(ctx context.Context, name string) (*mod
 		return nil, cerrors.NewInternalServerError("failed to find admin role by name", err)
 	}
 
-	r.LogSlowQuery(ctx, "FindByName", duration, 500*time.Millisecond)
 	return &entity, nil
 }
 
-// CountUsersWithRole counts users that have a specific admin role
+// CountUsersWithRole counts non-deleted users assigned to the given admin role.
+// GORM automatically applies `deleted_at IS NULL` because User embeds
+// gorm.DeletedAt via the Timestamp mixin, so we do not need to add it manually.
 func (r *adminRoleRepository) CountUsersWithRole(ctx context.Context, roleID uint) (int64, error) {
-	var count int64
 	start := time.Now()
 
-	err := r.GetDB(ctx).WithContext(ctx).
-		Model(&models.User{}).
-		Where("admin_role_id = ?", roleID).
-		Count(&count).Error
+	count, err := gorm.G[models.User](r.GetDB(ctx)).
+		Where(generated.User.AdminRoleID.Eq(roleID)).
+		Count(ctx, "*")
 
-	duration := time.Since(start)
+	r.LogSlowQuery(ctx, "CountUsersWithRole", time.Since(start), 500*time.Millisecond)
 
 	if err != nil {
 		logger.Error("Failed to count users with admin role",
@@ -80,6 +76,5 @@ func (r *adminRoleRepository) CountUsersWithRole(ctx context.Context, roleID uin
 		return 0, cerrors.NewInternalServerError("failed to count users with role", err)
 	}
 
-	r.LogSlowQuery(ctx, "CountUsersWithRole", duration, 500*time.Millisecond)
 	return count, nil
 }

@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/models"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/repository"
@@ -14,35 +16,32 @@ import (
 	"gorm.io/gorm"
 )
 
-// UserRepository defines the interface for user repository operations
+// UserRepository defines the interface for user repository operations.
 type UserRepository interface {
 	repository.IRepository[models.User]
 	FindByUsername(ctx context.Context, username string) (*models.User, error)
-	FindByEmail(ctx context.Context, email string) (*models.User, error) // Added this
+	FindByEmail(ctx context.Context, email string) (*models.User, error)
 }
 
-// userRepository implements the UserRepository interface
 type userRepository struct {
 	repository.Repository[models.User]
 }
 
-// NewUserRepository creates a new instance of UserRepository
 func NewUserRepository(db *gorm.DB) UserRepository {
 	return &userRepository{
-		Repository: repository.Repository[models.User]{
-			DB: db,
-		},
+		Repository: repository.Repository[models.User]{DB: db},
 	}
 }
 
-// FindByUsername finds a user by username
+// FindByUsername looks up a user by exact username match.
 func (r *userRepository) FindByUsername(ctx context.Context, username string) (*models.User, error) {
 	start := time.Now()
 
-	var user models.User
+	user, err := gorm.G[models.User](r.GetDB(ctx)).
+		Where(generated.User.Username.Eq(username)).
+		First(ctx)
 
-	err := r.GetDB(ctx).WithContext(ctx).Where("username = ?", username).Take(&user).Error
-	duration := time.Since(start)
+	r.LogSlowQuery(ctx, "FindByUsername", time.Since(start), 500*time.Millisecond)
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -51,19 +50,21 @@ func (r *userRepository) FindByUsername(ctx context.Context, username string) (*
 		return nil, cerrors.NewInternalServerError(fmt.Sprintf("failed to find user by username %s", username), err)
 	}
 
-	r.LogSlowQuery(ctx, "FindByUsername", duration, 500*time.Millisecond)
-
 	return &user, nil
 }
 
-// FindByEmail finds a user by email
+// FindByEmail looks up a user by email. Callers may pass arbitrary casing /
+// padding; we normalize to match auth.Register's write path so the lookup
+// cannot silently miss a row that was stored in lowercase.
 func (r *userRepository) FindByEmail(ctx context.Context, email string) (*models.User, error) {
 	start := time.Now()
+	normalized := strings.ToLower(strings.TrimSpace(email))
 
-	var user models.User
+	user, err := gorm.G[models.User](r.GetDB(ctx)).
+		Where(generated.User.Email.Eq(normalized)).
+		First(ctx)
 
-	err := r.GetDB(ctx).WithContext(ctx).Where("email = ?", email).Take(&user).Error
-	duration := time.Since(start)
+	r.LogSlowQuery(ctx, "FindByEmail", time.Since(start), 500*time.Millisecond)
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -71,9 +72,6 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*models
 		}
 		return nil, cerrors.NewInternalServerError(fmt.Sprintf("failed to find user by email %s", email), err)
 	}
-
-	// Log if query was slow
-	r.LogSlowQuery(ctx, "FindByEmail", duration, 500*time.Millisecond)
 
 	return &user, nil
 }

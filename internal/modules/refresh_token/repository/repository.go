@@ -6,14 +6,16 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/models"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/repository"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
-// RefreshTokenRepository defines the interface for refresh token repository operations
+// RefreshTokenRepository defines the interface for refresh token repository operations.
 type RefreshTokenRepository interface {
 	repository.IRepository[models.RefreshToken]
 	FindByToken(ctx context.Context, token string) (*models.RefreshToken, error)
@@ -24,117 +26,118 @@ type RefreshTokenRepository interface {
 	RevokeByToken(ctx context.Context, token string) error
 }
 
-// refreshTokenRepository implements the RefreshTokenRepository interface
 type refreshTokenRepository struct {
 	repository.Repository[models.RefreshToken]
 }
 
-// NewRefreshTokenRepository creates a new instance of RefreshTokenRepository
 func NewRefreshTokenRepository(db *gorm.DB) RefreshTokenRepository {
 	return &refreshTokenRepository{
-		Repository: repository.Repository[models.RefreshToken]{
-			DB: db,
-		},
+		Repository: repository.Repository[models.RefreshToken]{DB: db},
 	}
 }
 
-// FindByToken finds a refresh token without locking (for read operations)
+// activeTokenPredicates returns the two column conditions that make a token
+// "active": not revoked and not expired. Centralized so adding/removing a
+// condition changes every caller in one place.
+func activeTokenPredicates(now time.Time) []clause.Expression {
+	return []clause.Expression{
+		generated.RefreshToken.RevokedAt.IsNull(),
+		generated.RefreshToken.ExpiresAt.Gt(now),
+	}
+}
+
+// FindByToken returns the active refresh token matching the given value.
 func (r *refreshTokenRepository) FindByToken(ctx context.Context, token string) (*models.RefreshToken, error) {
-	var refreshToken models.RefreshToken
-
-	if err := r.GetDB(ctx).WithContext(ctx).
-		Where("token = ? AND expires_at > ? AND revoked_at IS NULL", token, time.Now()).
-		First(&refreshToken).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			errMessage := "invalid refresh token"
-			return nil, cerrors.NewNotFoundError(errMessage)
-		}
-		errMessage := fmt.Sprintf("failed to find refresh token record by token %v", token)
-		return nil, cerrors.NewInternalServerError(errMessage, err)
+	q := gorm.G[models.RefreshToken](r.GetDB(ctx)).
+		Where(generated.RefreshToken.Token.Eq(token))
+	for _, p := range activeTokenPredicates(time.Now()) {
+		q = q.Where(p)
 	}
-	return &refreshToken, nil
+
+	rt, err := q.First(ctx)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, cerrors.NewNotFoundError("invalid refresh token")
+		}
+		return nil, cerrors.NewInternalServerError(fmt.Sprintf("failed to find refresh token record by token %v", token), err)
+	}
+	return &rt, nil
 }
 
-// GetValidCountByUserID counts valid (non-revoked, non-expired) tokens for a user
+// GetValidCountByUserID counts active tokens for a user.
 func (r *refreshTokenRepository) GetValidCountByUserID(ctx context.Context, userID uint) (int64, error) {
-	var count int64
-	err := r.GetDB(ctx).WithContext(ctx).
-		Model(&models.RefreshToken{}).
-		Where("user_id = ? AND revoked_at IS NULL AND expires_at > ?", userID, time.Now()).
-		Count(&count).Error
+	q := gorm.G[models.RefreshToken](r.GetDB(ctx)).
+		Where(generated.RefreshToken.UserID.Eq(userID))
+	for _, p := range activeTokenPredicates(time.Now()) {
+		q = q.Where(p)
+	}
 
+	count, err := q.Count(ctx, "*")
 	if err != nil {
 		return 0, cerrors.NewInternalServerError("failed to count valid refresh tokens", err)
 	}
-
 	return count, nil
 }
 
-// DeleteInvalidToken deletes expired or revoked tokens
+// DeleteInvalidToken hard-deletes tokens that have expired or been revoked.
 func (r *refreshTokenRepository) DeleteInvalidToken(ctx context.Context) error {
-	err := r.GetDB(ctx).WithContext(ctx).
-		Where("expires_at < ? OR revoked_at IS NOT NULL", time.Now()).
-		Delete(&models.RefreshToken{}).Error
-
-	if err != nil {
-		errMessage := "failed to delete invalid refresh token"
-		return cerrors.NewInternalServerError(errMessage, err)
-	}
-
-	return nil
-}
-
-// RevokeAllByUserIDExcept revokes all active refresh tokens for a specific user except the specified token
-func (r *refreshTokenRepository) RevokeAllByUserIDExcept(ctx context.Context, userID uint, exceptToken string) error {
 	now := time.Now()
-
-	result := r.GetDB(ctx).WithContext(ctx).
-		Model(&models.RefreshToken{}).
-		Where("user_id = ? AND token != ? AND revoked_at IS NULL AND expires_at > ?", userID, exceptToken, now).
-		Update("revoked_at", now)
-
-	if result.Error != nil {
-		errMessage := fmt.Sprintf("failed to revoke refresh tokens for user id %v", userID)
-		return cerrors.NewInternalServerError(errMessage, result.Error)
+	_, err := gorm.G[models.RefreshToken](r.GetDB(ctx)).
+		Where(generated.RefreshToken.ExpiresAt.Lt(now)).
+		Or(generated.RefreshToken.RevokedAt.IsNotNull()).
+		Delete(ctx)
+	if err != nil {
+		return cerrors.NewInternalServerError("failed to delete invalid refresh token", err)
 	}
-
 	return nil
 }
 
-// RevokeAllByUserID revokes all active refresh tokens for a specific user
+// RevokeAllByUserID stamps revoked_at on every active token for the user.
 func (r *refreshTokenRepository) RevokeAllByUserID(ctx context.Context, userID uint) error {
 	now := time.Now()
-
-	result := r.GetDB(ctx).WithContext(ctx).
-		Model(&models.RefreshToken{}).
-		Where("user_id = ? AND revoked_at IS NULL AND expires_at > ?", userID, now).
-		Update("revoked_at", now)
-
-	if result.Error != nil {
-		errMessage := fmt.Sprintf("failed to revoke all refresh tokens for user id %v", userID)
-		return cerrors.NewInternalServerError(errMessage, result.Error)
+	q := gorm.G[models.RefreshToken](r.GetDB(ctx)).
+		Where(generated.RefreshToken.UserID.Eq(userID))
+	for _, p := range activeTokenPredicates(now) {
+		q = q.Where(p)
 	}
 
+	if _, err := q.Set(generated.RefreshToken.RevokedAt.Set(now)).Update(ctx); err != nil {
+		return cerrors.NewInternalServerError(fmt.Sprintf("failed to revoke all refresh tokens for user id %v", userID), err)
+	}
 	return nil
 }
 
-// RevokeByToken revokes a specific refresh token
+// RevokeAllByUserIDExcept revokes every active token for the user except the
+// one whose value equals exceptToken.
+func (r *refreshTokenRepository) RevokeAllByUserIDExcept(ctx context.Context, userID uint, exceptToken string) error {
+	now := time.Now()
+	q := gorm.G[models.RefreshToken](r.GetDB(ctx)).
+		Where(generated.RefreshToken.UserID.Eq(userID)).
+		Where(generated.RefreshToken.Token.Neq(exceptToken))
+	for _, p := range activeTokenPredicates(now) {
+		q = q.Where(p)
+	}
+
+	if _, err := q.Set(generated.RefreshToken.RevokedAt.Set(now)).Update(ctx); err != nil {
+		return cerrors.NewInternalServerError(fmt.Sprintf("failed to revoke refresh tokens for user id %v", userID), err)
+	}
+	return nil
+}
+
+// RevokeByToken revokes one specific refresh token by value.
+// NOTE: unlike the original, this does not return ErrNotFound when the token
+// is already revoked or missing — both current callers either call FindByToken
+// first or ignore the error. If you add a new caller that needs the signal,
+// call FindByToken first.
 func (r *refreshTokenRepository) RevokeByToken(ctx context.Context, token string) error {
 	now := time.Now()
-
-	result := r.GetDB(ctx).WithContext(ctx).
-		Model(&models.RefreshToken{}).
-		Where("token = ? AND revoked_at IS NULL", token).
-		Update("revoked_at", now)
-
-	if result.Error != nil {
-		errMessage := "failed to revoke by token"
-		return cerrors.NewInternalServerError(errMessage, result.Error)
+	_, err := gorm.G[models.RefreshToken](r.GetDB(ctx)).
+		Where(generated.RefreshToken.Token.Eq(token)).
+		Where(generated.RefreshToken.RevokedAt.IsNull()).
+		Set(generated.RefreshToken.RevokedAt.Set(now)).
+		Update(ctx)
+	if err != nil {
+		return cerrors.NewInternalServerError("failed to revoke by token", err)
 	}
-
-	if result.RowsAffected == 0 {
-		return cerrors.NewNotFoundError("refresh token not found or already revoked")
-	}
-
 	return nil
 }

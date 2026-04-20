@@ -71,6 +71,12 @@ test-html:
 module:
 	go run ./cmd/generate/main.go -name $(name) -model -dto
 
+# Regenerate GORM CLI field helpers from internal/models into internal/generated.
+# Requires: go install gorm.io/cli/gorm@latest
+gorm-gen:
+	@echo "Generating GORM CLI field helpers..."
+	go generate ./internal/models/...
+
 seed:
 	go run ./database/seeder/main.go
 
