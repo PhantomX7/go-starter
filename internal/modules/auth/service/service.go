@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/PhantomX7/athleton/internal/dto"
+	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/models"
 	authjwt "github.com/PhantomX7/athleton/internal/modules/auth/jwt"
 	logRepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
@@ -68,7 +69,7 @@ func (s *authService) GetMe(ctx context.Context) (*dto.MeResponse, error) {
 		return nil, err
 	}
 
-	user, err := s.userRepo.FindById(ctx, values.UserID, "AdminRole")
+	user, err := s.userRepo.FindById(ctx, values.UserID, generated.User.AdminRole)
 	if err != nil {
 		logger.Error("Failed to find user", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID), zap.Error(err))
 		return nil, err

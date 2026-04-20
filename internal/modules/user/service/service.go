@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/PhantomX7/athleton/internal/dto"
+	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/models"
 	adminrolerepo "github.com/PhantomX7/athleton/internal/modules/admin_role/repository"
 	logRepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
@@ -166,7 +167,7 @@ func (s *userService) FindById(ctx context.Context, userId uint) (*models.User, 
 		zap.Uint("user_id", userId),
 	)
 
-	user, err := s.userRepository.FindById(ctx, userId, "AdminRole")
+	user, err := s.userRepository.FindById(ctx, userId, generated.User.AdminRole)
 	if err != nil {
 		if !errors.Is(err, cerrors.ErrNotFound) {
 			logger.Error("Failed to find user by ID",
