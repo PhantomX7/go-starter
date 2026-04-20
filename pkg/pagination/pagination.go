@@ -11,7 +11,21 @@ import (
 	_ "time/tzdata" // ensures Asia/Jakarta resolves on systems without OS tzdata (e.g. Windows containers)
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
+
+// TypedColumn is anything that can describe itself as a clause.Column. Every
+// scalar helper the GORM CLI generates (field.String / field.Number[T] /
+// field.Bool / field.Time / field.Bytes / field.Field[T]) satisfies this via
+// its Column() method, so callers can write
+//
+//	Column: generated.User.Email
+//
+// instead of Field: "email" — a rename in internal/models breaks the filter
+// registry at compile time after the next `make gorm-gen`.
+type TypedColumn interface {
+	Column() clause.Column
+}
 
 // Defensive caps to keep a single request's parse work bounded. Requests that
 // exceed these are rejected — a caller sending ?sort=a,b,…×100_000 would
@@ -138,19 +152,63 @@ func isQualifiedIdent(s string) bool {
 // a wildcard. Used together with the "ESCAPE '\'" clause.
 var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
-// FilterConfig defines filterable field configuration
+// FilterConfig defines filterable field configuration.
+//
+// Prefer the typed Column / SearchColumns for columns that exist on generated
+// models — a rename in internal/models will break registration at compile
+// time. Use the string Field / SearchFields for joined columns, computed
+// expressions, or anything outside the generator's reach.
+//
+// When both are supplied, the typed value wins.
 type FilterConfig struct {
-	Field        string           // Primary database column
-	SearchFields []string         // Multiple fields for OR search
-	Type         FilterType       // Data type
-	TableName    string           // Optional table prefix
-	Operators    []FilterOperator // Custom allowed operators
-	EnumValues   []string         // Valid enum values
+	// Typed, preferred. Satisfied by generated scalar field helpers
+	// (field.String, field.Number[T], field.Bool, field.Time, ...).
+	Column        TypedColumn
+	SearchColumns []TypedColumn
+
+	// String escape hatch. Keep empty when Column/SearchColumns is set.
+	Field        string
+	SearchFields []string
+
+	Type       FilterType
+	TableName  string
+	Operators  []FilterOperator
+	EnumValues []string
 
 	// resolvedFields caches the output of computeFields. Populated by
 	// AddFilter at registration time; GetFields returns it when set so the
 	// hot path skips the allocation every request.
 	resolvedFields []string
+}
+
+// normalizeTyped promotes typed Column/SearchColumns into the string Field/
+// SearchFields path used by the rest of the engine. Returns a copy so we
+// don't mutate the caller's struct. Also inherits TableName from the typed
+// column's Table when the caller didn't set one explicitly.
+func (fc FilterConfig) normalizeTyped() FilterConfig {
+	if fc.Column != nil {
+		col := fc.Column.Column()
+		fc.Field = col.Name
+		if fc.TableName == "" && col.Table != "" {
+			fc.TableName = col.Table
+		}
+	}
+	if len(fc.SearchColumns) > 0 {
+		fields := make([]string, 0, len(fc.SearchColumns))
+		for _, c := range fc.SearchColumns {
+			if c == nil {
+				continue
+			}
+			col := c.Column()
+			if col.Table != "" && !strings.Contains(col.Name, ".") {
+				fields = append(fields, col.Table+"."+col.Name)
+			} else {
+				fields = append(fields, col.Name)
+			}
+		}
+		fc.SearchFields = fields
+	}
+	return fc
 }
 
 // GetAllowedOperators returns operators for this filter
@@ -194,11 +252,31 @@ func (fc FilterConfig) computeFields() []string {
 	return prefixed
 }
 
-// SortConfig defines sortable field configuration
+// SortConfig defines sortable field configuration.
+//
+// Prefer the typed Column for columns that exist on generated models; use the
+// string Field for joined columns or computed expressions. When both are
+// supplied, the typed value wins.
 type SortConfig struct {
-	Field     string
+	// Typed, preferred.
+	Column TypedColumn
+
+	// String escape hatch. Keep empty when Column is set.
+	Field string
+
 	TableName string
 	Allowed   bool
+}
+
+func (sc SortConfig) normalizeTyped() SortConfig {
+	if sc.Column != nil {
+		col := sc.Column.Column()
+		sc.Field = col.Name
+		if sc.TableName == "" && col.Table != "" {
+			sc.TableName = col.Table
+		}
+	}
+	return sc
 }
 
 // FilterDefinition holds filter and sort configurations
@@ -224,6 +302,7 @@ func NewFilterDefinition() *FilterDefinition {
 // equivalent behaviour to an unknown filter key. The check runs once per
 // startup; the hot path trusts the registry.
 func (fd *FilterDefinition) AddFilter(name string, config FilterConfig) *FilterDefinition {
+	config = config.normalizeTyped()
 	if config.TableName != "" && !isIdent(config.TableName) {
 		return fd
 	}
@@ -246,6 +325,7 @@ func (fd *FilterDefinition) AddFilter(name string, config FilterConfig) *FilterD
 // AddSort adds a sort configuration (chainable). Unsafe identifiers are
 // silently dropped for the same reason as AddFilter.
 func (fd *FilterDefinition) AddSort(name string, config SortConfig) *FilterDefinition {
+	config = config.normalizeTyped()
 	if !isIdent(name) {
 		return fd
 	}

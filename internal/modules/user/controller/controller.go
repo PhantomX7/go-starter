@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/PhantomX7/athleton/internal/dto"
+	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/user/service"
 	"github.com/PhantomX7/athleton/pkg/pagination"
@@ -17,15 +18,15 @@ import (
 func NewUserPagination(conditions map[string][]string) *pagination.Pagination {
 	filterDefinition := pagination.NewFilterDefinition().
 		AddFilter("username", pagination.FilterConfig{
-			Field: "username",
-			Type:  pagination.FilterTypeString,
+			Column: generated.User.Username,
+			Type:   pagination.FilterTypeString,
 		}).
 		AddFilter("email", pagination.FilterConfig{
-			Field: "email",
-			Type:  pagination.FilterTypeString,
+			Column: generated.User.Email,
+			Type:   pagination.FilterTypeString,
 		}).
 		AddFilter("role", pagination.FilterConfig{
-			Field: "role",
+			Field: "role", // enum column is models.UserRole, not a scalar field helper — stay on the string path
 			Type:  pagination.FilterTypeEnum,
 			EnumValues: []string{
 				models.UserRoleAdmin.ToString(),
@@ -33,12 +34,12 @@ func NewUserPagination(conditions map[string][]string) *pagination.Pagination {
 				models.UserRoleReseller.ToString()},
 		}).
 		AddFilter("created_at", pagination.FilterConfig{
-			Field: "created_at",
-			Type:  pagination.FilterTypeDate,
+			Column: generated.Timestamp.CreatedAt,
+			Type:   pagination.FilterTypeDate,
 		}).
-		AddSort("id", pagination.SortConfig{Field: "id", Allowed: true}).
-		AddSort("username", pagination.SortConfig{Field: "username", Allowed: true}).
-		AddSort("created_at", pagination.SortConfig{Field: "created_at", Allowed: true})
+		AddSort("id", pagination.SortConfig{Column: generated.User.ID, Allowed: true}).
+		AddSort("username", pagination.SortConfig{Column: generated.User.Username, Allowed: true}).
+		AddSort("created_at", pagination.SortConfig{Column: generated.Timestamp.CreatedAt, Allowed: true})
 
 	return pagination.NewPagination(conditions, filterDefinition, pagination.PaginationOptions{
 		DefaultLimit: 20,
