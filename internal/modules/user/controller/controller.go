@@ -31,7 +31,7 @@ func NewUserPagination(conditions map[string][]string) *pagination.Pagination {
 			EnumValues: []string{
 				models.UserRoleAdmin.ToString(),
 				models.UserRoleUser.ToString(),
-				models.UserRoleReseller.ToString()},
+			},
 		}).
 		AddFilter("created_at", pagination.FilterConfig{
 			Column: generated.Timestamp.CreatedAt,

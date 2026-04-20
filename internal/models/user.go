@@ -8,10 +8,9 @@ import (
 type UserRole string
 
 const (
-	UserRoleUser     UserRole = "user"
-	UserRoleAdmin    UserRole = "admin"
-	UserRoleRoot     UserRole = "root"
-	UserRoleReseller UserRole = "reseller"
+	UserRoleUser  UserRole = "user"
+	UserRoleAdmin UserRole = "admin"
+	UserRoleRoot  UserRole = "root"
 )
 
 // Note: Removed UserRoleWriter - writers are now admins with specific permissions
