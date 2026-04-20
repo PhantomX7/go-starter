@@ -144,9 +144,15 @@ use `.Unscoped()`.
 
 ## 4g. The generic base repository (`pkg/repository`)
 
-The base CRUD struct `Repository[T]` that every module repository embeds runs
-on GORM's generics API (`gorm.G[T]`) wherever it is cleaner, and stays on the
-classic API where generics genuinely can't express the same semantics:
+`Repository[T]` is the interface every module repository satisfies.
+`BaseRepository[T]` is the concrete struct module repositories embed, always
+constructed via `NewBaseRepository[T](db, opts...)` so the cached entity name
+and slow-query thresholds are populated — a zero-value `BaseRepository` has
+a zero threshold, which would flag every query as slow.
+
+The CRUD methods run on GORM's generics API (`gorm.G[T]`) wherever it is
+cleaner, and stay on the classic API where generics genuinely can't express
+the same semantics:
 
 | Method | API | Why |
 | --- | --- | --- |
@@ -157,9 +163,33 @@ classic API where generics genuinely can't express the same semantics:
 | `Update` | `db.Save(entity)` (classic) | `gorm.G[T]` has no `Save`. Matching it in generics would require reflecting PK columns from the schema manually — GORM already does this in `Save` |
 | `Delete(entity)` | `db.Delete(entity)` (classic) | `gorm.G[T].Delete(ctx)` requires an explicit `Where`; `db.Delete(entity)` extracts the PK from the entity via schema reflection |
 
-`Repository[T].GetDB(ctx)` still returns the transaction-scoped `*gorm.DB`
+`BaseRepository[T].GetDB(ctx)` still returns the transaction-scoped `*gorm.DB`
 when the context carries one, so the transaction manager keeps working
 unchanged.
+
+`FindById` returns `(nil, err)` on **any** error, including not-found, so
+services never accidentally dereference a zero-value entity after an `err != nil`
+check.
+
+### Slow-query thresholds
+
+`NewBaseRepository` accepts functional options for the slow-query thresholds:
+
+```go
+// Defaults: 1s (reads), 500ms (writes).
+r := repository.NewBaseRepository[models.User](db)
+
+// Per-repository overrides — e.g. a hot endpoint that needs tighter alerting.
+r := repository.NewBaseRepository[models.User](db,
+    repository.WithSlowReadThreshold(200*time.Millisecond),
+    repository.WithSlowWriteThreshold(100*time.Millisecond),
+)
+```
+
+Inside custom methods on an embedding repo, call `r.LogSlowRead(ctx, "FindByEmail", duration)`
+or `r.LogSlowWrite(ctx, "RevokeByToken", duration)` so the configured threshold
+is honored; the lower-level `LogSlowQuery(ctx, op, duration, threshold)` is
+kept for the rare one-off threshold.
 
 ### Typed preloads
 

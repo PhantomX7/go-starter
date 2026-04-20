@@ -193,8 +193,12 @@ func TestFindById_NotFoundIsTypedError(t *testing.T) {
 	db := setupDB(t)
 	r := newProductRepo(db)
 
-	_, err := r.FindById(context.Background(), 9999)
+	got, err := r.FindById(context.Background(), 9999)
 	require.Error(t, err)
+
+	// The entity pointer must be nil on error. Returning &zeroValue would
+	// silently bypass nil-checks in callers and point them at an empty struct.
+	assert.Nil(t, got, "FindById must return nil entity on error")
 
 	// Must unwrap both to *AppError (callers switch on this) AND to
 	// ErrNotFound (services call errors.Is(err, cerrors.ErrNotFound)).
