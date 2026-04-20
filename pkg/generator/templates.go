@@ -440,20 +440,18 @@ import (
 
 // {{.PascalCase}}Repository defines the interface for {{.LowerCase}} repository operations
 type {{.PascalCase}}Repository interface {
-	repository.IRepository[models.{{.PascalCase}}]
+	repository.Repository[models.{{.PascalCase}}]
 }
 
 // {{.CamelCase}}Repository implements the {{.PascalCase}}Repository interface
 type {{.CamelCase}}Repository struct {
-	repository.Repository[models.{{.PascalCase}}]
+	repository.BaseRepository[models.{{.PascalCase}}]
 }
 
 // New{{.PascalCase}}Repository creates a new instance of {{.PascalCase}}Repository
 func New{{.PascalCase}}Repository(db *gorm.DB) {{.PascalCase}}Repository {
 	return &{{.CamelCase}}Repository{
-		Repository: repository.Repository[models.{{.PascalCase}}]{
-			DB: db,
-		},
+		BaseRepository: repository.NewBaseRepository[models.{{.PascalCase}}](db),
 	}
 }
 `

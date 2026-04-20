@@ -18,18 +18,18 @@ import (
 
 // UserRepository defines the interface for user repository operations.
 type UserRepository interface {
-	repository.IRepository[models.User]
+	repository.Repository[models.User]
 	FindByUsername(ctx context.Context, username string) (*models.User, error)
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
 }
 
 type userRepository struct {
-	repository.Repository[models.User]
+	repository.BaseRepository[models.User]
 }
 
 func NewUserRepository(db *gorm.DB) UserRepository {
 	return &userRepository{
-		Repository: repository.Repository[models.User]{DB: db},
+		BaseRepository: repository.NewBaseRepository[models.User](db),
 	}
 }
 
@@ -41,7 +41,7 @@ func (r *userRepository) FindByUsername(ctx context.Context, username string) (*
 		Where(generated.User.Username.Eq(username)).
 		First(ctx)
 
-	r.LogSlowQuery(ctx, "FindByUsername", time.Since(start), 500*time.Millisecond)
+	r.LogSlowRead(ctx, "FindByUsername", time.Since(start))
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -64,7 +64,7 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*models
 		Where(generated.User.Email.Eq(normalized)).
 		First(ctx)
 
-	r.LogSlowQuery(ctx, "FindByEmail", time.Since(start), 500*time.Millisecond)
+	r.LogSlowRead(ctx, "FindByEmail", time.Since(start))
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

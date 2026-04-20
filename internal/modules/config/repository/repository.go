@@ -17,17 +17,17 @@ import (
 
 // ConfigRepository defines the interface for config repository operations.
 type ConfigRepository interface {
-	repository.IRepository[models.Config]
+	repository.Repository[models.Config]
 	FindByKey(ctx context.Context, key string) (*models.Config, error)
 }
 
 type configRepository struct {
-	repository.Repository[models.Config]
+	repository.BaseRepository[models.Config]
 }
 
 func NewConfigRepository(db *gorm.DB) ConfigRepository {
 	return &configRepository{
-		Repository: repository.Repository[models.Config]{DB: db},
+		BaseRepository: repository.NewBaseRepository[models.Config](db),
 	}
 }
 
@@ -39,7 +39,7 @@ func (r *configRepository) FindByKey(ctx context.Context, key string) (*models.C
 		Where(generated.Config.Key.Eq(key)).
 		First(ctx)
 
-	r.LogSlowQuery(ctx, "FindByKey", time.Since(start), 500*time.Millisecond)
+	r.LogSlowRead(ctx, "FindByKey", time.Since(start))
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

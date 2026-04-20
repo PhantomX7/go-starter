@@ -38,8 +38,8 @@ type testProduct struct {
 
 // testOwner + testProduct.OwnerID drive the preload tests.
 type testOwner struct {
-	ID       uint `gorm:"primarykey"`
-	Name     string `gorm:"uniqueIndex"`
+	ID       uint          `gorm:"primarykey"`
+	Name     string        `gorm:"uniqueIndex"`
 	Products []testProduct `gorm:"foreignKey:OwnerID"`
 }
 
@@ -47,7 +47,7 @@ type testOwner struct {
 // base, then optionally add bespoke methods. Keeping it here makes failures
 // read like the real call sites.
 type productRepo struct {
-	repository.Repository[testProduct]
+	repository.BaseRepository[testProduct]
 }
 
 // ---- TestMain: init nop logger so LogSlowQuery doesn't nil-panic -----------
@@ -70,7 +70,7 @@ func setupDB(t *testing.T) *gorm.DB {
 }
 
 func newProductRepo(db *gorm.DB) *productRepo {
-	return &productRepo{Repository: repository.Repository[testProduct]{DB: db}}
+	return &productRepo{BaseRepository: repository.NewBaseRepository[testProduct](db)}
 }
 
 func mustSeedProducts(t *testing.T, db *gorm.DB, rows ...testProduct) {
@@ -78,6 +78,30 @@ func mustSeedProducts(t *testing.T, db *gorm.DB, rows ...testProduct) {
 	for i := range rows {
 		require.NoError(t, db.Create(&rows[i]).Error)
 	}
+}
+
+func TestNewBaseRepository_UsesDefaults(t *testing.T) {
+	db := setupDB(t)
+
+	r := repository.NewBaseRepository[testProduct](db)
+
+	assert.Same(t, db, r.DB)
+	assert.Contains(t, r.EntityName(), "testProduct")
+	assert.Equal(t, repository.DefaultSlowReadThreshold, r.SlowReadThreshold())
+	assert.Equal(t, repository.DefaultSlowWriteThreshold, r.SlowWriteThreshold())
+}
+
+func TestNewBaseRepository_AppliesOptions(t *testing.T) {
+	db := setupDB(t)
+
+	r := repository.NewBaseRepository[testProduct](
+		db,
+		repository.WithSlowReadThreshold(2*time.Second),
+		repository.WithSlowWriteThreshold(3*time.Second),
+	)
+
+	assert.Equal(t, 2*time.Second, r.SlowReadThreshold())
+	assert.Equal(t, 3*time.Second, r.SlowWriteThreshold())
 }
 
 // ---- Association / Preload -------------------------------------------------
@@ -134,8 +158,8 @@ func TestCreate_WrapsConstraintViolation(t *testing.T) {
 	db := setupDB(t)
 	ctx := context.Background()
 	ownerRepo := &struct {
-		repository.Repository[testOwner]
-	}{Repository: repository.Repository[testOwner]{DB: db}}
+		repository.BaseRepository[testOwner]
+	}{BaseRepository: repository.NewBaseRepository[testOwner](db)}
 
 	require.NoError(t, ownerRepo.Create(ctx, &testOwner{Name: "alice"}))
 
@@ -194,8 +218,8 @@ func TestFindById_PreloadsAssociation(t *testing.T) {
 
 	// Find the owner and verify the has-many Products preload fires.
 	ownerRepo := &struct {
-		repository.Repository[testOwner]
-	}{Repository: repository.Repository[testOwner]{DB: db}}
+		repository.BaseRepository[testOwner]
+	}{BaseRepository: repository.NewBaseRepository[testOwner](db)}
 
 	// Both typed and string-escape-hatch paths should work. Test the escape
 	// hatch here because we don't have generator output for testOwner.
@@ -375,4 +399,42 @@ func TestLogSlowQuery_SilentUnderThreshold(t *testing.T) {
 	r.LogSlowQuery(context.Background(), "Quick", 10*time.Millisecond, 500*time.Millisecond)
 
 	assert.Empty(t, recorded.All(), "fast calls must not emit slow-query warnings")
+}
+
+func TestLogSlowRead_UsesConfiguredThreshold(t *testing.T) {
+	core, recorded := observer.New(zapcore.WarnLevel)
+	prev := logger.Log
+	logger.Log = zap.New(core)
+	t.Cleanup(func() { logger.Log = prev })
+
+	r := repository.NewBaseRepository[testProduct](
+		setupDB(t),
+		repository.WithSlowReadThreshold(100*time.Millisecond),
+	)
+
+	r.LogSlowRead(context.Background(), "FindAll", 150*time.Millisecond)
+
+	entries := recorded.All()
+	require.Len(t, entries, 1)
+	assert.Equal(t, "FindAll", entries[0].ContextMap()["operation"])
+	assert.Equal(t, 100*time.Millisecond, entries[0].ContextMap()["threshold"])
+}
+
+func TestLogSlowWrite_UsesConfiguredThreshold(t *testing.T) {
+	core, recorded := observer.New(zapcore.WarnLevel)
+	prev := logger.Log
+	logger.Log = zap.New(core)
+	t.Cleanup(func() { logger.Log = prev })
+
+	r := repository.NewBaseRepository[testProduct](
+		setupDB(t),
+		repository.WithSlowWriteThreshold(200*time.Millisecond),
+	)
+
+	r.LogSlowWrite(context.Background(), "Update", 250*time.Millisecond)
+
+	entries := recorded.All()
+	require.Len(t, entries, 1)
+	assert.Equal(t, "Update", entries[0].ContextMap()["operation"])
+	assert.Equal(t, 200*time.Millisecond, entries[0].ContextMap()["threshold"])
 }

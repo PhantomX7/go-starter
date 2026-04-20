@@ -32,7 +32,10 @@ type rawAssoc string
 
 func (r rawAssoc) Name() string { return string(r) }
 
-type IRepository[T any] interface {
+// Repository is the generic CRUD surface every module repository exposes.
+// Module-specific repositories embed *BaseRepository[T] (which satisfies this
+// interface) and compose their own queries on top.
+type Repository[T any] interface {
 	Create(ctx context.Context, entity *T) error
 	Update(ctx context.Context, entity *T) error
 	Delete(ctx context.Context, entity *T) error
@@ -41,23 +44,78 @@ type IRepository[T any] interface {
 	Count(ctx context.Context, pg *pagination.Pagination) (int64, error)
 }
 
-type Repository[T any] struct {
-	DB *gorm.DB
+// Default slow-query thresholds used when the caller does not override them
+// via a WithSlow*Threshold option.
+const (
+	DefaultSlowReadThreshold  = 1 * time.Second
+	DefaultSlowWriteThreshold = 500 * time.Millisecond
+)
+
+// Option tunes a BaseRepository at construction time.
+type Option func(*options)
+
+type options struct {
+	slowReadThreshold  time.Duration
+	slowWriteThreshold time.Duration
+}
+
+// WithSlowReadThreshold overrides the threshold above which read operations
+// (FindById, FindAll, Count) emit a slow-query warning.
+func WithSlowReadThreshold(d time.Duration) Option {
+	return func(o *options) { o.slowReadThreshold = d }
+}
+
+// WithSlowWriteThreshold overrides the threshold above which write operations
+// (Create, Update, Delete) emit a slow-query warning.
+func WithSlowWriteThreshold(d time.Duration) Option {
+	return func(o *options) { o.slowWriteThreshold = d }
+}
+
+// BaseRepository is the concrete implementation module repositories embed.
+// Always construct it via NewBaseRepository — a zero-valued BaseRepository has
+// no entity name and a zero slow threshold, which would flag every call.
+type BaseRepository[T any] struct {
+	DB                 *gorm.DB
+	entityName         string
+	slowReadThreshold  time.Duration
+	slowWriteThreshold time.Duration
+}
+
+// NewBaseRepository wires a BaseRepository[T] with a cached entity name and
+// slow-query thresholds (defaults above, overridable via Option).
+func NewBaseRepository[T any](db *gorm.DB, opts ...Option) BaseRepository[T] {
+	cfg := options{
+		slowReadThreshold:  DefaultSlowReadThreshold,
+		slowWriteThreshold: DefaultSlowWriteThreshold,
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	return BaseRepository[T]{
+		DB:                 db,
+		entityName:         fmt.Sprintf("%T", *new(T)),
+		slowReadThreshold:  cfg.slowReadThreshold,
+		slowWriteThreshold: cfg.slowWriteThreshold,
+	}
 }
 
 // GetDB returns the transaction-scoped *gorm.DB when the context carries one
 // (placed there by libs/transaction_manager), otherwise the default handle.
-func (r *Repository[T]) GetDB(ctx context.Context) *gorm.DB {
+func (r *BaseRepository[T]) GetDB(ctx context.Context) *gorm.DB {
 	if tx := utils.GetTxFromContext(ctx); tx != nil {
 		return tx
 	}
 	return r.DB
 }
 
-// getEntityType returns the underlying T type name for log/error messages.
-func (r *Repository[T]) getEntityType() string {
-	return fmt.Sprintf("%T", *new(T))
-}
+// EntityName returns the cached type name used in error and log messages.
+func (r *BaseRepository[T]) EntityName() string { return r.entityName }
+
+// SlowReadThreshold is the configured read-operation slow-query threshold.
+func (r *BaseRepository[T]) SlowReadThreshold() time.Duration { return r.slowReadThreshold }
+
+// SlowWriteThreshold is the configured write-operation slow-query threshold.
+func (r *BaseRepository[T]) SlowWriteThreshold() time.Duration { return r.slowWriteThreshold }
 
 // ---------------------------------------------------------------------------
 // Implementation notes
@@ -84,15 +142,15 @@ func (r *Repository[T]) getEntityType() string {
 // ---------------------------------------------------------------------------
 
 // Create inserts a new row for entity.
-func (r *Repository[T]) Create(ctx context.Context, entity *T) error {
+func (r *BaseRepository[T]) Create(ctx context.Context, entity *T) error {
 	start := time.Now()
 	err := gorm.G[T](r.GetDB(ctx)).Create(ctx, entity)
 
-	r.LogSlowQuery(ctx, "Create", time.Since(start), 500*time.Millisecond)
+	r.LogSlowWrite(ctx, "Create", time.Since(start))
 
 	if err != nil {
 		return cerrors.NewInternalServerError(
-			fmt.Sprintf("failed to create %s record", r.getEntityType()), err,
+			fmt.Sprintf("failed to create %s record", r.entityName), err,
 		)
 	}
 	return nil
@@ -100,30 +158,30 @@ func (r *Repository[T]) Create(ctx context.Context, entity *T) error {
 
 // Update persists every field of entity using its primary key. We stay on the
 // classic Save here — see the note at the top of this file.
-func (r *Repository[T]) Update(ctx context.Context, entity *T) error {
+func (r *BaseRepository[T]) Update(ctx context.Context, entity *T) error {
 	start := time.Now()
 	err := r.GetDB(ctx).WithContext(ctx).Save(entity).Error
 
-	r.LogSlowQuery(ctx, "Update", time.Since(start), 500*time.Millisecond)
+	r.LogSlowWrite(ctx, "Update", time.Since(start))
 
 	if err != nil {
 		return cerrors.NewInternalServerError(
-			fmt.Sprintf("failed to update %s record", r.getEntityType()), err,
+			fmt.Sprintf("failed to update %s record", r.entityName), err,
 		)
 	}
 	return nil
 }
 
 // Delete removes entity by its primary key. Classic API — see note above.
-func (r *Repository[T]) Delete(ctx context.Context, entity *T) error {
+func (r *BaseRepository[T]) Delete(ctx context.Context, entity *T) error {
 	start := time.Now()
 	err := r.GetDB(ctx).WithContext(ctx).Delete(entity).Error
 
-	r.LogSlowQuery(ctx, "Delete", time.Since(start), 500*time.Millisecond)
+	r.LogSlowWrite(ctx, "Delete", time.Since(start))
 
 	if err != nil {
 		return cerrors.NewInternalServerError(
-			fmt.Sprintf("failed to delete %s record", r.getEntityType()), err,
+			fmt.Sprintf("failed to delete %s record", r.entityName), err,
 		)
 	}
 	return nil
@@ -132,7 +190,9 @@ func (r *Repository[T]) Delete(ctx context.Context, entity *T) error {
 // FindById returns the row with the given id, optionally preloading
 // associations. Pass generated field helpers like generated.User.AdminRole;
 // use repository.Preload("Name") only when the name must be dynamic.
-func (r *Repository[T]) FindById(ctx context.Context, id uint, preloads ...Association) (*T, error) {
+// Returns (nil, err) on any error — including not-found — so callers never
+// dereference a zero-value entity.
+func (r *BaseRepository[T]) FindById(ctx context.Context, id uint, preloads ...Association) (*T, error) {
 	start := time.Now()
 
 	q := gorm.G[T](r.GetDB(ctx)).Where("id = ?", id)
@@ -141,16 +201,16 @@ func (r *Repository[T]) FindById(ctx context.Context, id uint, preloads ...Assoc
 	}
 	entity, err := q.First(ctx)
 
-	r.LogSlowQuery(ctx, "FindById", time.Since(start), 500*time.Millisecond)
+	r.LogSlowRead(ctx, "FindById", time.Since(start))
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return &entity, cerrors.NewNotFoundError(
-				fmt.Sprintf("%s record with id %v not found", r.getEntityType(), id),
+			return nil, cerrors.NewNotFoundError(
+				fmt.Sprintf("%s record with id %v not found", r.entityName, id),
 			)
 		}
-		return &entity, cerrors.NewInternalServerError(
-			fmt.Sprintf("failed to find %s record by id %v", r.getEntityType(), id), err,
+		return nil, cerrors.NewInternalServerError(
+			fmt.Sprintf("failed to find %s record by id %v", r.entityName, id), err,
 		)
 	}
 	return &entity, nil
@@ -158,7 +218,7 @@ func (r *Repository[T]) FindById(ctx context.Context, id uint, preloads ...Assoc
 
 // FindAll runs the configured pagination (filters, order, limit, offset) and
 // returns the results. Classic Scopes(pg.Apply) — see the note above.
-func (r *Repository[T]) FindAll(ctx context.Context, pg *pagination.Pagination) ([]*T, error) {
+func (r *BaseRepository[T]) FindAll(ctx context.Context, pg *pagination.Pagination) ([]*T, error) {
 	entities := make([]*T, 0)
 	start := time.Now()
 
@@ -166,11 +226,11 @@ func (r *Repository[T]) FindAll(ctx context.Context, pg *pagination.Pagination) 
 		Scopes(pg.Apply).
 		Find(&entities).Error
 
-	r.LogSlowQuery(ctx, "FindAll", time.Since(start), 1*time.Second)
+	r.LogSlowRead(ctx, "FindAll", time.Since(start))
 
 	if err != nil {
 		return nil, cerrors.NewInternalServerError(
-			fmt.Sprintf("failed to find %s records", r.getEntityType()), err,
+			fmt.Sprintf("failed to find %s records", r.entityName), err,
 		)
 	}
 	return entities, nil
@@ -178,7 +238,7 @@ func (r *Repository[T]) FindAll(ctx context.Context, pg *pagination.Pagination) 
 
 // Count returns the total row count after the filter portion of pagination.
 // Classic Scopes(pg.ApplyWithoutMeta) — see the note above.
-func (r *Repository[T]) Count(ctx context.Context, pg *pagination.Pagination) (int64, error) {
+func (r *BaseRepository[T]) Count(ctx context.Context, pg *pagination.Pagination) (int64, error) {
 	var count int64
 	start := time.Now()
 
@@ -186,25 +246,44 @@ func (r *Repository[T]) Count(ctx context.Context, pg *pagination.Pagination) (i
 		Scopes(pg.ApplyWithoutMeta).
 		Model(new(T)).Count(&count).Error
 
-	r.LogSlowQuery(ctx, "Count", time.Since(start), 1*time.Second)
+	r.LogSlowRead(ctx, "Count", time.Since(start))
 
 	if err != nil {
 		return 0, cerrors.NewInternalServerError(
-			fmt.Sprintf("failed to count %s records", r.getEntityType()), err,
+			fmt.Sprintf("failed to count %s records", r.entityName), err,
 		)
 	}
 	return count, nil
 }
 
-// LogSlowQuery emits a warning when a single call exceeds threshold.
-func (r *Repository[T]) LogSlowQuery(ctx context.Context, operation string, duration, threshold time.Duration) {
-	if duration > threshold {
-		logger.Warn("Slow query detected",
-			zap.String("request_id", utils.GetRequestIDFromContext(ctx)),
-			zap.String("entity_type", r.getEntityType()),
-			zap.String("operation", operation),
-			zap.Duration("duration", duration),
-			zap.Duration("threshold", threshold),
-		)
+// LogSlowRead warns when duration exceeds the configured read threshold.
+// Embedders call this from their custom read methods.
+func (r *BaseRepository[T]) LogSlowRead(ctx context.Context, operation string, duration time.Duration) {
+	r.logSlow(ctx, operation, duration, r.slowReadThreshold)
+}
+
+// LogSlowWrite warns when duration exceeds the configured write threshold.
+// Embedders call this from their custom write methods.
+func (r *BaseRepository[T]) LogSlowWrite(ctx context.Context, operation string, duration time.Duration) {
+	r.logSlow(ctx, operation, duration, r.slowWriteThreshold)
+}
+
+// LogSlowQuery warns when duration exceeds the caller-provided threshold.
+// Prefer LogSlowRead / LogSlowWrite; use this only when a specific call needs
+// a one-off threshold that differs from the repository default.
+func (r *BaseRepository[T]) LogSlowQuery(ctx context.Context, operation string, duration, threshold time.Duration) {
+	r.logSlow(ctx, operation, duration, threshold)
+}
+
+func (r *BaseRepository[T]) logSlow(ctx context.Context, operation string, duration, threshold time.Duration) {
+	if duration <= threshold {
+		return
 	}
+	logger.Warn("Slow query detected",
+		zap.String("request_id", utils.GetRequestIDFromContext(ctx)),
+		zap.String("entity_type", r.entityName),
+		zap.String("operation", operation),
+		zap.Duration("duration", duration),
+		zap.Duration("threshold", threshold),
+	)
 }

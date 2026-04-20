@@ -9,19 +9,17 @@ import (
 
 // LogRepository defines the interface for log repository operations
 type LogRepository interface {
-	repository.IRepository[models.Log]
+	repository.Repository[models.Log]
 }
 
 // logRepository implements the LogRepository interface
 type logRepository struct {
-	repository.Repository[models.Log]
+	repository.BaseRepository[models.Log]
 }
 
 // NewLogRepository creates a new instance of LogRepository
 func NewLogRepository(db *gorm.DB) LogRepository {
 	return &logRepository{
-		Repository: repository.Repository[models.Log]{
-			DB: db,
-		},
+		BaseRepository: repository.NewBaseRepository[models.Log](db),
 	}
 }

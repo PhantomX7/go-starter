@@ -17,7 +17,7 @@ import (
 
 // RefreshTokenRepository defines the interface for refresh token repository operations.
 type RefreshTokenRepository interface {
-	repository.IRepository[models.RefreshToken]
+	repository.Repository[models.RefreshToken]
 	FindByToken(ctx context.Context, token string) (*models.RefreshToken, error)
 	GetValidCountByUserID(ctx context.Context, userID uint) (int64, error)
 	DeleteInvalidToken(ctx context.Context) error
@@ -27,12 +27,12 @@ type RefreshTokenRepository interface {
 }
 
 type refreshTokenRepository struct {
-	repository.Repository[models.RefreshToken]
+	repository.BaseRepository[models.RefreshToken]
 }
 
 func NewRefreshTokenRepository(db *gorm.DB) RefreshTokenRepository {
 	return &refreshTokenRepository{
-		Repository: repository.Repository[models.RefreshToken]{DB: db},
+		BaseRepository: repository.NewBaseRepository[models.RefreshToken](db),
 	}
 }
 

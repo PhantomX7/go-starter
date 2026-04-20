@@ -19,18 +19,18 @@ import (
 
 // AdminRoleRepository defines the interface for admin role repository operations.
 type AdminRoleRepository interface {
-	repository.IRepository[models.AdminRole]
+	repository.Repository[models.AdminRole]
 	FindByName(ctx context.Context, name string) (*models.AdminRole, error)
 	CountUsersWithRole(ctx context.Context, roleID uint) (int64, error)
 }
 
 type adminRoleRepository struct {
-	repository.Repository[models.AdminRole]
+	repository.BaseRepository[models.AdminRole]
 }
 
 func NewAdminRoleRepository(db *gorm.DB) AdminRoleRepository {
 	return &adminRoleRepository{
-		Repository: repository.Repository[models.AdminRole]{DB: db},
+		BaseRepository: repository.NewBaseRepository[models.AdminRole](db),
 	}
 }
 
@@ -43,7 +43,7 @@ func (r *adminRoleRepository) FindByName(ctx context.Context, name string) (*mod
 		Where(generated.AdminRole.Name.Eq(name)).
 		First(ctx)
 
-	r.LogSlowQuery(ctx, "FindByName", time.Since(start), 500*time.Millisecond)
+	r.LogSlowRead(ctx, "FindByName", time.Since(start))
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -65,7 +65,7 @@ func (r *adminRoleRepository) CountUsersWithRole(ctx context.Context, roleID uin
 		Where(generated.User.AdminRoleID.Eq(roleID)).
 		Count(ctx, "*")
 
-	r.LogSlowQuery(ctx, "CountUsersWithRole", time.Since(start), 500*time.Millisecond)
+	r.LogSlowRead(ctx, "CountUsersWithRole", time.Since(start))
 
 	if err != nil {
 		logger.Error("Failed to count users with admin role",
