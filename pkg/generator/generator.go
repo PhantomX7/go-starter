@@ -4,18 +4,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/template"
 )
 
 // ModuleGenerator handles the generation of module templates
 type ModuleGenerator struct {
-	modulesPath string
+	modulesPath  string
+	registryPath string
 }
 
 // NewModuleGenerator creates a new instance of ModuleGenerator
 func NewModuleGenerator(modulesPath string) *ModuleGenerator {
 	return &ModuleGenerator{
-		modulesPath: modulesPath,
+		modulesPath:  modulesPath,
+		registryPath: filepath.Join(modulesPath, "modules.go"),
 	}
 }
 
@@ -32,6 +35,10 @@ func (g *ModuleGenerator) GenerateModule(moduleName string) error {
 	// Generate all module files
 	if err := g.generateModuleFiles(moduleData); err != nil {
 		return fmt.Errorf("failed to generate module files: %w", err)
+	}
+
+	if err := g.addModuleToRegistry(moduleData); err != nil {
+		return fmt.Errorf("failed to update module registry: %w", err)
 	}
 
 	fmt.Printf("Module '%s' generated successfully!\n", moduleData.PascalCase)
@@ -87,13 +94,29 @@ func (g *ModuleGenerator) generateModuleFiles(data ModuleData) error {
 		return err
 	}
 
+	if err := g.generateFile(filepath.Join(basePath, "routes.go"), routesTemplate, data); err != nil {
+		return err
+	}
+
 	// Generate service
 	if err := g.generateFile(filepath.Join(basePath, "service", "service.go"), serviceTemplate, data); err != nil {
 		return err
 	}
 
 	// Generate repository
-	return g.generateFile(filepath.Join(basePath, "repository", "repository.go"), repositoryTemplate, data)
+	if err := g.generateFile(filepath.Join(basePath, "repository", "repository.go"), repositoryTemplate, data); err != nil {
+		return err
+	}
+
+	if err := g.generateFile(filepath.Join(basePath, "controller", "controller_test.go"), controllerTestTemplate, data); err != nil {
+		return err
+	}
+
+	if err := g.generateFile(filepath.Join(basePath, "service", "service_test.go"), serviceTestTemplate, data); err != nil {
+		return err
+	}
+
+	return g.generateFile(filepath.Join(basePath, "repository", "repository_test.go"), repositoryTestTemplate, data)
 }
 
 // generateFile creates a file from a template
@@ -114,6 +137,48 @@ func (g *ModuleGenerator) generateFile(filePath string, templateContent string, 
 
 	if err := tmpl.Execute(file, data); err != nil {
 		return fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	return nil
+}
+
+func (g *ModuleGenerator) addModuleToRegistry(data ModuleData) error {
+	content, err := os.ReadFile(g.registryPath)
+	if err != nil {
+		return fmt.Errorf("read registry: %w", err)
+	}
+
+	importLine := fmt.Sprintf("\t%s \"github.com/PhantomX7/athleton/internal/modules/%s\"\n", data.SnakeCase, data.SnakeCase)
+	moduleLine := fmt.Sprintf("\t%s.Module,\n", data.SnakeCase)
+
+	updated := string(content)
+	if !strings.Contains(updated, importLine) {
+		marker := "import (\n"
+		index := strings.Index(updated, marker)
+		if index == -1 {
+			return fmt.Errorf("registry import block not found")
+		}
+		insertAt := index + len(marker)
+		updated = updated[:insertAt] + importLine + updated[insertAt:]
+	}
+
+	if !strings.Contains(updated, moduleLine) {
+		marker := "var Module = fx.Options(\n"
+		index := strings.Index(updated, marker)
+		if index == -1 {
+			return fmt.Errorf("registry module block not found")
+		}
+		insertAt := index + len(marker)
+		updated = updated[:insertAt] + moduleLine + updated[insertAt:]
+	}
+
+	if updated == string(content) {
+		return nil
+	}
+
+	// #nosec G306,G703 -- registryPath is derived from the project's internal/modules directory.
+	if err := os.WriteFile(g.registryPath, []byte(updated), 0600); err != nil {
+		return fmt.Errorf("write registry: %w", err)
 	}
 
 	return nil

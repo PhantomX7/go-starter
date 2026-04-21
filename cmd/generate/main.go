@@ -93,8 +93,8 @@ func main() {
 	fmt.Printf("  • Variables: %s (camelCase)\n", moduleData.CamelCase)
 
 	fmt.Println("\n📝 Next steps:")
-	fmt.Println("1. Add the module to your main application")
-	fmt.Println("2. Register routes in your router")
+	fmt.Println("1. Fill in the generated service, repository, and controller logic")
+	fmt.Println("2. Adjust the generated route registrar if the feature is not standard admin CRUD")
 	if generateModel {
 		fmt.Println("3. Run database migrations if needed")
 	}
@@ -125,6 +125,7 @@ func showHelp() {
 	fmt.Println()
 	fmt.Println("The generator automatically detects your input format and applies")
 	fmt.Println("the appropriate case conversions for Go naming conventions.")
+	fmt.Println("New modules are added to internal/modules/modules.go automatically.")
 }
 
 // getProjectRoot finds the project root directory by looking for go.mod

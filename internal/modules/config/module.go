@@ -5,6 +5,7 @@ import (
 	"github.com/PhantomX7/athleton/internal/modules/config/controller"
 	"github.com/PhantomX7/athleton/internal/modules/config/repository"
 	"github.com/PhantomX7/athleton/internal/modules/config/service"
+	"github.com/PhantomX7/athleton/internal/routes"
 
 	"go.uber.org/fx"
 )
@@ -15,5 +16,10 @@ var Module = fx.Options(
 		controller.NewConfigController,
 		service.NewConfigService,
 		repository.NewConfigRepository,
+		fx.Annotate(
+			NewRoutes,
+			fx.As(new(routes.Registrar)),
+			fx.ResultTags(`group:"routes"`),
+		),
 	),
 )

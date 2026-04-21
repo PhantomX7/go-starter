@@ -5,6 +5,7 @@ import (
 	"github.com/PhantomX7/athleton/internal/modules/auth/controller"
 	jwtauth "github.com/PhantomX7/athleton/internal/modules/auth/jwt"
 	"github.com/PhantomX7/athleton/internal/modules/auth/service"
+	"github.com/PhantomX7/athleton/internal/routes"
 
 	"go.uber.org/fx"
 )
@@ -15,5 +16,10 @@ var Module = fx.Options(
 		controller.NewAuthController,
 		service.NewAuthService,
 		jwtauth.NewAuthJWT,
+		fx.Annotate(
+			NewRoutes,
+			fx.As(new(routes.Registrar)),
+			fx.ResultTags(`group:"routes"`),
+		),
 	),
 )

@@ -12,9 +12,17 @@ DATABASE_PASSWORD ?= postgres
 DATABASE_DATABASE ?= athleton
 DATABASE_SSLMODE  ?= disable
 name    		  ?= new_migration
+module_name       ?=
+model             ?= 1
+dto               ?= 1
 
 # Construct database URL for Atlas
 DATABASE_URL := "$(DATABASE_DRIVER)://$(DATABASE_USERNAME):$(DATABASE_PASSWORD)@$(DATABASE_HOST):$(DATABASE_PORT)/$(DATABASE_DATABASE)?sslmode=$(DATABASE_SSLMODE)"
+GENERATOR_FLAGS := $(if $(filter 1 true yes,$(model)),-model,) $(if $(filter 1 true yes,$(dto)),-dto,)
+
+.PHONY: dep vendor dev run migrate-create migrate-up migrate-down migrate-status migrate-hash \
+	debug swag swag-format lint lint-fix fmt lint-install hooks-install hooks-uninstall \
+	hooks-run test test-html module generate-module gorm-gen seed build
 
 dep:
 	go mod tidy
@@ -96,8 +104,16 @@ test-html:
 	go test $(go list ./... | grep -v /mock/) -coverprofile cp.out
 	go tool cover -html=cp.out
 
-module:
-	go run ./cmd/generate/main.go -name $(name) -model -dto
+# Usage: make generate-module module_name=inventory_item [model=1] [dto=1]
+generate-module:
+	@if [ -z "$(module_name)" ]; then \
+		echo "Usage: make generate-module module_name=<feature_name> [model=1] [dto=1]"; \
+		exit 1; \
+	fi
+	@echo "Generating module '$(module_name)' with flags: $(GENERATOR_FLAGS)"
+	go run ./cmd/generate/main.go -name $(module_name) $(GENERATOR_FLAGS)
+
+module: generate-module
 
 # Regenerate GORM CLI field helpers from internal/models into internal/generated.
 # Requires: go install gorm.io/cli/gorm@latest

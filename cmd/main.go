@@ -7,18 +7,11 @@ import (
 	_ "github.com/PhantomX7/athleton/docs"
 	"github.com/PhantomX7/athleton/internal/bootstrap"
 	"github.com/PhantomX7/athleton/internal/middlewares"
+	"github.com/PhantomX7/athleton/internal/modules"
 	"github.com/PhantomX7/athleton/internal/routes"
 	"github.com/PhantomX7/athleton/libs"
 
 	"github.com/PhantomX7/athleton/pkg/validator"
-
-	"github.com/PhantomX7/athleton/internal/modules/admin_role"
-	"github.com/PhantomX7/athleton/internal/modules/auth"
-	"github.com/PhantomX7/athleton/internal/modules/config"
-	"github.com/PhantomX7/athleton/internal/modules/cron"
-	logs "github.com/PhantomX7/athleton/internal/modules/log"
-	"github.com/PhantomX7/athleton/internal/modules/refresh_token"
-	"github.com/PhantomX7/athleton/internal/modules/user"
 
 	"go.uber.org/fx"
 )
@@ -54,13 +47,7 @@ func main() {
 			bootstrap.SetupServer,
 		),
 		libs.Module, // provide libs
-		admin_role.Module,
-		auth.Module,
-		config.Module,
-		cron.Module,
-		logs.Module,
-		refresh_token.Module,
-		user.Module,
+		modules.Module,
 		fx.Invoke(
 			bootstrap.RegisterLoggerLifecycle, // Register logger lifecycle for graceful shutdown
 			routes.RegisterRoutes,
