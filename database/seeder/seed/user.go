@@ -10,6 +10,8 @@ import (
 	"gorm.io/gorm"
 )
 
+//nolint:revive // SeedUsers is kept for consistency with the seeder entrypoint naming.
+// SeedUsers inserts the default root and admin users when they do not already exist.
 func SeedUsers(db *gorm.DB) error {
 	users := []models.User{
 		{

@@ -1,4 +1,4 @@
-// internal/modules/admin_role/controller/controller.go
+// Package controller exposes HTTP handlers for admin-role management.
 package controller
 
 import (
@@ -18,7 +18,7 @@ type AdminRoleController interface {
 	Create(ctx *gin.Context)
 	Update(ctx *gin.Context)
 	Delete(ctx *gin.Context)
-	FindById(ctx *gin.Context)
+	FindByID(ctx *gin.Context)
 	GetAllPermissions(ctx *gin.Context)
 }
 
@@ -77,7 +77,7 @@ func (c *adminRoleController) Index(ctx *gin.Context) {
 		newAdminRolePagination(ctx.Request.URL.Query()),
 	)
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 	ctx.JSON(http.StatusOK, response.BuildPaginationResponse(roles, meta))
@@ -97,13 +97,13 @@ func (c *adminRoleController) Index(ctx *gin.Context) {
 func (c *adminRoleController) Create(ctx *gin.Context) {
 	var req dto.CreateAdminRoleRequest
 	if err := ctx.ShouldBind(&req); err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypeBind)
+		_ = ctx.Error(err).SetType(gin.ErrorTypeBind)
 		return
 	}
 
 	adminRole, err := c.adminRoleService.Create(ctx.Request.Context(), &req)
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 
@@ -126,19 +126,19 @@ func (c *adminRoleController) Create(ctx *gin.Context) {
 func (c *adminRoleController) Update(ctx *gin.Context) {
 	roleID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 
 	var req dto.UpdateAdminRoleRequest
 	if err := ctx.ShouldBind(&req); err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypeBind)
+		_ = ctx.Error(err).SetType(gin.ErrorTypeBind)
 		return
 	}
 
 	adminRole, err := c.adminRoleService.Update(ctx.Request.Context(), uint(roleID), &req)
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 
@@ -160,19 +160,19 @@ func (c *adminRoleController) Update(ctx *gin.Context) {
 func (c *adminRoleController) Delete(ctx *gin.Context) {
 	roleID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 
 	if err := c.adminRoleService.Delete(ctx.Request.Context(), uint(roleID)); err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 
 	ctx.JSON(http.StatusOK, response.BuildResponseSuccess("Admin role deleted successfully", nil))
 }
 
-// FindById handles fetching a single admin role by ID
+// FindByID handles fetching a single admin role by ID
 // @Summary      Get admin role by ID
 // @Description  Get an admin role's details including permissions
 // @Tags         admin-role
@@ -183,16 +183,16 @@ func (c *adminRoleController) Delete(ctx *gin.Context) {
 // @Failure      404  {object}  response.Response
 // @Failure      500  {object}  response.Response
 // @Router       /admin/admin-role/{id} [get]
-func (c *adminRoleController) FindById(ctx *gin.Context) {
+func (c *adminRoleController) FindByID(ctx *gin.Context) {
 	roleID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 
-	adminRole, err := c.adminRoleService.FindById(ctx.Request.Context(), uint(roleID))
+	adminRole, err := c.adminRoleService.FindByID(ctx.Request.Context(), uint(roleID))
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 

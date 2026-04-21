@@ -1,4 +1,4 @@
-// pkg/constants/permissions/permissions.go
+// Package permissions defines the permission registry used by authorization checks.
 package permissions
 
 // Permission represents a single permission string (format: "resource:action")

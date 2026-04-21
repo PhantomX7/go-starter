@@ -65,7 +65,7 @@ func (g *ModuleGenerator) createDirectoryStructure(moduleName string) error {
 	}
 
 	for _, dir := range directories {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0750); err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
 	}
@@ -93,11 +93,7 @@ func (g *ModuleGenerator) generateModuleFiles(data ModuleData) error {
 	}
 
 	// Generate repository
-	if err := g.generateFile(filepath.Join(basePath, "repository", "repository.go"), repositoryTemplate, data); err != nil {
-		return err
-	}
-
-	return nil
+	return g.generateFile(filepath.Join(basePath, "repository", "repository.go"), repositoryTemplate, data)
 }
 
 // generateFile creates a file from a template
@@ -107,11 +103,14 @@ func (g *ModuleGenerator) generateFile(filePath string, templateContent string, 
 		return fmt.Errorf("failed to parse template: %w", err)
 	}
 
+	// #nosec G304 -- generator writes a caller-selected output file inside the workspace.
 	file, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to create file %s: %w", filePath, err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	if err := tmpl.Execute(file, data); err != nil {
 		return fmt.Errorf("failed to execute template: %w", err)

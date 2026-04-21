@@ -31,9 +31,9 @@ func (m *mockLogService) Index(ctx context.Context, pg *pagination.Pagination) (
 	return m.indexFn(ctx, pg)
 }
 
-func (m *mockLogService) FindById(ctx context.Context, logID uint) (*models.Log, error) {
+func (m *mockLogService) FindByID(ctx context.Context, logID uint) (*models.Log, error) {
 	if m.findByIDFn == nil {
-		panic("unexpected FindById call")
+		panic("unexpected FindByID call")
 	}
 	return m.findByIDFn(ctx, logID)
 }
@@ -71,7 +71,7 @@ func TestLogControllerIndexReturnsPaginatedResponse(t *testing.T) {
 	ctrl := controller.NewLogController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	req := httptest.NewRequest(http.MethodGet, "/logs?limit=5&offset=10&sort=created_at+asc", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/logs?limit=5&offset=10&sort=created_at+asc", nil)
 	ctx.Request = req
 
 	ctrl.Index(ctx)
@@ -121,11 +121,11 @@ func TestLogControllerFindByIDReturnsSuccessResponse(t *testing.T) {
 	ctrl := controller.NewLogController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	req := httptest.NewRequest(http.MethodGet, "/log/7", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/log/7", nil)
 	ctx.Request = req
 	ctx.Params = gin.Params{{Key: "id", Value: "7"}}
 
-	ctrl.FindById(ctx)
+	ctrl.FindByID(ctx)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
@@ -146,7 +146,7 @@ func TestLogControllerFindByIDRejectsInvalidParam(t *testing.T) {
 
 	svc := &mockLogService{
 		findByIDFn: func(context.Context, uint) (*models.Log, error) {
-			t.Fatal("FindById should not be called for invalid ids")
+			t.Fatal("FindByID should not be called for invalid ids")
 			return nil, nil
 		},
 	}
@@ -154,11 +154,11 @@ func TestLogControllerFindByIDRejectsInvalidParam(t *testing.T) {
 	ctrl := controller.NewLogController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	req := httptest.NewRequest(http.MethodGet, "/log/not-a-number", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/log/not-a-number", nil)
 	ctx.Request = req
 	ctx.Params = gin.Params{{Key: "id", Value: "not-a-number"}}
 
-	ctrl.FindById(ctx)
+	ctrl.FindByID(ctx)
 
 	require.Len(t, ctx.Errors, 1)
 	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
@@ -179,7 +179,7 @@ func TestLogControllerIndexPropagatesServiceError(t *testing.T) {
 	ctrl := controller.NewLogController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	req := httptest.NewRequest(http.MethodGet, "/logs", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/logs", nil)
 	ctx.Request = req
 
 	ctrl.Index(ctx)

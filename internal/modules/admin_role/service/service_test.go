@@ -57,9 +57,9 @@ func (m *mockAdminRoleRepository) Delete(ctx context.Context, entity *models.Adm
 	return m.deleteFn(ctx, entity)
 }
 
-func (m *mockAdminRoleRepository) FindById(ctx context.Context, id uint, preloads ...repository.Association) (*models.AdminRole, error) {
+func (m *mockAdminRoleRepository) FindByID(ctx context.Context, id uint, preloads ...repository.Association) (*models.AdminRole, error) {
 	if m.findByIDFn == nil {
-		panic("unexpected FindById call")
+		panic("unexpected FindByID call")
 	}
 	return m.findByIDFn(ctx, id, preloads...)
 }
@@ -113,8 +113,8 @@ func (m *mockLogRepository) Delete(context.Context, *models.Log) error {
 	panic("unexpected Delete call")
 }
 
-func (m *mockLogRepository) FindById(context.Context, uint, ...repository.Association) (*models.Log, error) {
-	panic("unexpected FindById call")
+func (m *mockLogRepository) FindByID(context.Context, uint, ...repository.Association) (*models.Log, error) {
+	panic("unexpected FindByID call")
 }
 
 func (m *mockLogRepository) FindAll(context.Context, *pagination.Pagination) ([]*models.Log, error) {
@@ -341,7 +341,7 @@ func TestAdminRoleServiceFindByIDReturnsRoleWithPermissions(t *testing.T) {
 	svc := service.NewAdminRoleService(repo, &mockLogRepository{}, casbinClient)
 	ctx := utils.SetRequestIDToContext(context.Background(), "req-3")
 
-	role, err := svc.FindById(ctx, 4)
+	role, err := svc.FindByID(ctx, 4)
 
 	require.NoError(t, err)
 	require.NotNil(t, role)

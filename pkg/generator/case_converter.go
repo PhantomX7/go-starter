@@ -1,3 +1,4 @@
+// Package generator contains the code-generation helpers used by the module generator.
 package generator
 
 import (

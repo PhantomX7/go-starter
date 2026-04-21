@@ -1,4 +1,4 @@
-// internal/modules/config/repository/config_repository.go
+// Package repository contains data-access code for the config module.
 package repository
 
 import (
@@ -25,6 +25,7 @@ type configRepository struct {
 	repository.BaseRepository[models.Config]
 }
 
+// NewConfigRepository builds a ConfigRepository backed by GORM.
 func NewConfigRepository(db *gorm.DB) ConfigRepository {
 	return &configRepository{
 		BaseRepository: repository.NewBaseRepository[models.Config](db),

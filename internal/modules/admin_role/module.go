@@ -1,3 +1,4 @@
+// Package admin_role wires the admin-role module into the application container.
 package admin_role
 
 import (
@@ -8,6 +9,7 @@ import (
 	"go.uber.org/fx"
 )
 
+// Module registers the admin-role module dependencies.
 var Module = fx.Options(
 	fx.Provide(
 		controller.NewAdminRoleController,

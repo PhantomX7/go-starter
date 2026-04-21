@@ -1,3 +1,4 @@
+// Package response provides common API response envelopes.
 package response
 
 import (
@@ -6,6 +7,7 @@ import (
 	"github.com/PhantomX7/athleton/pkg/utils"
 )
 
+// Response is the standard API response envelope.
 type Response struct {
 	Status  bool   `json:"status"`
 	Message string `json:"message"`
@@ -14,7 +16,7 @@ type Response struct {
 	Meta    any    `json:"meta,omitempty"`
 }
 
-// Response structures
+// Meta holds pagination metadata for list responses.
 type Meta struct {
 	Limit  int   `json:"limit"`
 	Offset int   `json:"offset"`
@@ -22,10 +24,12 @@ type Meta struct {
 	Facet  any   `json:"facet,omitempty"`
 }
 
+// ModelResponse is implemented by types that can convert themselves into API DTOs.
 type ModelResponse[T any] interface {
 	ToResponse() T
 }
 
+// BuildResponseSuccess wraps a successful result payload.
 func BuildResponseSuccess(message string, data any) Response {
 	res := Response{
 		Status:  true,
@@ -36,6 +40,7 @@ func BuildResponseSuccess(message string, data any) Response {
 	return res
 }
 
+// BuildResponseFailed wraps a failed result payload.
 func BuildResponseFailed(message string) Response {
 	res := Response{
 		Status:  false,
@@ -45,6 +50,7 @@ func BuildResponseFailed(message string) Response {
 	return res
 }
 
+// BuildResponseValidationError wraps a validation failure payload.
 func BuildResponseValidationError(err validator.ValidationErrors) Response {
 	res := Response{
 		Status:  false,
@@ -55,6 +61,7 @@ func BuildResponseValidationError(err validator.ValidationErrors) Response {
 	return res
 }
 
+// BuildPaginationResponse wraps a paginated payload and its metadata.
 func BuildPaginationResponse[Data ModelResponse[T], T any](data []Data, meta Meta) Response {
 	res := Response{
 		Status:  true,

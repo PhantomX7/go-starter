@@ -30,7 +30,7 @@ import (
 type UserService interface {
 	Index(ctx context.Context, req *pagination.Pagination) ([]*models.User, response.Meta, error)
 	Update(ctx context.Context, userId uint, req *dto.UserUpdateRequest) (*models.User, error)
-	FindById(ctx context.Context, userId uint) (*models.User, error)
+	FindByID(ctx context.Context, userID uint) (*models.User, error)
 	AssignAdminRole(ctx context.Context, userId uint, req *dto.UserAssignAdminRoleRequest) (*models.User, error)
 	ChangePassword(ctx context.Context, userId uint, req *dto.ChangeAdminPasswordRequest) error
 }
@@ -118,7 +118,7 @@ func (s *userService) Update(ctx context.Context, userId uint, req *dto.UserUpda
 		zap.Uint("user_id", userId),
 	)
 
-	user, err := s.userRepository.FindById(ctx, userId)
+	user, err := s.userRepository.FindByID(ctx, userId)
 	if err != nil {
 		logger.Error("Failed to find user for update",
 			zap.String("request_id", requestID),
@@ -159,21 +159,21 @@ func (s *userService) Update(ctx context.Context, userId uint, req *dto.UserUpda
 	return user, nil
 }
 
-// FindById implements UserService.
-func (s *userService) FindById(ctx context.Context, userId uint) (*models.User, error) {
+// FindByID implements UserService.
+func (s *userService) FindByID(ctx context.Context, userID uint) (*models.User, error) {
 	requestID := utils.GetRequestIDFromContext(ctx)
 
 	logger.Debug("Finding user by ID",
 		zap.String("request_id", requestID),
-		zap.Uint("user_id", userId),
+		zap.Uint("user_id", userID),
 	)
 
-	user, err := s.userRepository.FindById(ctx, userId, generated.User.AdminRole)
+	user, err := s.userRepository.FindByID(ctx, userID, generated.User.AdminRole)
 	if err != nil {
 		if !errors.Is(err, cerrors.ErrNotFound) {
 			logger.Error("Failed to find user by ID",
 				zap.String("request_id", requestID),
-				zap.Uint("user_id", userId),
+				zap.Uint("user_id", userID),
 				zap.Error(err),
 			)
 		}
@@ -186,7 +186,7 @@ func (s *userService) FindById(ctx context.Context, userId uint) (*models.User, 
 
 	logger.Debug("Found user by ID successfully",
 		zap.String("request_id", requestID),
-		zap.Uint("user_id", userId),
+		zap.Uint("user_id", userID),
 	)
 
 	return user, nil
@@ -203,7 +203,7 @@ func (s *userService) AssignAdminRole(ctx context.Context, userId uint, req *dto
 	)
 
 	// Find user
-	user, err := s.userRepository.FindById(ctx, userId)
+	user, err := s.userRepository.FindByID(ctx, userId)
 	if err != nil {
 		logger.Error("Failed to find user",
 			zap.String("request_id", requestID),
@@ -256,7 +256,7 @@ func (s *userService) ChangePassword(ctx context.Context, userId uint, req *dto.
 		zap.Uint("target_user_id", userId),
 	)
 
-	user, err := s.userRepository.FindById(ctx, userId)
+	user, err := s.userRepository.FindByID(ctx, userId)
 	if err != nil {
 		logger.Error("Failed to find target user",
 			zap.String("request_id", requestID),

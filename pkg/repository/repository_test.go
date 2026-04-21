@@ -111,7 +111,7 @@ func TestPreload_WrapsLiteralName(t *testing.T) {
 	assert.Equal(t, "Products", a.Name(), "Preload(name).Name() must round-trip the input")
 
 	// And it must satisfy the Association interface statically so it can be
-	// passed to FindById. This assignment is the assertion.
+	// passed to FindByID. This assignment is the assertion.
 	var _ = a
 }
 
@@ -171,7 +171,7 @@ func TestCreate_WrapsConstraintViolation(t *testing.T) {
 	assert.Contains(t, app.Message, "failed to create", "message should identify the failed op")
 }
 
-// ---- FindById --------------------------------------------------------------
+// ---- FindByID --------------------------------------------------------------
 
 func TestFindById_HappyPath(t *testing.T) {
 	db := setupDB(t)
@@ -182,7 +182,7 @@ func TestFindById_HappyPath(t *testing.T) {
 	seed := &testProduct{Name: "widget", Price: 10}
 	require.NoError(t, db.Create(seed).Error)
 
-	got, err := r.FindById(ctx, seed.ID)
+	got, err := r.FindByID(ctx, seed.ID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, seed.ID, got.ID)
@@ -193,12 +193,12 @@ func TestFindById_NotFoundIsTypedError(t *testing.T) {
 	db := setupDB(t)
 	r := newProductRepo(db)
 
-	got, err := r.FindById(context.Background(), 9999)
+	got, err := r.FindByID(context.Background(), 9999)
 	require.Error(t, err)
 
 	// The entity pointer must be nil on error. Returning &zeroValue would
 	// silently bypass nil-checks in callers and point them at an empty struct.
-	assert.Nil(t, got, "FindById must return nil entity on error")
+	assert.Nil(t, got, "FindByID must return nil entity on error")
 
 	// Must unwrap both to *AppError (callers switch on this) AND to
 	// ErrNotFound (services call errors.Is(err, cerrors.ErrNotFound)).
@@ -227,7 +227,7 @@ func TestFindById_PreloadsAssociation(t *testing.T) {
 
 	// Both typed and string-escape-hatch paths should work. Test the escape
 	// hatch here because we don't have generator output for testOwner.
-	got, err := ownerRepo.FindById(ctx, owner.ID, repository.Preload("Products"))
+	got, err := ownerRepo.FindByID(ctx, owner.ID, repository.Preload("Products"))
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Len(t, got.Products, 2, "preloaded Products should contain both seeded rows")
@@ -267,7 +267,7 @@ func TestDelete_SoftDeletesWhenDeletedAtPresent(t *testing.T) {
 	require.NoError(t, r.Delete(ctx, &p))
 
 	// Default scope hides the row.
-	_, err := r.FindById(ctx, p.ID)
+	_, err := r.FindByID(ctx, p.ID)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, cerrors.ErrNotFound))
 

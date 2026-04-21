@@ -1,3 +1,4 @@
+// Package bootstrap wires the application's shared runtime dependencies.
 package bootstrap
 
 import (
@@ -29,8 +30,8 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
-// SetUpLogger initializes the logger before fx starts
-// This should be called in main() before fx.New()
+// SetUpLogger initializes the logger before fx starts.
+// This should be called in main() before fx.New().
 func SetUpLogger() error {
 	cfg := config.Get()
 	logConfig := cfg.GetLoggerConfig()
@@ -58,8 +59,8 @@ func SetUpLogger() error {
 	return nil
 }
 
-// RegisterLoggerLifecycle registers logger lifecycle hooks with fx
-// This ensures proper cleanup on shutdown
+// RegisterLoggerLifecycle registers logger lifecycle hooks with fx.
+// This ensures proper cleanup on shutdown.
 func RegisterLoggerLifecycle(lc fx.Lifecycle) {
 	lc.Append(fx.Hook{
 		OnStop: func(ctx context.Context) error {
@@ -112,7 +113,9 @@ func SetupServer(m *middlewares.Middleware, cv cvalidator.CustomValidator) *gin.
 	server.GET("/doc/doc.json", func(ctx *gin.Context) {
 		ctx.Writer.Header().Set("Content-Type", "application/json")
 		ctx.Writer.WriteHeader(200)
-		ctx.Writer.Write([]byte(docs.SwaggerInfo.ReadDoc()))
+		if _, err := ctx.Writer.Write([]byte(docs.SwaggerInfo.ReadDoc())); err != nil {
+			logger.Error("Failed to write swagger document", zap.Error(err))
+		}
 	})
 
 	// register static files
@@ -166,6 +169,7 @@ func StartServer(lc fx.Lifecycle, server *gin.Engine) {
 	})
 }
 
+// StartCron starts and stops the shared cron scheduler with the application lifecycle.
 func StartCron(lc fx.Lifecycle, cron gocron.Scheduler) {
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
@@ -198,6 +202,7 @@ func SetUpConfig() error {
 	return nil
 }
 
+// SetUpDatabase opens the shared GORM database connection and registers lifecycle hooks.
 func SetUpDatabase(lc fx.Lifecycle) (*gorm.DB, error) {
 	cfg := config.Get()
 
@@ -243,7 +248,7 @@ func SetUpDatabase(lc fx.Lifecycle) (*gorm.DB, error) {
 			OnStart: func(ctx context.Context) error {
 				logger.Info("Connecting to database")
 
-				if err := sqlDB.Ping(); err != nil {
+				if err := sqlDB.PingContext(ctx); err != nil {
 					logger.Error("Failed to ping database", zap.Error(err))
 					return err
 				}
@@ -279,6 +284,7 @@ func registerValidators(validators map[string]validator.Func) {
 	}
 }
 
+// ConfigureConnectionPool applies the default connection-pool settings for the application database.
 func ConfigureConnectionPool(sqlDB *sql.DB) {
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)

@@ -40,11 +40,14 @@ func (g *DTOGenerator) generateDTOFile(filePath string, templateContent string, 
 		return fmt.Errorf("failed to parse DTO template: %w", err)
 	}
 
+	// #nosec G304 -- generator writes a caller-selected output file inside the workspace.
 	file, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to create DTO file %s: %w", filePath, err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	if err := tmpl.Execute(file, data); err != nil {
 		return fmt.Errorf("failed to execute DTO template: %w", err)

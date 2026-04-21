@@ -1,4 +1,4 @@
-// libs/casbin/casbin.go
+// Package casbin provides authorization helpers backed by Casbin.
 package casbin
 
 import (
@@ -218,7 +218,7 @@ func (c *client) DeleteRole(roleID uint) error {
 	return nil
 }
 
-// Helper function to parse role ID from subject string
+// ParseRoleIDFromSubject converts a Casbin role subject back into its numeric role ID.
 func ParseRoleIDFromSubject(subject string) (uint, error) {
 	if !strings.HasPrefix(subject, "role:") {
 		return 0, fmt.Errorf("invalid subject format: %s", subject)

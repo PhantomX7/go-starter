@@ -72,7 +72,7 @@ func TestConfigControllerIndexReturnsPaginatedResponse(t *testing.T) {
 	ctrl := controller.NewConfigController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/config?limit=3&offset=6&sort=key+asc", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/config?limit=3&offset=6&sort=key+asc", nil)
 
 	ctrl.Index(ctx)
 
@@ -107,7 +107,8 @@ func TestConfigControllerUpdateReturnsSuccessResponse(t *testing.T) {
 	ctrl := controller.NewConfigController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(
+	ctx.Request = httptest.NewRequestWithContext(
+		context.Background(),
 		http.MethodPut,
 		"/config/5",
 		bytes.NewBufferString(`{"value":"New Value"}`),
@@ -142,7 +143,7 @@ func TestConfigControllerUpdateRejectsInvalidID(t *testing.T) {
 	ctrl := controller.NewConfigController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodPut, "/config/not-a-number", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/config/not-a-number", nil)
 	ctx.Params = gin.Params{{Key: "id", Value: "not-a-number"}}
 
 	ctrl.Update(ctx)
@@ -168,7 +169,7 @@ func TestConfigControllerFindByKeyReturnsSuccessResponse(t *testing.T) {
 	ctrl := controller.NewConfigController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/config/key/timezone", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/config/key/timezone", nil)
 	ctx.Params = gin.Params{{Key: "key", Value: "timezone"}}
 
 	ctrl.FindByKey(ctx)
@@ -193,7 +194,7 @@ func TestConfigControllerIndexPropagatesServiceError(t *testing.T) {
 	ctrl := controller.NewConfigController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/config", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/config", nil)
 
 	ctrl.Index(ctx)
 

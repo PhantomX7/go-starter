@@ -1,3 +1,4 @@
+// Package service contains the cron module business logic.
 package service
 
 import (
@@ -12,6 +13,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// CronService exposes the background cleanup jobs run by the scheduler.
 type CronService interface {
 	ClearRefreshToken(ctx context.Context) error
 	RunAllCleanupJobs(ctx context.Context) error
@@ -22,6 +24,7 @@ type cronService struct {
 	refreshTokenRepo repository.RefreshTokenRepository
 }
 
+// NewCronService builds a CronService from its dependencies.
 func NewCronService(
 	db *gorm.DB,
 	refreshTokenRepo repository.RefreshTokenRepository,

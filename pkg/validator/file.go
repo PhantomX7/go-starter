@@ -35,9 +35,9 @@
 package validator
 
 import (
-	"fmt"
 	"mime/multipart"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
@@ -79,7 +79,11 @@ func (cv customValidator) FileSize() validator.Func {
 
 		// You can get the max size from tag parameter
 		if fl.Param() != "" {
-			fmt.Sscanf(fl.Param(), "%d", &maxSize)
+			parsed, err := strconv.ParseInt(fl.Param(), 10, 64)
+			if err != nil {
+				return false
+			}
+			maxSize = parsed
 		}
 
 		return file.Size <= maxSize && file.Size > 0

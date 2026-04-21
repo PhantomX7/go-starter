@@ -1,3 +1,4 @@
+// Package auth wires the authentication module into the application container.
 package auth
 
 import (
@@ -8,6 +9,7 @@ import (
 	"go.uber.org/fx"
 )
 
+// Module registers the authentication module dependencies.
 var Module = fx.Options(
 	fx.Provide(
 		controller.NewAuthController,

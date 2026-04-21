@@ -42,9 +42,9 @@ func (m *mockUserService) Update(ctx context.Context, userID uint, req *dto.User
 	return m.updateFn(ctx, userID, req)
 }
 
-func (m *mockUserService) FindById(ctx context.Context, userID uint) (*models.User, error) {
+func (m *mockUserService) FindByID(ctx context.Context, userID uint) (*models.User, error) {
 	if m.findByIDFn == nil {
-		panic("unexpected FindById call")
+		panic("unexpected FindByID call")
 	}
 	return m.findByIDFn(ctx, userID)
 }
@@ -87,7 +87,7 @@ func TestUserControllerIndexReturnsPaginatedResponse(t *testing.T) {
 	ctrl := controller.NewUserController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/user?limit=2&offset=3&sort=username+asc", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/user?limit=2&offset=3&sort=username+asc", nil)
 
 	ctrl.Index(ctx)
 
@@ -121,7 +121,7 @@ func TestUserControllerUpdateReturnsSuccessResponse(t *testing.T) {
 	ctrl := controller.NewUserController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodPut, "/user/5", bytes.NewBufferString(`{"name":"Alice Updated"}`))
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/user/5", bytes.NewBufferString(`{"name":"Alice Updated"}`))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 	ctx.Params = gin.Params{{Key: "id", Value: "5"}}
 
@@ -154,10 +154,10 @@ func TestUserControllerFindByIDReturnsSuccessResponse(t *testing.T) {
 	ctrl := controller.NewUserController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/user/7", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/user/7", nil)
 	ctx.Params = gin.Params{{Key: "id", Value: "7"}}
 
-	ctrl.FindById(ctx)
+	ctrl.FindByID(ctx)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var body map[string]any
@@ -178,7 +178,7 @@ func TestUserControllerAssignAdminRoleRejectsInvalidID(t *testing.T) {
 	ctrl := controller.NewUserController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/admin/user/bad/admin-role", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/user/bad/admin-role", nil)
 	ctx.Params = gin.Params{{Key: "id", Value: "bad"}}
 
 	ctrl.AssignAdminRole(ctx)
@@ -202,7 +202,7 @@ func TestUserControllerChangePasswordReturnsSuccessResponse(t *testing.T) {
 	ctrl := controller.NewUserController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/admin/user/9/change-password", bytes.NewBufferString(`{"new_password":"new-password"}`))
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/user/9/change-password", bytes.NewBufferString(`{"new_password":"new-password"}`))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 	ctx.Params = gin.Params{{Key: "id", Value: "9"}}
 
@@ -227,7 +227,7 @@ func TestUserControllerIndexPropagatesServiceError(t *testing.T) {
 	ctrl := controller.NewUserController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/user", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/user", nil)
 
 	ctrl.Index(ctx)
 

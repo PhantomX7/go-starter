@@ -1,4 +1,4 @@
-// image/compressor.go
+// Package image provides image-compression helpers for uploads and thumbnails.
 package image
 
 import (
@@ -13,12 +13,15 @@ import (
 	"github.com/disintegration/imaging"
 )
 
+//nolint:revive // ImageCompressor is kept for API clarity at call sites.
+// ImageCompressor applies the project's image compression defaults.
 type ImageCompressor struct {
 	Quality   int
 	MaxWidth  int
 	MaxHeight int
 }
 
+// CompressedImage contains the output of an image compression operation.
 type CompressedImage struct {
 	Data        *bytes.Buffer
 	ContentType string
@@ -28,6 +31,7 @@ type CompressedImage struct {
 	Height      int
 }
 
+// NewImageCompressor creates an ImageCompressor with sane defaults for uploads.
 func NewImageCompressor(quality int) *ImageCompressor {
 	if quality < 75 {
 		quality = 75
@@ -134,7 +138,7 @@ func (ic *ImageCompressor) hasTransparency(img image.Image) bool {
 	switch img.(type) {
 	case *image.RGBA, *image.RGBA64, *image.NRGBA, *image.NRGBA64:
 		bounds := img.Bounds()
-		step := max(bounds.Dx()/20, bounds.Dy()/20, 1)
+		step := maxInt(bounds.Dx()/20, bounds.Dy()/20, 1)
 
 		for y := bounds.Min.Y; y < bounds.Max.Y; y += step {
 			for x := bounds.Min.X; x < bounds.Max.X; x += step {
@@ -153,7 +157,7 @@ func (ic *ImageCompressor) hasLowColorCount(img image.Image, threshold int) bool
 	bounds := img.Bounds()
 	colorSet := make(map[uint32]struct{})
 
-	step := max(bounds.Dx()/50, bounds.Dy()/50, 1)
+	step := maxInt(bounds.Dx()/50, bounds.Dy()/50, 1)
 
 	for y := bounds.Min.Y; y < bounds.Max.Y; y += step {
 		for x := bounds.Min.X; x < bounds.Max.X; x += step {
@@ -212,8 +216,8 @@ func (ic *ImageCompressor) CreateThumbnail(reader io.Reader, width, height int) 
 	}, nil
 }
 
-// Helper function for max
-func max(values ...int) int {
+// maxInt returns the largest value in values.
+func maxInt(values ...int) int {
 	m := values[0]
 	for _, v := range values[1:] {
 		if v > m {

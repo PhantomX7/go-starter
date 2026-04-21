@@ -1,3 +1,4 @@
+// Package service contains the config module business logic.
 package service
 
 import (
@@ -18,9 +19,10 @@ import (
 	"go.uber.org/zap"
 )
 
+// ConfigService exposes the config use cases used by handlers.
 type ConfigService interface {
 	Index(ctx context.Context, req *pagination.Pagination) ([]*models.Config, response.Meta, error)
-	Update(ctx context.Context, configId uint, req *dto.ConfigUpdateRequest) (*models.Config, error)
+	Update(ctx context.Context, configID uint, req *dto.ConfigUpdateRequest) (*models.Config, error)
 	FindByKey(ctx context.Context, configKey string) (*models.Config, error)
 }
 
@@ -29,6 +31,7 @@ type configService struct {
 	logRepository    logRepository.LogRepository
 }
 
+// NewConfigService builds a ConfigService from its dependencies.
 func NewConfigService(
 	configRepository repository.ConfigRepository,
 	logRepository logRepository.LogRepository,
@@ -83,19 +86,19 @@ func (s *configService) Index(ctx context.Context, pg *pagination.Pagination) ([
 }
 
 // Update implements ConfigService.
-func (s *configService) Update(ctx context.Context, configId uint, req *dto.ConfigUpdateRequest) (*models.Config, error) {
+func (s *configService) Update(ctx context.Context, configID uint, req *dto.ConfigUpdateRequest) (*models.Config, error) {
 	requestID := utils.GetRequestIDFromContext(ctx)
 
 	logger.Info("Updating config",
 		zap.String("request_id", requestID),
-		zap.Uint("config_id", configId),
+		zap.Uint("config_id", configID),
 	)
 
-	config, err := s.configRepository.FindById(ctx, configId)
+	config, err := s.configRepository.FindByID(ctx, configID)
 	if err != nil {
 		logger.Error("Failed to find config for update",
 			zap.String("request_id", requestID),
-			zap.Uint("config_id", configId),
+			zap.Uint("config_id", configID),
 			zap.Error(err),
 		)
 		return nil, err
@@ -105,7 +108,7 @@ func (s *configService) Update(ctx context.Context, configId uint, req *dto.Conf
 	if err != nil {
 		logger.Error("Failed to copy config data",
 			zap.String("request_id", requestID),
-			zap.Uint("config_id", configId),
+			zap.Uint("config_id", configID),
 			zap.Error(err),
 		)
 		return nil, err
@@ -115,7 +118,7 @@ func (s *configService) Update(ctx context.Context, configId uint, req *dto.Conf
 	if err != nil {
 		logger.Error("Failed to update config",
 			zap.String("request_id", requestID),
-			zap.Uint("config_id", configId),
+			zap.Uint("config_id", configID),
 			zap.Error(err),
 		)
 		return nil, err
@@ -123,7 +126,7 @@ func (s *configService) Update(ctx context.Context, configId uint, req *dto.Conf
 
 	logger.Info("Config updated successfully",
 		zap.String("request_id", requestID),
-		zap.Uint("config_id", configId),
+		zap.Uint("config_id", configID),
 	)
 
 	// Create audit log

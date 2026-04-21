@@ -1,3 +1,4 @@
+// Package errors defines the application's structured error types.
 package errors
 
 import (
@@ -5,6 +6,7 @@ import (
 	"net/http"
 )
 
+// AppError is the standard application error wrapper.
 type AppError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
@@ -34,6 +36,7 @@ var (
 	ErrForbidden      = errors.New("forbidden")
 )
 
+// NewAppError creates an AppError with an explicit status code and wrapped cause.
 func NewAppError(code int, message string, err error) *AppError {
 	return &AppError{
 		Code:    code,
@@ -42,6 +45,7 @@ func NewAppError(code int, message string, err error) *AppError {
 	}
 }
 
+// NewNotFoundError creates a not-found AppError.
 func NewNotFoundError(message string) *AppError {
 	return &AppError{
 		Code:    http.StatusNotFound,
@@ -50,6 +54,7 @@ func NewNotFoundError(message string) *AppError {
 	}
 }
 
+// NewBadRequestError creates a bad-request AppError.
 func NewBadRequestError(message string) *AppError {
 	return &AppError{
 		Code:    http.StatusBadRequest,
@@ -58,6 +63,7 @@ func NewBadRequestError(message string) *AppError {
 	}
 }
 
+// NewUnauthorizedError creates an unauthorized AppError.
 func NewUnauthorizedError(message string) *AppError {
 	return &AppError{
 		Code:    http.StatusUnauthorized,
@@ -66,6 +72,7 @@ func NewUnauthorizedError(message string) *AppError {
 	}
 }
 
+// NewForbiddenError creates a forbidden AppError.
 func NewForbiddenError(message string) *AppError {
 	return &AppError{
 		Code:    http.StatusForbidden,
@@ -74,6 +81,7 @@ func NewForbiddenError(message string) *AppError {
 	}
 }
 
+// NewInternalServerError creates an internal-server-error AppError.
 func NewInternalServerError(message string, err error) *AppError {
 	return &AppError{
 		Code:    http.StatusInternalServerError,
@@ -82,6 +90,7 @@ func NewInternalServerError(message string, err error) *AppError {
 	}
 }
 
+// IsNotFound reports whether err wraps the sentinel not-found error.
 func IsNotFound(err AppError) bool {
 	return errors.Is(err.Err, ErrNotFound)
 }

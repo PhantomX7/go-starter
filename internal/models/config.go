@@ -1,3 +1,4 @@
+// Package models defines the application's persistence models.
 package models
 
 import (
@@ -6,8 +7,10 @@ import (
 	"gorm.io/gorm"
 )
 
+// ConfigKey is the strongly typed identifier for a configuration key.
 type ConfigKey string
 
+// ToString converts a ConfigKey to its raw string representation.
 func (c ConfigKey) ToString() string {
 	return string(c)
 }

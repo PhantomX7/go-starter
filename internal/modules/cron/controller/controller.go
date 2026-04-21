@@ -1,3 +1,4 @@
+// Package controller exposes cron-scheduler wiring for background jobs.
 package controller
 
 import (
@@ -9,6 +10,7 @@ import (
 	"github.com/go-co-op/gocron/v2"
 )
 
+// NewCron builds the shared cron scheduler and registers recurring jobs.
 func NewCron(cronService service.CronService) gocron.Scheduler {
 	s, err := gocron.NewScheduler()
 	if err != nil {

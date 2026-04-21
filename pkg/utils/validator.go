@@ -1,3 +1,4 @@
+// Package utils contains small cross-cutting helpers used throughout the application.
 package utils
 
 import (
@@ -8,6 +9,7 @@ import (
 	"github.com/stoewer/go-strcase"
 )
 
+// ValidationErrorResponse is the normalized payload for validator errors.
 type ValidationErrorResponse struct {
 	TotalErrors int               `json:"total_errors"`
 	Fields      map[string]string `json:"fields"`

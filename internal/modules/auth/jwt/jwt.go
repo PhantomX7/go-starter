@@ -1,4 +1,4 @@
-// internal/modules/auth/jwt/jwt.go
+// Package authjwt contains the JWT authentication integration for the API.
 package authjwt
 
 import (
@@ -31,13 +31,14 @@ import (
 )
 
 const (
+	// JWT claim and Gin context keys.
 	IdentityKey    = "user_id"
 	RoleKey        = "role"
 	AdminRoleIDKey = "admin_role_id"
 	SessionIDKey   = "jti"
 
 	authUserKey         = "auth_user"
-	authRefreshTokenKey = "auth_refresh_token"
+	authRefreshTokenKey = "auth_refresh_token" // #nosec G101 -- identifier name, not a credential
 
 	// dummyBcryptCost matches the production bcrypt cost (see service.BcryptCost)
 	// so the timing-equalization path costs the same as a real comparison.
@@ -67,6 +68,7 @@ type authSubject struct {
 	SessionID uuid.UUID
 }
 
+// AuthJWT bundles the gin-jwt middleware with the repositories it depends on.
 type AuthJWT struct {
 	Middleware       *ginjwt.GinJWTMiddleware
 	userRepo         userrepo.UserRepository
@@ -74,6 +76,7 @@ type AuthJWT struct {
 	logRepository    logRepository.LogRepository
 }
 
+// NewAuthJWT constructs the JWT authentication middleware and its helpers.
 func NewAuthJWT(
 	userRepo userrepo.UserRepository,
 	refreshTokenRepo rtokenrepo.RefreshTokenRepository,
@@ -210,7 +213,7 @@ func (a *AuthJWT) authorizer(c *gin.Context, data any) bool {
 
 	ctx := c.Request.Context()
 
-	dbUser, err := a.userRepo.FindById(ctx, subj.User.ID)
+	dbUser, err := a.userRepo.FindByID(ctx, subj.User.ID)
 	if err != nil || !dbUser.IsActive {
 		return false
 	}
@@ -264,6 +267,7 @@ func (a *AuthJWT) logoutResponse(c *gin.Context) {
 
 // --- Public Methods ---
 
+// GenerateTokensForUser mints a new access/refresh token pair for user.
 func (a *AuthJWT) GenerateTokensForUser(ctx context.Context, user *models.User) (*dto.AuthResponse, error) {
 	// Refresh token first so the access token can carry its session ID as jti.
 	refreshTokenStr, sessionID, err := a.createRefreshToken(ctx, user.ID)
@@ -283,13 +287,14 @@ func (a *AuthJWT) GenerateTokensForUser(ctx context.Context, user *models.User) 
 	}, nil
 }
 
+// ValidateAndRotateRefreshToken rotates oldToken and returns a fresh token pair.
 func (a *AuthJWT) ValidateAndRotateRefreshToken(ctx context.Context, oldToken string) (*dto.AuthResponse, error) {
 	tokenRecord, err := a.refreshTokenRepo.FindByToken(ctx, oldToken)
 	if err != nil {
 		return nil, cerrors.NewBadRequestError("invalid or expired refresh token")
 	}
 
-	user, err := a.userRepo.FindById(ctx, tokenRecord.UserID)
+	user, err := a.userRepo.FindByID(ctx, tokenRecord.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -312,6 +317,7 @@ func (a *AuthJWT) ValidateAndRotateRefreshToken(ctx context.Context, oldToken st
 	return a.GenerateTokensForUser(ctx, user)
 }
 
+// RevokeRefreshToken revokes token when it belongs to userID.
 func (a *AuthJWT) RevokeRefreshToken(ctx context.Context, token string, userID uint) error {
 	tokenRecord, err := a.refreshTokenRepo.FindByToken(ctx, token)
 	if errors.Is(err, cerrors.ErrNotFound) {
@@ -328,6 +334,7 @@ func (a *AuthJWT) RevokeRefreshToken(ctx context.Context, token string, userID u
 	return a.refreshTokenRepo.RevokeByToken(ctx, token)
 }
 
+// RevokeAllUserTokensExcept revokes every active token for userID except exceptToken.
 func (a *AuthJWT) RevokeAllUserTokensExcept(ctx context.Context, userID uint, exceptToken string) error {
 	return a.refreshTokenRepo.RevokeAllByUserIDExcept(ctx, userID, exceptToken)
 }
@@ -347,12 +354,12 @@ func (a *AuthJWT) validateCredentials(ctx context.Context, username, password st
 	}
 
 	if err != nil {
-		bcrypt.CompareHashAndPassword(dummyHash(), []byte(password))
+		_ = bcrypt.CompareHashAndPassword(dummyHash(), []byte(password))
 		return nil, err
 	}
 
 	if !user.IsActive {
-		bcrypt.CompareHashAndPassword(dummyHash(), []byte(password))
+		_ = bcrypt.CompareHashAndPassword(dummyHash(), []byte(password))
 		return nil, errors.New("inactive account")
 	}
 

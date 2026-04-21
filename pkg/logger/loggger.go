@@ -1,3 +1,4 @@
+// Package logger provides the application's shared structured logger.
 package logger
 
 import (
@@ -67,7 +68,7 @@ func Init(config Config) error {
 
 	// Ensure log directory exists
 	logDir := filepath.Dir(config.FilePath)
-	if err := os.MkdirAll(logDir, 0755); err != nil {
+	if err := os.MkdirAll(logDir, 0750); err != nil {
 		return err
 	}
 
@@ -129,26 +130,32 @@ func Sync() error {
 
 // Helper functions for easy logging
 
+// Debug logs a debug-level message with the shared global logger.
 func Debug(msg string, fields ...zap.Field) {
 	Log.Debug(msg, fields...)
 }
 
+// Info logs an info-level message with the shared global logger.
 func Info(msg string, fields ...zap.Field) {
 	Log.Info(msg, fields...)
 }
 
+// Warn logs a warning-level message with the shared global logger.
 func Warn(msg string, fields ...zap.Field) {
 	Log.Warn(msg, fields...)
 }
 
+// Error logs an error-level message with the shared global logger.
 func Error(msg string, fields ...zap.Field) {
 	Log.Error(msg, fields...)
 }
 
+// Fatal logs a fatal-level message with the shared global logger and exits.
 func Fatal(msg string, fields ...zap.Field) {
 	Log.Fatal(msg, fields...)
 }
 
+// Panic logs a panic-level message with the shared global logger and panics.
 func Panic(msg string, fields ...zap.Field) {
 	Log.Panic(msg, fields...)
 }

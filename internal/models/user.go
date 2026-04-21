@@ -1,12 +1,14 @@
-// internal/models/user.go
+// Package models defines the application's persistence models.
 package models
 
 import (
 	"github.com/PhantomX7/athleton/internal/dto"
 )
 
+// UserRole identifies the authorization role assigned to a user.
 type UserRole string
 
+// Supported user-role values.
 const (
 	UserRoleUser  UserRole = "user"
 	UserRoleAdmin UserRole = "admin"
@@ -15,6 +17,7 @@ const (
 
 // Note: Removed UserRoleWriter - writers are now admins with specific permissions
 
+// ToString converts a UserRole to its raw string representation.
 func (u UserRole) ToString() string {
 	return string(u)
 }
@@ -24,6 +27,7 @@ func (u UserRole) IsAdminType() bool {
 	return u == UserRoleAdmin || u == UserRoleRoot
 }
 
+// User stores the application's user account record.
 type User struct {
 	ID           uint     `json:"id" gorm:"primaryKey"`
 	Username     string   `json:"username" gorm:"type:varchar(255);not null"`
@@ -44,6 +48,7 @@ type User struct {
 	Logs []Log `json:"-" gorm:"polymorphic:Entity;polymorphicValue:users"`
 }
 
+// ToResponse converts a User into its response DTO.
 func (u User) ToResponse() *dto.UserResponse {
 	response := dto.UserResponse{
 		ID:           u.ID,

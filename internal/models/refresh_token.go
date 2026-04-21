@@ -1,3 +1,4 @@
+// Package models defines the application's persistence models.
 package models
 
 import (
@@ -6,6 +7,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// RefreshToken stores a refresh-token session and its lifecycle timestamps.
 type RefreshToken struct {
 	ID        uuid.UUID  `json:"id" gorm:"primary_key;not null"`
 	UserID    uint       `json:"user_id" gorm:"type:bigint;not null"`

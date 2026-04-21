@@ -39,7 +39,7 @@ type Repository[T any] interface {
 	Create(ctx context.Context, entity *T) error
 	Update(ctx context.Context, entity *T) error
 	Delete(ctx context.Context, entity *T) error
-	FindById(ctx context.Context, id uint, preloads ...Association) (*T, error)
+	FindByID(ctx context.Context, id uint, preloads ...Association) (*T, error)
 	FindAll(ctx context.Context, pg *pagination.Pagination) ([]*T, error)
 	Count(ctx context.Context, pg *pagination.Pagination) (int64, error)
 }
@@ -60,7 +60,7 @@ type options struct {
 }
 
 // WithSlowReadThreshold overrides the threshold above which read operations
-// (FindById, FindAll, Count) emit a slow-query warning.
+// (FindByID, FindAll, Count) emit a slow-query warning.
 func WithSlowReadThreshold(d time.Duration) Option {
 	return func(o *options) { o.slowReadThreshold = d }
 }
@@ -120,7 +120,7 @@ func (r *BaseRepository[T]) SlowWriteThreshold() time.Duration { return r.slowWr
 // ---------------------------------------------------------------------------
 // Implementation notes
 //
-// We use GORM's generics API (gorm.G[T]) for Create and FindById where it's
+// We use GORM's generics API (gorm.G[T]) for Create and FindByID where it's
 // cleaner and type-safer. The remaining methods stay on the classic API:
 //
 //   - Update: gorm.G[T] has no Save — it offers Create (insert) and Updates
@@ -187,12 +187,12 @@ func (r *BaseRepository[T]) Delete(ctx context.Context, entity *T) error {
 	return nil
 }
 
-// FindById returns the row with the given id, optionally preloading
+// FindByID returns the row with the given id, optionally preloading
 // associations. Pass generated field helpers like generated.User.AdminRole;
 // use repository.Preload("Name") only when the name must be dynamic.
 // Returns (nil, err) on any error — including not-found — so callers never
 // dereference a zero-value entity.
-func (r *BaseRepository[T]) FindById(ctx context.Context, id uint, preloads ...Association) (*T, error) {
+func (r *BaseRepository[T]) FindByID(ctx context.Context, id uint, preloads ...Association) (*T, error) {
 	start := time.Now()
 
 	q := gorm.G[T](r.GetDB(ctx)).Where("id = ?", id)
@@ -201,7 +201,7 @@ func (r *BaseRepository[T]) FindById(ctx context.Context, id uint, preloads ...A
 	}
 	entity, err := q.First(ctx)
 
-	r.LogSlowRead(ctx, "FindById", time.Since(start))
+	r.LogSlowRead(ctx, "FindByID", time.Since(start))
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

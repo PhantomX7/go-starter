@@ -1,4 +1,4 @@
-// internal/modules/admin_role/repository/repository.go
+// Package repository contains data-access code for the admin-role module.
 package repository
 
 import (
@@ -28,6 +28,7 @@ type adminRoleRepository struct {
 	repository.BaseRepository[models.AdminRole]
 }
 
+// NewAdminRoleRepository builds an AdminRoleRepository backed by GORM.
 func NewAdminRoleRepository(db *gorm.DB) AdminRoleRepository {
 	return &adminRoleRepository{
 		BaseRepository: repository.NewBaseRepository[models.AdminRole](db),

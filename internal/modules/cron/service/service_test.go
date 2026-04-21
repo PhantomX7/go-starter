@@ -29,8 +29,8 @@ func (m *mockRefreshTokenRepository) Update(context.Context, *models.RefreshToke
 func (m *mockRefreshTokenRepository) Delete(context.Context, *models.RefreshToken) error {
 	panic("unexpected Delete call")
 }
-func (m *mockRefreshTokenRepository) FindById(context.Context, uint, ...repository.Association) (*models.RefreshToken, error) {
-	panic("unexpected FindById call")
+func (m *mockRefreshTokenRepository) FindByID(context.Context, uint, ...repository.Association) (*models.RefreshToken, error) {
+	panic("unexpected FindByID call")
 }
 func (m *mockRefreshTokenRepository) FindAll(context.Context, *pagination.Pagination) ([]*models.RefreshToken, error) {
 	panic("unexpected FindAll call")

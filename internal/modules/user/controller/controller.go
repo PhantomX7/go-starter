@@ -52,7 +52,7 @@ func NewUserPagination(conditions map[string][]string) *pagination.Pagination {
 type UserController interface {
 	Index(ctx *gin.Context)
 	Update(ctx *gin.Context)
-	FindById(ctx *gin.Context)
+	FindByID(ctx *gin.Context)
 	AssignAdminRole(ctx *gin.Context)
 	ChangePassword(ctx *gin.Context)
 }
@@ -76,7 +76,7 @@ func (c *userController) Index(ctx *gin.Context) {
 		NewUserPagination(ctx.Request.URL.Query()),
 	)
 	if err != nil {
-		ctx.Error(err)
+		_ = ctx.Error(err)
 		return
 	}
 	ctx.JSON(http.StatusOK,
@@ -98,20 +98,20 @@ func (c *userController) Update(ctx *gin.Context) {
 	userID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
 		// Let the error middleware handle the parameter parsing error
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 
 	var req dto.UserUpdateRequest
 	if err = ctx.ShouldBind(&req); err != nil {
 		// Let the error middleware handle the validation error
-		ctx.Error(err).SetType(gin.ErrorTypeBind)
+		_ = ctx.Error(err).SetType(gin.ErrorTypeBind)
 		return
 	}
 	user, err := c.userService.Update(ctx.Request.Context(), uint(userID), &req)
 	if err != nil {
 		// Let the error middleware handle the internal error
-		ctx.Error(err)
+		_ = ctx.Error(err)
 		return
 	}
 	ctx.JSON(http.StatusOK, response.BuildResponseSuccess("User updated successfully", user))
@@ -127,17 +127,17 @@ func (c *userController) Update(ctx *gin.Context) {
 // @Failure		400	{object}	response.Response
 // @Failure		500	{object}	response.Response
 // @Router			/user/{id} [get]
-func (c *userController) FindById(ctx *gin.Context) {
+func (c *userController) FindByID(ctx *gin.Context) {
 	userID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
 		// Let the error middleware handle the parameter parsing error
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
-	user, err := c.userService.FindById(ctx.Request.Context(), uint(userID))
+	user, err := c.userService.FindByID(ctx.Request.Context(), uint(userID))
 	if err != nil {
 		// Let the error middleware handle the internal error
-		ctx.Error(err)
+		_ = ctx.Error(err)
 		return
 	}
 	ctx.JSON(http.StatusOK, response.BuildResponseSuccess("User found successfully", user))
@@ -159,19 +159,19 @@ func (c *userController) FindById(ctx *gin.Context) {
 func (c *userController) AssignAdminRole(ctx *gin.Context) {
 	userID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 
 	var req dto.UserAssignAdminRoleRequest
 	if err := ctx.ShouldBind(&req); err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypeBind)
+		_ = ctx.Error(err).SetType(gin.ErrorTypeBind)
 		return
 	}
 
 	user, err := c.userService.AssignAdminRole(ctx.Request.Context(), uint(userID), &req)
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 
@@ -182,19 +182,19 @@ func (c *userController) AssignAdminRole(ctx *gin.Context) {
 func (c *userController) ChangePassword(ctx *gin.Context) {
 	userID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 
 	var req dto.ChangeAdminPasswordRequest
 	if err := ctx.ShouldBind(&req); err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypeBind)
+		_ = ctx.Error(err).SetType(gin.ErrorTypeBind)
 		return
 	}
 
 	err = c.userService.ChangePassword(ctx.Request.Context(), uint(userID), &req)
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 

@@ -16,7 +16,7 @@ func Map[T any, R any](slice []T, fn func(T) R) []R {
 	return result
 }
 
-// Generate s3 public URL
+// GenerateS3PublicURL builds the public URL for an object stored in S3-compatible storage.
 func GenerateS3PublicURL(key string) string {
 	if config.Get().S3.CdnURL != "" {
 		return fmt.Sprintf("%s/%s", config.Get().S3.CdnURL, key)

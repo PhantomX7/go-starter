@@ -1,4 +1,4 @@
-// internal/modules/admin_role/service/service.go
+// Package service contains the admin-role module business logic.
 package service
 
 import (
@@ -23,12 +23,13 @@ import (
 	"go.uber.org/zap"
 )
 
+// AdminRoleService exposes the admin-role use cases used by handlers.
 type AdminRoleService interface {
 	Index(ctx context.Context, req *pagination.Pagination) ([]*models.AdminRole, response.Meta, error)
 	Create(ctx context.Context, req *dto.CreateAdminRoleRequest) (*models.AdminRole, error)
 	Update(ctx context.Context, roleID uint, req *dto.UpdateAdminRoleRequest) (*models.AdminRole, error)
 	Delete(ctx context.Context, roleID uint) error
-	FindById(ctx context.Context, roleID uint) (*models.AdminRole, error)
+	FindByID(ctx context.Context, roleID uint) (*models.AdminRole, error)
 	GetAllPermissions(ctx context.Context) map[string][]map[string]string
 }
 
@@ -38,6 +39,7 @@ type adminRoleService struct {
 	casbinClient  casbin.Client
 }
 
+// NewAdminRoleService builds an AdminRoleService from its dependencies.
 func NewAdminRoleService(
 	adminRoleRepo adminrolerepo.AdminRoleRepository,
 	logRepository logRepository.LogRepository,
@@ -177,7 +179,7 @@ func (s *adminRoleService) Update(ctx context.Context, roleID uint, req *dto.Upd
 	)
 
 	// Find existing role
-	adminRole, err := s.adminRoleRepo.FindById(ctx, roleID)
+	adminRole, err := s.adminRoleRepo.FindByID(ctx, roleID)
 	if err != nil {
 		logger.Error("Failed to find admin role for update",
 			zap.String("request_id", requestID),
@@ -255,7 +257,7 @@ func (s *adminRoleService) Delete(ctx context.Context, roleID uint) error {
 	)
 
 	// Find existing role
-	adminRole, err := s.adminRoleRepo.FindById(ctx, roleID)
+	adminRole, err := s.adminRoleRepo.FindByID(ctx, roleID)
 	if err != nil {
 		logger.Error("Failed to find admin role for deletion",
 			zap.String("request_id", requestID),
@@ -310,8 +312,8 @@ func (s *adminRoleService) Delete(ctx context.Context, roleID uint) error {
 	return nil
 }
 
-// FindById implements AdminRoleService.
-func (s *adminRoleService) FindById(ctx context.Context, roleID uint) (*models.AdminRole, error) {
+// FindByID implements AdminRoleService.
+func (s *adminRoleService) FindByID(ctx context.Context, roleID uint) (*models.AdminRole, error) {
 	requestID := utils.GetRequestIDFromContext(ctx)
 
 	logger.Debug("Finding admin role by ID",
@@ -319,7 +321,7 @@ func (s *adminRoleService) FindById(ctx context.Context, roleID uint) (*models.A
 		zap.Uint("role_id", roleID),
 	)
 
-	adminRole, err := s.adminRoleRepo.FindById(ctx, roleID)
+	adminRole, err := s.adminRoleRepo.FindByID(ctx, roleID)
 	if err != nil {
 		if !errors.Is(err, cerrors.ErrNotFound) {
 			logger.Error("Failed to find admin role by ID",

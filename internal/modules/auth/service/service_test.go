@@ -49,9 +49,9 @@ func (m *mockUserRepository) Update(ctx context.Context, entity *models.User) er
 func (m *mockUserRepository) Delete(context.Context, *models.User) error {
 	panic("unexpected Delete call")
 }
-func (m *mockUserRepository) FindById(ctx context.Context, id uint, preloads ...repository.Association) (*models.User, error) {
+func (m *mockUserRepository) FindByID(ctx context.Context, id uint, preloads ...repository.Association) (*models.User, error) {
 	if m.findByIDFn == nil {
-		panic("unexpected FindById call")
+		panic("unexpected FindByID call")
 	}
 	return m.findByIDFn(ctx, id, preloads...)
 }
@@ -89,8 +89,8 @@ func (m *mockRefreshTokenRepository) Update(context.Context, *models.RefreshToke
 func (m *mockRefreshTokenRepository) Delete(context.Context, *models.RefreshToken) error {
 	panic("unexpected Delete call")
 }
-func (m *mockRefreshTokenRepository) FindById(context.Context, uint, ...repository.Association) (*models.RefreshToken, error) {
-	panic("unexpected FindById call")
+func (m *mockRefreshTokenRepository) FindByID(context.Context, uint, ...repository.Association) (*models.RefreshToken, error) {
+	panic("unexpected FindByID call")
 }
 func (m *mockRefreshTokenRepository) FindAll(context.Context, *pagination.Pagination) ([]*models.RefreshToken, error) {
 	panic("unexpected FindAll call")
@@ -147,8 +147,8 @@ func (m *mockLogRepository) Update(context.Context, *models.Log) error {
 func (m *mockLogRepository) Delete(context.Context, *models.Log) error {
 	panic("unexpected Delete call")
 }
-func (m *mockLogRepository) FindById(context.Context, uint, ...repository.Association) (*models.Log, error) {
-	panic("unexpected FindById call")
+func (m *mockLogRepository) FindByID(context.Context, uint, ...repository.Association) (*models.Log, error) {
+	panic("unexpected FindByID call")
 }
 func (m *mockLogRepository) FindAll(context.Context, *pagination.Pagination) ([]*models.Log, error) {
 	panic("unexpected FindAll call")

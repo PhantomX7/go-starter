@@ -36,9 +36,9 @@ func (m *mockLogRepository) Delete(context.Context, *models.Log) error {
 	panic("unexpected Delete call")
 }
 
-func (m *mockLogRepository) FindById(ctx context.Context, id uint, preloads ...repository.Association) (*models.Log, error) {
+func (m *mockLogRepository) FindByID(ctx context.Context, id uint, preloads ...repository.Association) (*models.Log, error) {
 	if m.findByIDFn == nil {
-		panic("unexpected FindById call")
+		panic("unexpected FindByID call")
 	}
 	return m.findByIDFn(ctx, id, preloads...)
 }
@@ -147,7 +147,7 @@ func TestLogServiceFindByIDReturnsLog(t *testing.T) {
 	svc := service.NewLogService(repo)
 	ctx := utils.SetRequestIDToContext(context.Background(), "req-456")
 
-	logEntry, err := svc.FindById(ctx, 7)
+	logEntry, err := svc.FindByID(ctx, 7)
 
 	require.NoError(t, err)
 	require.Same(t, expectedLog, logEntry)
@@ -165,7 +165,7 @@ func TestLogServiceFindByIDReturnsNotFoundError(t *testing.T) {
 
 	svc := service.NewLogService(repo)
 
-	logEntry, err := svc.FindById(context.Background(), 99)
+	logEntry, err := svc.FindByID(context.Background(), 99)
 
 	require.Nil(t, logEntry)
 	require.ErrorIs(t, err, cerrors.ErrNotFound)

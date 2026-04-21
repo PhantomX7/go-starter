@@ -1,11 +1,14 @@
+// Package models defines the application's persistence models.
 package models
 
 import (
 	"github.com/PhantomX7/athleton/internal/dto"
 )
 
+// LogAction represents the action stored in an audit log entry.
 type LogAction string
 
+// Audit-log action values.
 const (
 	LogActionCreate         LogAction = "create"
 	LogActionUpdate         LogAction = "update"
@@ -17,6 +20,7 @@ const (
 	LogActionChangePassword LogAction = "change_password"
 )
 
+// Audit-log entity-type values.
 const (
 	LogEntityTypeAdminRole      = "admin_role"
 	LogEntityTypeBanner         = "banner"
@@ -33,10 +37,12 @@ const (
 	LogEntityTypeUser           = "user"
 )
 
+// ToString converts a LogAction to its raw string representation.
 func (l LogAction) ToString() string {
 	return string(l)
 }
 
+// Log stores a single audit-log event.
 type Log struct {
 	ID         uint      `json:"id" gorm:"primaryKey"`
 	UserID     *uint     `json:"user_id" gorm:"index"`
@@ -61,6 +67,7 @@ type Log struct {
 	TargetUser *User      `json:"target_user,omitempty" gorm:"-"`
 }
 
+// ToResponse converts a Log into its API response shape.
 func (l Log) ToResponse() dto.LogResponse {
 	response := dto.LogResponse{
 		ID:         l.ID,

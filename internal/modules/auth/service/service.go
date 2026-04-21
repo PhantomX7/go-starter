@@ -1,4 +1,4 @@
-// internal/modules/auth/service/service.go
+// Package service contains the auth module business logic.
 package service
 
 import (
@@ -25,6 +25,7 @@ import (
 )
 
 const (
+	// BcryptCost is the cost used for password hashing.
 	BcryptCost = 12
 )
 
@@ -45,6 +46,7 @@ type authService struct {
 	txManager     transaction_manager.TransactionManager
 }
 
+// NewAuthService builds the auth service from its dependencies.
 func NewAuthService(
 	userRepo userrepo.UserRepository,
 	logRepository logRepository.LogRepository,
@@ -70,7 +72,7 @@ func (s *authService) GetMe(ctx context.Context) (*dto.MeResponse, error) {
 		return nil, err
 	}
 
-	user, err := s.userRepo.FindById(ctx, values.UserID, generated.User.AdminRole)
+	user, err := s.userRepo.FindByID(ctx, values.UserID, generated.User.AdminRole)
 	if err != nil {
 		logger.Error("Failed to find user", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID), zap.Error(err))
 		return nil, err
@@ -160,7 +162,7 @@ func (s *authService) ChangePassword(ctx context.Context, req *dto.ChangePasswor
 
 	logger.Info("Password change initiated", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID))
 
-	user, err := s.userRepo.FindById(ctx, values.UserID)
+	user, err := s.userRepo.FindByID(ctx, values.UserID)
 	if err != nil {
 		logger.Error("Failed to find user", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID), zap.Error(err))
 		return err

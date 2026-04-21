@@ -65,7 +65,7 @@ func (c *configController) Index(ctx *gin.Context) {
 		newConfigPagination(ctx.Request.URL.Query()),
 	)
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 	ctx.JSON(http.StatusOK,
@@ -87,19 +87,19 @@ func (c *configController) Index(ctx *gin.Context) {
 func (c *configController) Update(ctx *gin.Context) {
 	configID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 
 	var req dto.ConfigUpdateRequest
 	if err = ctx.ShouldBind(&req); err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypeBind)
+		_ = ctx.Error(err).SetType(gin.ErrorTypeBind)
 		return
 	}
 
 	config, err := c.configService.Update(ctx.Request.Context(), uint(configID), &req)
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 
@@ -120,7 +120,7 @@ func (c *configController) Update(ctx *gin.Context) {
 func (c *configController) FindByKey(ctx *gin.Context) {
 	config, err := c.configService.FindByKey(ctx.Request.Context(), ctx.Param("key"))
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 

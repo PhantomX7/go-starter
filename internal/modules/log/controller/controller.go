@@ -1,3 +1,4 @@
+// Package controller exposes HTTP handlers for audit-log endpoints.
 package controller
 
 import (
@@ -11,15 +12,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// LogController exposes the audit-log HTTP handlers.
 type LogController interface {
 	Index(ctx *gin.Context)
-	FindById(ctx *gin.Context)
+	FindByID(ctx *gin.Context)
 }
 
 type logController struct {
 	logService service.LogService
 }
 
+// NewLogController builds a LogController from the log service.
 func NewLogController(logService service.LogService) LogController {
 	return &logController{
 		logService: logService,
@@ -75,7 +78,7 @@ func (c *logController) Index(ctx *gin.Context) {
 		newLogPagination(ctx.Request.URL.Query()),
 	)
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 	ctx.JSON(http.StatusOK,
@@ -92,16 +95,16 @@ func (c *logController) Index(ctx *gin.Context) {
 // @Failure      400  {object}  response.Response
 // @Failure      500  {object}  response.Response
 // @Router       /log/{id} [get]
-func (c *logController) FindById(ctx *gin.Context) {
+func (c *logController) FindByID(ctx *gin.Context) {
 	logID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 
-	log, err := c.logService.FindById(ctx.Request.Context(), uint(logID))
+	log, err := c.logService.FindByID(ctx.Request.Context(), uint(logID))
 	if err != nil {
-		ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
 

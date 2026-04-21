@@ -2,6 +2,7 @@ package dto
 
 import "time"
 
+// LogResponse is the API response shape for a single audit log entry.
 type LogResponse struct {
 	ID         uint      `json:"id"`
 	UserID     *uint     `json:"user_id"`

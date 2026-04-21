@@ -48,9 +48,9 @@ func (m *mockAdminRoleService) Delete(ctx context.Context, roleID uint) error {
 	return m.deleteFn(ctx, roleID)
 }
 
-func (m *mockAdminRoleService) FindById(ctx context.Context, roleID uint) (*models.AdminRole, error) {
+func (m *mockAdminRoleService) FindByID(ctx context.Context, roleID uint) (*models.AdminRole, error) {
 	if m.findByIDFn == nil {
-		panic("unexpected FindById call")
+		panic("unexpected FindByID call")
 	}
 	return m.findByIDFn(ctx, roleID)
 }
@@ -86,7 +86,7 @@ func TestAdminRoleControllerIndexReturnsPaginatedResponse(t *testing.T) {
 	ctrl := controller.NewAdminRoleController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/admin/admin-role?limit=2&offset=4&sort=name+asc", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/admin-role?limit=2&offset=4&sort=name+asc", nil)
 
 	ctrl.Index(ctx)
 
@@ -110,7 +110,7 @@ func TestAdminRoleControllerDeleteRejectsInvalidID(t *testing.T) {
 	ctrl := controller.NewAdminRoleController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodDelete, "/admin/admin-role/bad", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/admin/admin-role/bad", nil)
 	ctx.Params = gin.Params{{Key: "id", Value: "bad"}}
 
 	ctrl.Delete(ctx)
@@ -133,10 +133,10 @@ func TestAdminRoleControllerFindByIDReturnsSuccessResponse(t *testing.T) {
 	ctrl := controller.NewAdminRoleController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/admin/admin-role/5", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/admin-role/5", nil)
 	ctx.Params = gin.Params{{Key: "id", Value: "5"}}
 
-	ctrl.FindById(ctx)
+	ctrl.FindByID(ctx)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var body map[string]any
@@ -161,7 +161,7 @@ func TestAdminRoleControllerGetAllPermissionsReturnsResponse(t *testing.T) {
 	ctrl := controller.NewAdminRoleController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/admin/admin-role/permissions", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/admin-role/permissions", nil)
 
 	ctrl.GetAllPermissions(ctx)
 
@@ -184,7 +184,7 @@ func TestAdminRoleControllerIndexPropagatesServiceError(t *testing.T) {
 	ctrl := controller.NewAdminRoleController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/admin/admin-role", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/admin-role", nil)
 
 	ctrl.Index(ctx)
 

@@ -40,11 +40,14 @@ func (g *ModelGenerator) generateModelFile(filePath string, templateContent stri
 		return fmt.Errorf("failed to parse model template: %w", err)
 	}
 
+	// #nosec G304 -- generator writes a caller-selected output file inside the workspace.
 	file, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to create model file %s: %w", filePath, err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	if err := tmpl.Execute(file, data); err != nil {
 		return fmt.Errorf("failed to execute model template: %w", err)

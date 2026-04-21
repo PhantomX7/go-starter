@@ -1,3 +1,4 @@
+// Package pagination adapts HTTP query parameters into Bleve search requests.
 package pagination
 
 import (
@@ -11,6 +12,7 @@ import (
 type FilterType uint8
 
 const (
+	// Supported filter value types for Bleve-backed pagination.
 	FilterTypeString FilterType = iota
 	FilterTypeNumber
 	FilterTypeBool
@@ -56,16 +58,19 @@ func NewSearchDefinition() *SearchDefinition {
 	}
 }
 
+// AddFilter registers a filterable field definition.
 func (sd *SearchDefinition) AddFilter(name string, cfg FilterConfig) *SearchDefinition {
 	sd.Filters[name] = cfg
 	return sd
 }
 
+// AddSort registers a sortable field definition.
 func (sd *SearchDefinition) AddSort(name string, cfg SortConfig) *SearchDefinition {
 	sd.Sorts[name] = cfg
 	return sd
 }
 
+// AddFacet registers a facet request.
 func (sd *SearchDefinition) AddFacet(field string, size ...int) *SearchDefinition {
 	facetSize := 0
 	if len(size) > 0 {
@@ -75,11 +80,13 @@ func (sd *SearchDefinition) AddFacet(field string, size ...int) *SearchDefinitio
 	return sd
 }
 
+// SetHighlight configures which fields Bleve should highlight.
 func (sd *SearchDefinition) SetHighlight(fields ...string) *SearchDefinition {
 	sd.Highlight = fields
 	return sd
 }
 
+// SetDynamicFilterPrefix configures the prefix for dynamic field filters.
 func (sd *SearchDefinition) SetDynamicFilterPrefix(prefix string) *SearchDefinition {
 	sd.DynamicPrefix = prefix
 	return sd

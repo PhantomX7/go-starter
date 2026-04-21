@@ -1,3 +1,4 @@
+// Package main provides the Athleton module generator CLI.
 package main
 
 import (

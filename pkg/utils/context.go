@@ -1,4 +1,4 @@
-// pkg/utils/context.go
+// Package utils contains small cross-cutting helpers used throughout the application.
 package utils
 
 import (

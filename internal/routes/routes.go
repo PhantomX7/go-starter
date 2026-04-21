@@ -1,4 +1,4 @@
-// internal/routes/routes.go
+// Package routes registers the application's HTTP routes.
 package routes
 
 import (
@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RegisterRoutes mounts every API route on the provided Gin engine.
 func RegisterRoutes(
 	route *gin.Engine,
 	middleware *middlewares.Middleware,
@@ -45,16 +46,16 @@ func RegisterRoutes(
 		// ============================================================
 		// ADMIN ROUTES (Requires Auth + Permission)
 		// ============================================================
-		adminApi := api.Group("/admin", middleware.RequireAuth())
+		adminAPI := api.Group("/admin", middleware.RequireAuth())
 		{
 			// ---------------------------------------------------------
 			// Admin Role Management (Root only - no permission check)
 			// ---------------------------------------------------------
-			adminRoleRoute := adminApi.Group("/admin-role")
+			adminRoleRoute := adminAPI.Group("/admin-role")
 			{
 				adminRoleRoute.GET("", middleware.RequirePermission(permissions.AdminRoleRead), adminRoleController.Index)
 				adminRoleRoute.GET("/permissions", middleware.RequirePermission(permissions.AdminRoleRead), adminRoleController.GetAllPermissions)
-				adminRoleRoute.GET("/:id", middleware.RequirePermission(permissions.AdminRoleRead), adminRoleController.FindById)
+				adminRoleRoute.GET("/:id", middleware.RequirePermission(permissions.AdminRoleRead), adminRoleController.FindByID)
 				adminRoleRoute.POST("", middleware.RequirePermission(permissions.AdminRoleCreate), adminRoleController.Create)
 				adminRoleRoute.PATCH("/:id", middleware.RequirePermission(permissions.AdminRoleUpdate), adminRoleController.Update)
 				adminRoleRoute.DELETE("/:id", middleware.RequirePermission(permissions.AdminRoleDelete), adminRoleController.Delete)
@@ -63,7 +64,7 @@ func RegisterRoutes(
 			// ---------------------------------------------------------
 			// Config Management
 			// ---------------------------------------------------------
-			configRoute := adminApi.Group("/config")
+			configRoute := adminAPI.Group("/config")
 			{
 				configRoute.GET("", configController.Index)
 				configRoute.GET("/key/:key", configController.FindByKey)
@@ -73,7 +74,7 @@ func RegisterRoutes(
 			// ---------------------------------------------------------
 			// Log Management (Audit Logs)
 			// ---------------------------------------------------------
-			logRoute := adminApi.Group("/log")
+			logRoute := adminAPI.Group("/log")
 			{
 				logRoute.GET("", middleware.RequirePermission(permissions.LogRead), logController.Index)
 			}
@@ -81,10 +82,10 @@ func RegisterRoutes(
 			// ---------------------------------------------------------
 			// User Management
 			// ---------------------------------------------------------
-			userRoute := adminApi.Group("/user")
+			userRoute := adminAPI.Group("/user")
 			{
 				userRoute.GET("", middleware.RequirePermission(permissions.UserRead), userController.Index)
-				userRoute.GET("/:id", middleware.RequirePermission(permissions.UserRead), userController.FindById)
+				userRoute.GET("/:id", middleware.RequirePermission(permissions.UserRead), userController.FindByID)
 				userRoute.PATCH("/:id", middleware.RequirePermission(permissions.UserUpdate), userController.Update)
 				userRoute.POST("/:id/admin-role", middleware.RequirePermission(permissions.UserAssignRole), userController.AssignAdminRole)
 				userRoute.POST("/:id/change-password", middleware.RequirePermission(permissions.AdminUserChangePassword), userController.ChangePassword)
@@ -94,9 +95,9 @@ func RegisterRoutes(
 		// ============================================================
 		// PUBLIC ROUTES
 		// ============================================================
-		publicApi := api.Group("/public")
+		publicAPI := api.Group("/public")
 		{
-			configRoute := publicApi.Group("/config")
+			configRoute := publicAPI.Group("/config")
 			{
 				configRoute.GET("", configController.Index)
 				configRoute.GET("/key/:key", configController.FindByKey)

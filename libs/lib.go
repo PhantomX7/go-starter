@@ -1,3 +1,4 @@
+// Package libs wires shared infrastructure libraries into the application container.
 package libs
 
 import (
@@ -9,6 +10,7 @@ import (
 	"go.uber.org/fx"
 )
 
+// Module registers shared infrastructure providers.
 var Module = fx.Options(
 	fx.Provide(
 		transaction_manager.NewTransactionManager,

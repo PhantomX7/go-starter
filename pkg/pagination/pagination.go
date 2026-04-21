@@ -1,3 +1,4 @@
+// Package pagination provides safe, typed pagination and filtering helpers for GORM queries.
 package pagination
 
 import (
@@ -44,6 +45,7 @@ const (
 // FilterType represents the data type for filtering
 type FilterType string
 
+// Supported filter value types.
 const (
 	FilterTypeID       FilterType = "ID"
 	FilterTypeNumber   FilterType = "NUMBER"
@@ -57,6 +59,7 @@ const (
 // FilterOperator represents filter operations
 type FilterOperator string
 
+// Supported filter operators.
 const (
 	OperatorEquals    FilterOperator = "eq"
 	OperatorNotEquals FilterOperator = "neq"
@@ -348,7 +351,9 @@ func (fd *FilterDefinition) AddSort(name string, config SortConfig) *FilterDefin
 	return fd
 }
 
-// PaginationOptions configures pagination behavior
+// PaginationOptions configures pagination behavior.
+//
+//nolint:revive // PaginationOptions is kept for external API compatibility.
 type PaginationOptions struct {
 	DefaultLimit int
 	MaxLimit     int

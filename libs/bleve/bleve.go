@@ -1,3 +1,4 @@
+// Package bleve provides the application's Bleve search integration.
 package bleve
 
 import (
@@ -26,6 +27,7 @@ type FacetRequest struct {
 }
 
 const (
+	// Default search and ranking constants.
 	DefaultSearchSize = 10
 	DefaultFacetSize  = 10
 	DefaultFuzziness  = 2
@@ -38,6 +40,7 @@ const (
 )
 
 var (
+	// ErrIndexNotFound is returned when a named index does not exist.
 	ErrIndexNotFound = errors.New("index not found")
 )
 
@@ -45,6 +48,7 @@ var (
 type FilterType uint8
 
 const (
+	// Supported Bleve filter types.
 	FilterExact FilterType = iota
 	FilterMatch
 	FilterRange
@@ -142,7 +146,7 @@ type client struct {
 func NewBleveClient() (Client, error) {
 	cfg := config.Get().Bleve
 
-	if err := os.MkdirAll(cfg.IndexPath, 0755); err != nil {
+	if err := os.MkdirAll(cfg.IndexPath, 0750); err != nil {
 		return nil, fmt.Errorf("create index directory: %w", err)
 	}
 

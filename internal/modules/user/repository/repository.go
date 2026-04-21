@@ -1,4 +1,4 @@
-// internal/modules/user/repository/user_repository.go
+// Package repository contains data-access code for the user module.
 package repository
 
 import (
@@ -27,6 +27,7 @@ type userRepository struct {
 	repository.BaseRepository[models.User]
 }
 
+// NewUserRepository builds a UserRepository backed by GORM.
 func NewUserRepository(db *gorm.DB) UserRepository {
 	return &userRepository{
 		BaseRepository: repository.NewBaseRepository[models.User](db),

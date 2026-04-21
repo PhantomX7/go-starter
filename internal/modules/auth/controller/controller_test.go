@@ -84,7 +84,7 @@ func TestAuthControllerGetMeReturnsSuccessResponse(t *testing.T) {
 	ctrl := controller.NewAuthController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/auth/me", nil)
 
 	ctrl.GetMe(ctx)
 
@@ -112,7 +112,7 @@ func TestAuthControllerRefreshReturnsSuccessResponse(t *testing.T) {
 	ctrl := controller.NewAuthController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/auth/refresh", bytes.NewBufferString(`{"refresh_token":"refresh-token"}`))
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/refresh", bytes.NewBufferString(`{"refresh_token":"refresh-token"}`))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 
 	ctrl.Refresh(ctx)
@@ -139,7 +139,7 @@ func TestAuthControllerChangePasswordReturnsSuccessResponse(t *testing.T) {
 	ctrl := controller.NewAuthController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/auth/change-password", bytes.NewBufferString(`{"old_password":"old-password","new_password":"new-password","except_token":"keep-token"}`))
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/change-password", bytes.NewBufferString(`{"old_password":"old-password","new_password":"new-password","except_token":"keep-token"}`))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 
 	ctrl.ChangePassword(ctx)
@@ -164,7 +164,7 @@ func TestAuthControllerLogoutReturnsSuccessResponse(t *testing.T) {
 	ctrl := controller.NewAuthController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/auth/logout", bytes.NewBufferString(`{"refresh_token":"refresh-token"}`))
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/logout", bytes.NewBufferString(`{"refresh_token":"refresh-token"}`))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 
 	ctrl.Logout(ctx)
@@ -188,7 +188,7 @@ func TestAuthControllerRegisterRejectsInvalidPayload(t *testing.T) {
 	ctrl := controller.NewAuthController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewBufferString(`{}`))
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/register", bytes.NewBufferString(`{}`))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 
 	ctrl.Register(ctx)
@@ -210,7 +210,7 @@ func TestAuthControllerGetMePropagatesServiceError(t *testing.T) {
 	ctrl := controller.NewAuthController(svc)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/auth/me", nil)
 
 	ctrl.GetMe(ctx)
 

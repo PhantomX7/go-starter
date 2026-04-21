@@ -1,3 +1,4 @@
+// Package s3 provides the application's S3-compatible object-storage integration.
 package s3
 
 import (
@@ -30,6 +31,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// Client exposes the S3 operations used by the application.
 type Client interface {
 	UploadImage(ctx context.Context, file *multipart.FileHeader, folder string) (*S3UploadResult, error)
 	UploadImagesParallel(ctx context.Context, files []*multipart.FileHeader, folder string, maxConcurrency int) ([]*S3UploadResult, error)
@@ -43,6 +45,7 @@ type s3Client struct {
 	clientConfig aws.Config
 }
 
+// S3UploadResult contains the metadata returned after a successful upload.
 type S3UploadResult struct {
 	Key      string `json:"key"`
 	URL      string `json:"url"`
@@ -53,6 +56,7 @@ type S3UploadResult struct {
 	Format   string `json:"format"` // Added: webp or jpeg
 }
 
+// NewS3Client constructs the shared S3 client and uploader.
 func NewS3Client() (Client, error) {
 	awsConfig, err := s3config.LoadDefaultConfig(context.TODO(),
 		s3config.WithRegion(config.Get().S3.Region),
@@ -102,7 +106,9 @@ func (s3c *s3Client) UploadImage(ctx context.Context, file *multipart.FileHeader
 		)
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer src.Close()
+	defer func() {
+		_ = src.Close()
+	}()
 
 	var uploadBody io.Reader
 	var contentType string
@@ -244,7 +250,9 @@ func (s3c *s3Client) detectContentType(file *multipart.FileHeader) (string, erro
 	if err != nil {
 		return "", err
 	}
-	defer src.Close()
+	defer func() {
+		_ = src.Close()
+	}()
 
 	buffer := make([]byte, 512)
 	n, err := src.Read(buffer)

@@ -1,3 +1,4 @@
+// Package service contains the business logic for audit-log queries.
 package service
 
 import (
@@ -15,15 +16,17 @@ import (
 	"go.uber.org/zap"
 )
 
+// LogService exposes read-only audit-log operations.
 type LogService interface {
 	Index(ctx context.Context, req *pagination.Pagination) ([]*models.Log, response.Meta, error)
-	FindById(ctx context.Context, logId uint) (*models.Log, error)
+	FindByID(ctx context.Context, logID uint) (*models.Log, error)
 }
 
 type logService struct {
 	logRepository repository.LogRepository
 }
 
+// NewLogService builds a LogService from the provided repository.
 func NewLogService(logRepository repository.LogRepository) LogService {
 	return &logService{
 		logRepository: logRepository,
@@ -73,21 +76,21 @@ func (s *logService) Index(ctx context.Context, pg *pagination.Pagination) ([]*m
 	}, nil
 }
 
-// FindById implements LogService.
-func (s *logService) FindById(ctx context.Context, logId uint) (*models.Log, error) {
+// FindByID implements LogService.
+func (s *logService) FindByID(ctx context.Context, logID uint) (*models.Log, error) {
 	requestID := utils.GetRequestIDFromContext(ctx)
 
 	logger.Debug("Finding log by ID",
 		zap.String("request_id", requestID),
-		zap.Uint("log_id", logId),
+		zap.Uint("log_id", logID),
 	)
 
-	log, err := s.logRepository.FindById(ctx, logId)
+	log, err := s.logRepository.FindByID(ctx, logID)
 	if err != nil {
 		if !errors.Is(err, cerrors.ErrNotFound) {
 			logger.Error("Failed to find log by ID",
 				zap.String("request_id", requestID),
-				zap.Uint("log_id", logId),
+				zap.Uint("log_id", logID),
 				zap.Error(err),
 			)
 		}
@@ -96,7 +99,7 @@ func (s *logService) FindById(ctx context.Context, logId uint) (*models.Log, err
 
 	logger.Debug("Found log by ID successfully",
 		zap.String("request_id", requestID),
-		zap.Uint("log_id", logId),
+		zap.Uint("log_id", logID),
 	)
 
 	return log, nil

@@ -1,3 +1,4 @@
+// Package validator provides custom go-playground validators used by the application.
 package validator
 
 import (
@@ -5,6 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// CustomValidator exposes the custom validator functions registered by the app.
 type CustomValidator interface {
 	Unique() validator.Func
 	Exist() validator.Func
@@ -17,6 +19,7 @@ type customValidator struct {
 	db        *gorm.DB
 }
 
+// New creates a CustomValidator backed by the provided database connection.
 func New(db *gorm.DB) CustomValidator {
 	return &customValidator{
 		validator: validator.New(),
