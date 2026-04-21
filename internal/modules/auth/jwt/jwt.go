@@ -31,11 +31,14 @@ import (
 )
 
 const (
-	// JWT claim and Gin context keys.
-	IdentityKey    = "user_id"
-	RoleKey        = "role"
+	// IdentityKey stores the authenticated user ID in claims and Gin context.
+	IdentityKey = "user_id"
+	// RoleKey stores the authenticated role in claims and Gin context.
+	RoleKey = "role"
+	// AdminRoleIDKey stores the authenticated admin-role ID in claims and Gin context.
 	AdminRoleIDKey = "admin_role_id"
-	SessionIDKey   = "jti"
+	// SessionIDKey stores the refresh-token session identifier in claims.
+	SessionIDKey = "jti"
 
 	authUserKey         = "auth_user"
 	authRefreshTokenKey = "auth_refresh_token" // #nosec G101 -- identifier name, not a credential

@@ -1,3 +1,4 @@
+// Package repository provides shared generic repository primitives.
 package repository
 
 import (

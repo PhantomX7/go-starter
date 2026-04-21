@@ -13,8 +13,9 @@ import (
 	"github.com/disintegration/imaging"
 )
 
-//nolint:revive // ImageCompressor is kept for API clarity at call sites.
 // ImageCompressor applies the project's image compression defaults.
+//
+//nolint:revive // ImageCompressor is kept for API clarity at call sites.
 type ImageCompressor struct {
 	Quality   int
 	MaxWidth  int

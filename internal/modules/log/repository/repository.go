@@ -1,3 +1,4 @@
+// Package repository provides log persistence primitives.
 package repository
 
 import (

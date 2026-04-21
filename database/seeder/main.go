@@ -1,3 +1,4 @@
+// Package main runs the database seeder entrypoint.
 package main
 
 import (

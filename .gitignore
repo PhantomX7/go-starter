@@ -1,10 +1,31 @@
+# Env
 .env
+
+# Build output
 build/
 bin/
+dist/
 tmp/
 vendor/
--p/
 
+# App data
 /bleve/
 logs/
 assets/
+
+# Test / coverage artifacts
+*.out
+coverage.html
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp

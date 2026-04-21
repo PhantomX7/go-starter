@@ -1,3 +1,4 @@
+// Package controller exposes HTTP handlers for user management.
 package controller
 
 import (

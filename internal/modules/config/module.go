@@ -1,3 +1,4 @@
+// Package config wires the configuration module.
 package config
 
 import (
@@ -8,6 +9,7 @@ import (
 	"go.uber.org/fx"
 )
 
+// Module wires the config module dependencies into the Fx container.
 var Module = fx.Options(
 	fx.Provide(
 		controller.NewConfigController,

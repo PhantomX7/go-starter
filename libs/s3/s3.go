@@ -46,6 +46,8 @@ type s3Client struct {
 }
 
 // S3UploadResult contains the metadata returned after a successful upload.
+//
+//nolint:revive // Kept for compatibility with the existing public API.
 type S3UploadResult struct {
 	Key      string `json:"key"`
 	URL      string `json:"url"`

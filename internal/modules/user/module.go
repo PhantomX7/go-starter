@@ -1,3 +1,4 @@
+// Package user wires the user module.
 package user
 
 import (
@@ -8,6 +9,7 @@ import (
 	"go.uber.org/fx"
 )
 
+// Module wires the user module dependencies into the Fx container.
 var Module = fx.Options(
 	fx.Provide(
 		controller.NewUserController,

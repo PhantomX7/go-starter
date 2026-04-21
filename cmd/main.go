@@ -1,3 +1,4 @@
+// Package main starts the Athleton API application.
 package main
 
 import (

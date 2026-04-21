@@ -1,3 +1,4 @@
+// Package cron wires the cron module.
 package cron
 
 import (
@@ -7,6 +8,7 @@ import (
 	"github.com/PhantomX7/athleton/internal/modules/cron/service"
 )
 
+// Module wires the cron module dependencies into the Fx container.
 var Module = fx.Options(
 	fx.Provide(
 		controller.NewCron,

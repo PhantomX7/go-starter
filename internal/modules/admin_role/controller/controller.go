@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// AdminRoleController exposes HTTP handlers for admin-role resources.
 type AdminRoleController interface {
 	Index(ctx *gin.Context)
 	Create(ctx *gin.Context)
@@ -26,6 +27,7 @@ type adminRoleController struct {
 	adminRoleService service.AdminRoleService
 }
 
+// NewAdminRoleController constructs an AdminRoleController.
 func NewAdminRoleController(adminRoleService service.AdminRoleService) AdminRoleController {
 	return &adminRoleController{
 		adminRoleService: adminRoleService,

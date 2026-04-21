@@ -1,4 +1,4 @@
-// internal/modules/auth/controller/controller.go
+// Package controller exposes HTTP handlers for authentication flows.
 package controller
 
 import (
@@ -25,6 +25,7 @@ type authController struct {
 	authService service.AuthService
 }
 
+// NewAuthController constructs an AuthController.
 func NewAuthController(authService service.AuthService) AuthController {
 	return &authController{
 		authService: authService,

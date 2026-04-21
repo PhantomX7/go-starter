@@ -1,3 +1,4 @@
+// Package repository provides refresh-token persistence primitives.
 package repository
 
 import (
@@ -45,6 +46,7 @@ type refreshTokenRepository struct {
 	repository.BaseRepository[models.RefreshToken]
 }
 
+// NewRefreshTokenRepository constructs a RefreshTokenRepository.
 func NewRefreshTokenRepository(db *gorm.DB) RefreshTokenRepository {
 	return &refreshTokenRepository{
 		BaseRepository: repository.NewBaseRepository[models.RefreshToken](db),

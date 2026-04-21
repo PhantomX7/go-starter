@@ -27,16 +27,21 @@ type FacetRequest struct {
 }
 
 const (
-	// Default search and ranking constants.
+	// DefaultSearchSize is the fallback result size for Bleve queries.
 	DefaultSearchSize = 10
-	DefaultFacetSize  = 10
-	DefaultFuzziness  = 2
+	// DefaultFacetSize is the fallback bucket count for facet requests.
+	DefaultFacetSize = 10
+	// DefaultFuzziness is the fallback typo tolerance for fuzzy queries.
+	DefaultFuzziness = 2
 
-	// Default boost values for query prioritization
-	BoostExactMatch  = 10.0
+	// BoostExactMatch prioritizes exact phrase matches above other query types.
+	BoostExactMatch = 10.0
+	// BoostPhraseMatch prioritizes exact term presence without fuzziness.
 	BoostPhraseMatch = 5.0
-	BoostTermMatch   = 3.0
-	BoostFuzzyMatch  = 1.0
+	// BoostTermMatch prioritizes standard AND-term matches.
+	BoostTermMatch = 3.0
+	// BoostFuzzyMatch prioritizes fuzzy matches below exact matches.
+	BoostFuzzyMatch = 1.0
 )
 
 var (
@@ -48,11 +53,15 @@ var (
 type FilterType uint8
 
 const (
-	// Supported Bleve filter types.
+	// FilterExact matches an exact term value.
 	FilterExact FilterType = iota
+	// FilterMatch matches a text value using Bleve's match query.
 	FilterMatch
+	// FilterRange matches numeric values within a range.
 	FilterRange
+	// FilterIn matches any value from a set of terms.
 	FilterIn
+	// FilterBool matches boolean values encoded in the index.
 	FilterBool
 )
 

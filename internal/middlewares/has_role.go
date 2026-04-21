@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// HasRole restricts access to users whose role matches one of allowedRoles.
 func (m *Middleware) HasRole(allowedRoles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get role from context

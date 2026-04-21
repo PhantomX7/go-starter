@@ -12,10 +12,13 @@ import (
 type FilterType uint8
 
 const (
-	// Supported filter value types for Bleve-backed pagination.
+	// FilterTypeString treats the filter input as a string value.
 	FilterTypeString FilterType = iota
+	// FilterTypeNumber treats the filter input as a numeric value.
 	FilterTypeNumber
+	// FilterTypeBool treats the filter input as a boolean value.
 	FilterTypeBool
+	// FilterTypeRange treats the filter input as a numeric range expression.
 	FilterTypeRange
 )
 
@@ -241,7 +244,7 @@ func buildFilter(filterType FilterType, value string) *bleve.Filter {
 }
 
 func buildRangeFilter(op string, vals []string) *bleve.Filter {
-	var min, max *float64
+	var minValue, maxValue *float64
 
 	parseFloat := func(s string) *float64 {
 		if v, err := strconv.ParseFloat(s, 64); err == nil {
@@ -253,35 +256,35 @@ func buildRangeFilter(op string, vals []string) *bleve.Filter {
 	switch op {
 	case "eq":
 		if v := parseFloat(vals[0]); v != nil {
-			min, max = v, v
+			minValue, maxValue = v, v
 		}
 	case "between":
 		if len(vals) >= 2 {
-			min, max = parseFloat(vals[0]), parseFloat(vals[1])
+			minValue, maxValue = parseFloat(vals[0]), parseFloat(vals[1])
 		}
 	case "gt":
 		if v := parseFloat(vals[0]); v != nil {
 			adjusted := *v + 0.0001
-			min = &adjusted
+			minValue = &adjusted
 		}
 	case "gte":
-		min = parseFloat(vals[0])
+		minValue = parseFloat(vals[0])
 	case "lt":
 		if v := parseFloat(vals[0]); v != nil {
 			adjusted := *v - 0.0001
-			max = &adjusted
+			maxValue = &adjusted
 		}
 	case "lte":
-		max = parseFloat(vals[0])
+		maxValue = parseFloat(vals[0])
 	}
 
-	if min == nil && max == nil {
+	if minValue == nil && maxValue == nil {
 		return nil
 	}
 
 	return &bleve.Filter{
 		Type:  bleve.FilterRange,
-		Value: bleve.RangeValue{Min: min, Max: max},
+		Value: bleve.RangeValue{Min: minValue, Max: maxValue},
 	}
 }
 
@@ -412,12 +415,12 @@ func getIntParam(params map[string][]string, key string, defaultVal int) int {
 	return defaultVal
 }
 
-func clamp(val, min, max int) int {
-	if val < min {
-		return min
+func clamp(val, minValue, maxValue int) int {
+	if val < minValue {
+		return minValue
 	}
-	if val > max {
-		return max
+	if val > maxValue {
+		return maxValue
 	}
 	return val
 }

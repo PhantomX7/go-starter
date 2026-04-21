@@ -1,4 +1,4 @@
-// internal/middlewares/middleware.go
+// Package middlewares provides shared Gin middleware for the API.
 package middlewares
 
 import (
@@ -6,11 +6,13 @@ import (
 	"github.com/PhantomX7/athleton/libs/casbin"
 )
 
+// Middleware aggregates the reusable Gin middleware dependencies.
 type Middleware struct {
 	authJWT      *authjwt.AuthJWT
 	casbinClient casbin.Client
 }
 
+// NewMiddleware constructs the application's middleware bundle.
 func NewMiddleware(
 	authJWT *authjwt.AuthJWT,
 	casbinClient casbin.Client,

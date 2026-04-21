@@ -1,3 +1,4 @@
+// Package controller exposes HTTP handlers for configuration management.
 package controller
 
 import (
@@ -12,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ConfigController exposes HTTP handlers for configuration resources.
 type ConfigController interface {
 	Index(ctx *gin.Context)
 	Update(ctx *gin.Context)
@@ -22,6 +24,7 @@ type configController struct {
 	configService service.ConfigService
 }
 
+// NewConfigController constructs a ConfigController.
 func NewConfigController(configService service.ConfigService) ConfigController {
 	return &configController{
 		configService: configService,

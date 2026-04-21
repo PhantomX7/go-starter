@@ -1,4 +1,4 @@
-// internal/middlewares/auth.go
+// Package middlewares provides shared Gin middleware for the API.
 package middlewares
 
 import (

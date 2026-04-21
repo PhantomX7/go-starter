@@ -1,3 +1,4 @@
+// Package main prints the merged Atlas/GORM schema for migrations.
 package main
 
 import (

@@ -1,3 +1,4 @@
+// Package log wires the log module.
 package log
 
 import (
@@ -8,6 +9,7 @@ import (
 	"go.uber.org/fx"
 )
 
+// Module wires the log module dependencies into the Fx container.
 var Module = fx.Options(
 	fx.Provide(
 		controller.NewLogController,
