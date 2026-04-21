@@ -83,7 +83,9 @@ func SetupServer(m *middlewares.Middleware, cv cvalidator.CustomValidator) *gin.
 	docs.SwaggerInfo.BasePath = "/api/v1/"
 	docs.SwaggerInfo.Schemes = []string{"http", "https"}
 
-	server := gin.Default()
+	// gin.New() (not gin.Default()) so the only request logger in play is our
+	// structured zap-based m.Logger(); Gin's stdout logger would just duplicate it.
+	server := gin.New()
 
 	// list of custom validators
 	validators := map[string]validator.Func{
@@ -97,10 +99,11 @@ func SetupServer(m *middlewares.Middleware, cv cvalidator.CustomValidator) *gin.
 
 	// Apply middleware in order (ORDER IS IMPORTANT!)
 	server.Use(
-		m.RequestID(), // 2. Generate/extract request ID (MUST be before logger)
-		m.CORS(),      // 3. CORS handling
-		// m.TimeoutMiddleware(cfg.Server.ReadTimeout), // 4. Request timeout
-		m.Logger(),       // 5. Request logging (use m.LoggerAdvanced() for body capture)
+		m.RequestID(), // 1. Generate/extract request ID (MUST be before logger)
+		m.CORS(),      // 2. CORS handling
+		// m.TimeoutMiddleware(cfg.Server.ReadTimeout), // 3. Request timeout
+		m.Logger(),       // 4. Request logging (outer, so it sees recovered panics)
+		gin.Recovery(),   // 5. Panic recovery (inner, so Logger still logs the 500)
 		m.ErrorHandler(), // 6. Error handling (MUST be last)
 	)
 

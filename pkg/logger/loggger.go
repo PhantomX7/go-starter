@@ -1,8 +1,11 @@
 package logger
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+
+	"github.com/PhantomX7/athleton/pkg/utils"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -153,4 +156,29 @@ func Panic(msg string, fields ...zap.Field) {
 // With creates a child logger with the provided fields
 func With(fields ...zap.Field) *zap.Logger {
 	return Log.With(fields...)
+}
+
+// Ctx returns a logger pre-bound with request-scoped fields (request_id,
+// user_id, role) pulled from ctx, plus any extra fields supplied by the caller.
+// Use it as the default logging entry point in handlers, services, and
+// repositories to avoid re-plumbing those fields on every call site.
+//
+// The returned *zap.Logger is intended for direct use — log.Info(...), etc. —
+// not through the package-level helpers (Info/Warn/Error). Caller-skip is
+// adjusted so file:line points at the .Info/.Error call, matching what the
+// global helpers report.
+func Ctx(ctx context.Context, fields ...zap.Field) *zap.Logger {
+	if Log == nil {
+		return zap.NewNop()
+	}
+	if id := utils.GetRequestIDFromContext(ctx); id != "" {
+		fields = append(fields, zap.String("request_id", id))
+	}
+	if uid, ok := utils.GetUserIDFromContext(ctx); ok {
+		fields = append(fields, zap.Uint("user_id", uid))
+	}
+	if role, ok := utils.GetRoleFromContext(ctx); ok && role != "" {
+		fields = append(fields, zap.String("role", role))
+	}
+	return Log.WithOptions(zap.AddCallerSkip(-1)).With(fields...)
 }

@@ -343,9 +343,10 @@ func (s *userService) createLog(ctx context.Context, action models.LogAction, en
 		Message:    message,
 	}
 
+	bgCtx := context.WithoutCancel(ctx)
 	go func() {
-		if err := s.logRepository.Create(context.Background(), log); err != nil {
-			logger.Error("Failed to create audit log",
+		if err := s.logRepository.Create(bgCtx, log); err != nil {
+			logger.Ctx(bgCtx).Error("Failed to create audit log",
 				zap.String("entity_type", models.LogEntityTypeUser),
 				zap.Uint("entity_id", entityID),
 				zap.String("action", string(action)),

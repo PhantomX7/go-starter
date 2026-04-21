@@ -44,18 +44,52 @@ func seedUser(t *testing.T, db *gorm.DB, username string) *models.User {
 	return user
 }
 
+// seedToken inserts a refresh-token row directly via gorm, bypassing the
+// repository's Create override. We hash the plaintext here so the row matches
+// what FindByToken / RevokeByToken will look up (they hash their inputs). Tests
+// that need pre-revoked or expired rows still get full control over RevokedAt
+// and ExpiresAt without going through the production Create path.
 func seedToken(t *testing.T, db *gorm.DB, userID uint, token string, expiresAt time.Time, revokedAt *time.Time) *models.RefreshToken {
 	t.Helper()
 
 	rt := &models.RefreshToken{
 		ID:        uuid.New(),
 		UserID:    userID,
-		Token:     token,
+		Token:     refreshtokenrepository.HashRefreshToken(token),
 		ExpiresAt: expiresAt,
 		RevokedAt: revokedAt,
 	}
 	require.NoError(t, db.Create(rt).Error)
 	return rt
+}
+
+func TestRefreshTokenRepositoryCreateStoresHashedTokenAndRoundTrips(t *testing.T) {
+	db := setupDB(t)
+	repo := refreshtokenrepository.NewRefreshTokenRepository(db)
+	user := seedUser(t, db, "alma")
+
+	plaintext := "wire-value-from-client"
+	rt := &models.RefreshToken{
+		ID:        uuid.New(),
+		UserID:    user.ID,
+		Token:     plaintext,
+		ExpiresAt: time.Now().Add(time.Hour),
+	}
+	require.NoError(t, repo.Create(context.Background(), rt))
+
+	var stored models.RefreshToken
+	require.NoError(t, db.First(&stored, "id = ?", rt.ID).Error)
+	require.NotEqual(t, plaintext, stored.Token, "plaintext must not be stored at rest")
+	require.Equal(t, refreshtokenrepository.HashRefreshToken(plaintext), stored.Token)
+
+	got, err := repo.FindByToken(context.Background(), plaintext)
+	require.NoError(t, err)
+	require.Equal(t, rt.ID, got.ID)
+
+	require.NoError(t, repo.RevokeByToken(context.Background(), plaintext))
+
+	_, err = repo.FindByToken(context.Background(), plaintext)
+	require.Error(t, err)
 }
 
 func TestRefreshTokenRepositoryFindByTokenReturnsActiveToken(t *testing.T) {
@@ -69,7 +103,8 @@ func TestRefreshTokenRepositoryFindByTokenReturnsActiveToken(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Equal(t, seed.ID, got.ID)
-	require.Equal(t, "active-token", got.Token)
+	// Token column stores the hash, not the plaintext — see Create override.
+	require.Equal(t, refreshtokenrepository.HashRefreshToken("active-token"), got.Token)
 }
 
 func TestRefreshTokenRepositoryFindByTokenRejectsExpiredOrRevoked(t *testing.T) {

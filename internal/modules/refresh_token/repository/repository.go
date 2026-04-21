@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -15,6 +17,17 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+// HashRefreshToken returns the deterministic at-rest form of a refresh-token
+// value. Refresh tokens are stored as SHA-256 hex digests (not plaintext) so
+// that a database read leak does not yield active sessions: the wire value
+// only ever exists in the legitimate client and the response that minted it.
+// SHA-256 is appropriate (no salt needed) because the input is a high-entropy
+// random string, not a user-chosen secret.
+func HashRefreshToken(plaintext string) string {
+	sum := sha256.Sum256([]byte(plaintext))
+	return hex.EncodeToString(sum[:])
+}
 
 // RefreshTokenRepository defines the interface for refresh token repository operations.
 type RefreshTokenRepository interface {
@@ -38,6 +51,18 @@ func NewRefreshTokenRepository(db *gorm.DB) RefreshTokenRepository {
 	}
 }
 
+// Create overrides BaseRepository.Create to hash the plaintext token before
+// persisting. Callers continue to pass the wire value; the stored row only
+// ever contains the hash. The entity is mutated in place so a re-read would
+// see the hash, but there are no current callers that re-read Token after
+// Create.
+func (r *refreshTokenRepository) Create(ctx context.Context, entity *models.RefreshToken) error {
+	if entity != nil && entity.Token != "" {
+		entity.Token = HashRefreshToken(entity.Token)
+	}
+	return r.BaseRepository.Create(ctx, entity)
+}
+
 // activeTokenPredicates returns the two column conditions that make a token
 // "active": not revoked and not expired. Centralized so adding/removing a
 // condition changes every caller in one place.
@@ -48,10 +73,13 @@ func activeTokenPredicates(now time.Time) []clause.Expression {
 	}
 }
 
-// FindByToken returns the active refresh token matching the given value.
+// FindByToken returns the active refresh token matching the given plaintext
+// value. The plaintext is hashed before the column lookup since that is what
+// is stored at rest.
 func (r *refreshTokenRepository) FindByToken(ctx context.Context, token string) (*models.RefreshToken, error) {
+	hashed := HashRefreshToken(token)
 	q := gorm.G[models.RefreshToken](r.GetDB(ctx)).
-		Where(generated.RefreshToken.Token.Eq(token))
+		Where(generated.RefreshToken.Token.Eq(hashed))
 	for _, p := range activeTokenPredicates(time.Now()) {
 		q = q.Where(p)
 	}
@@ -61,7 +89,10 @@ func (r *refreshTokenRepository) FindByToken(ctx context.Context, token string) 
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, cerrors.NewNotFoundError("invalid refresh token")
 		}
-		return nil, cerrors.NewInternalServerError(fmt.Sprintf("failed to find refresh token record by token %v", token), err)
+		// NOTE: do not include the token (or its hash) in the error message —
+		// hashes are not secret but they are still session identifiers and
+		// should not be sprayed into logs.
+		return nil, cerrors.NewInternalServerError("failed to find refresh token record", err)
 	}
 	return &rt, nil
 }
@@ -130,12 +161,15 @@ func (r *refreshTokenRepository) RevokeAllByUserID(ctx context.Context, userID u
 }
 
 // RevokeAllByUserIDExcept revokes every active token for the user except the
-// one whose value equals exceptToken.
+// one whose plaintext value equals exceptToken. The exception is matched on
+// the stored hash; an empty exceptToken naturally matches no row and revokes
+// all of the user's active tokens.
 func (r *refreshTokenRepository) RevokeAllByUserIDExcept(ctx context.Context, userID uint, exceptToken string) error {
 	now := time.Now()
+	exceptHash := HashRefreshToken(exceptToken)
 	q := gorm.G[models.RefreshToken](r.GetDB(ctx)).
 		Where(generated.RefreshToken.UserID.Eq(userID)).
-		Where(generated.RefreshToken.Token.Neq(exceptToken))
+		Where(generated.RefreshToken.Token.Neq(exceptHash))
 	for _, p := range activeTokenPredicates(now) {
 		q = q.Where(p)
 	}
@@ -146,15 +180,18 @@ func (r *refreshTokenRepository) RevokeAllByUserIDExcept(ctx context.Context, us
 	return nil
 }
 
-// RevokeByToken revokes one specific refresh token by value.
-// NOTE: unlike the original, this does not return ErrNotFound when the token
-// is already revoked or missing — both current callers either call FindByToken
-// first or ignore the error. If you add a new caller that needs the signal,
-// call FindByToken first.
+// RevokeByToken revokes one specific refresh token by its plaintext value.
+// The plaintext is hashed before matching since that is what is stored.
+// NOTE: this does not return ErrNotFound when the token is already revoked or
+// missing — current callers either call FindByToken first or treat 0-row
+// updates as success. If you add a new caller that needs to detect reuse
+// (e.g. defensive token-reuse mitigation in rotation), capture rows-affected
+// from gorm and surface it.
 func (r *refreshTokenRepository) RevokeByToken(ctx context.Context, token string) error {
 	now := time.Now()
+	hashed := HashRefreshToken(token)
 	_, err := gorm.G[models.RefreshToken](r.GetDB(ctx)).
-		Where(generated.RefreshToken.Token.Eq(token)).
+		Where(generated.RefreshToken.Token.Eq(hashed)).
 		Where(generated.RefreshToken.RevokedAt.IsNull()).
 		Set(generated.RefreshToken.RevokedAt.Set(now)).
 		Update(ctx)
