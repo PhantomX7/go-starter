@@ -148,5 +148,5 @@ All config is loaded from `.env` via [pkg/config](pkg/config/). See [.env.exampl
 
 `make hooks-install` wires up [lefthook.yml](lefthook.yml):
 
-- **pre-commit** — `golangci-lint fmt` on staged files (auto-staged), `go vet`, `golangci-lint run --fast`
+- **pre-commit** — `golangci-lint fmt` on staged files (auto-staged), `go vet`, `golangci-lint run --fast-only`
 - **pre-push** — `go test -race ./...`
