@@ -1,0 +1,18 @@
+pre-commit:
+  parallel: false
+  commands:
+    1_fmt:
+      glob: "*.go"
+      run: golangci-lint fmt {staged_files}
+      stage_fixed: true
+    2_vet:
+      glob: "*.go"
+      run: go vet ./...
+    3_lint:
+      glob: "*.go"
+      run: golangci-lint run --fast ./...
+
+pre-push:
+  commands:
+    test:
+      run: go test -race ./...

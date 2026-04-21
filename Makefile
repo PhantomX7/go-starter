@@ -77,6 +77,18 @@ lint-install:
 	@echo "Installing golangci-lint v2.11.0..."
 	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.0
 
+hooks-install:
+	@echo "Installing lefthook and git hooks..."
+	@go install github.com/evilmartians/lefthook@latest
+	@lefthook install
+
+hooks-uninstall:
+	@echo "Uninstalling git hooks..."
+	@lefthook uninstall
+
+hooks-run:
+	@lefthook run pre-commit --all-files
+
 test:
 	go test ./... -coverprofile cp.out
 
