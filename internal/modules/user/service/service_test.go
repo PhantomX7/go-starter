@@ -22,6 +22,7 @@ import (
 	"github.com/PhantomX7/athleton/pkg/response"
 	"github.com/PhantomX7/athleton/pkg/utils"
 	casbinv2 "github.com/casbin/casbin/v2"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
@@ -141,6 +142,9 @@ func (m *mockRefreshTokenRepository) Count(context.Context, *pagination.Paginati
 }
 func (m *mockRefreshTokenRepository) FindByToken(context.Context, string) (*models.RefreshToken, error) {
 	panic("unexpected FindByToken call")
+}
+func (m *mockRefreshTokenRepository) FindActiveByID(context.Context, uuid.UUID) (*models.RefreshToken, error) {
+	panic("unexpected FindActiveByID call")
 }
 func (m *mockRefreshTokenRepository) GetValidCountByUserID(context.Context, uint) (int64, error) {
 	panic("unexpected GetValidCountByUserID call")

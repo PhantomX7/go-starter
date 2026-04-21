@@ -11,6 +11,7 @@ import (
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/repository"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -19,6 +20,7 @@ import (
 type RefreshTokenRepository interface {
 	repository.Repository[models.RefreshToken]
 	FindByToken(ctx context.Context, token string) (*models.RefreshToken, error)
+	FindActiveByID(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error)
 	GetValidCountByUserID(ctx context.Context, userID uint) (int64, error)
 	DeleteInvalidToken(ctx context.Context) error
 	RevokeAllByUserID(ctx context.Context, userID uint) error
@@ -60,6 +62,26 @@ func (r *refreshTokenRepository) FindByToken(ctx context.Context, token string) 
 			return nil, cerrors.NewNotFoundError("invalid refresh token")
 		}
 		return nil, cerrors.NewInternalServerError(fmt.Sprintf("failed to find refresh token record by token %v", token), err)
+	}
+	return &rt, nil
+}
+
+// FindActiveByID returns the active refresh token whose primary key equals id.
+// Used to bind an access JWT (jti claim) to a specific refresh-token session,
+// so that revoking that session also kills its access tokens.
+func (r *refreshTokenRepository) FindActiveByID(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error) {
+	q := gorm.G[models.RefreshToken](r.GetDB(ctx)).
+		Where(generated.RefreshToken.ID.Eq(id))
+	for _, p := range activeTokenPredicates(time.Now()) {
+		q = q.Where(p)
+	}
+
+	rt, err := q.First(ctx)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, cerrors.NewNotFoundError("invalid refresh token session")
+		}
+		return nil, cerrors.NewInternalServerError(fmt.Sprintf("failed to find refresh token by id %v", id), err)
 	}
 	return &rt, nil
 }

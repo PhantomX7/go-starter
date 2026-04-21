@@ -103,6 +103,9 @@ func (m *mockRefreshTokenRepository) FindByToken(ctx context.Context, token stri
 	}
 	return m.findByTokenFn(ctx, token)
 }
+func (m *mockRefreshTokenRepository) FindActiveByID(context.Context, uuid.UUID) (*models.RefreshToken, error) {
+	panic("unexpected FindActiveByID call")
+}
 func (m *mockRefreshTokenRepository) GetValidCountByUserID(context.Context, uint) (int64, error) {
 	panic("unexpected GetValidCountByUserID call")
 }

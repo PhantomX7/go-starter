@@ -67,7 +67,7 @@ func RegisterRoutes(
 			{
 				configRoute.GET("", configController.Index)
 				configRoute.GET("/key/:key", configController.FindByKey)
-				configRoute.PATCH("/:id", configController.Update, middleware.RequireRole("root"))
+				configRoute.PATCH("/:id", middleware.RequireRole("root"), configController.Update)
 			}
 
 			// ---------------------------------------------------------

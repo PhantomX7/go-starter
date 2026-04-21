@@ -179,6 +179,34 @@ func TestRefreshTokenRepositoryRevokeAllByUserIDExceptKeepsSpecifiedToken(t *tes
 	require.NotNil(t, revokedToken.RevokedAt)
 }
 
+func TestRefreshTokenRepositoryFindActiveByIDReturnsOnlyActive(t *testing.T) {
+	db := setupDB(t)
+	repo := refreshtokenrepository.NewRefreshTokenRepository(db)
+	user := seedUser(t, db, "judy")
+	now := time.Now()
+
+	active := seedToken(t, db, user.ID, "active", now.Add(time.Hour), nil)
+	expired := seedToken(t, db, user.ID, "expired", now.Add(-time.Hour), nil)
+	revoked := seedToken(t, db, user.ID, "revoked", now.Add(time.Hour), &now)
+
+	got, err := repo.FindActiveByID(context.Background(), active.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, active.ID, got.ID)
+
+	_, err = repo.FindActiveByID(context.Background(), expired.ID)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, cerrors.ErrNotFound))
+
+	_, err = repo.FindActiveByID(context.Background(), revoked.ID)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, cerrors.ErrNotFound))
+
+	_, err = repo.FindActiveByID(context.Background(), uuid.New())
+	require.Error(t, err)
+	require.True(t, errors.Is(err, cerrors.ErrNotFound))
+}
+
 func TestRefreshTokenRepositoryRevokeByTokenRevokesMatchingToken(t *testing.T) {
 	db := setupDB(t)
 	repo := refreshtokenrepository.NewRefreshTokenRepository(db)

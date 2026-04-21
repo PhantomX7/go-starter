@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PhantomX7/athleton/internal/dto"
@@ -33,8 +34,38 @@ const (
 	IdentityKey    = "user_id"
 	RoleKey        = "role"
 	AdminRoleIDKey = "admin_role_id"
-	authUserKey    = "auth_user"
+	SessionIDKey   = "jti"
+
+	authUserKey         = "auth_user"
+	authRefreshTokenKey = "auth_refresh_token"
+
+	// dummyBcryptCost matches the production bcrypt cost (see service.BcryptCost)
+	// so the timing-equalization path costs the same as a real comparison.
+	dummyBcryptCost = 12
 )
+
+// dummyHash is a real bcrypt hash generated lazily on first use. It is fed to
+// bcrypt.CompareHashAndPassword on the username-not-found / inactive-user
+// paths so the response time matches a real wrong-password comparison and
+// account existence is not leaked via timing. The previous string literal was
+// not a valid bcrypt hash, so CompareHashAndPassword returned ErrHashTooShort
+// immediately and did no work.
+var dummyHash = sync.OnceValue(func() []byte {
+	h, err := bcrypt.GenerateFromPassword([]byte("athleton-timing-dummy-password"), dummyBcryptCost)
+	if err != nil {
+		panic(fmt.Sprintf("authjwt: failed to generate dummy bcrypt hash: %v", err))
+	}
+	return h
+})
+
+// authSubject is the value passed between Authenticator → payloadFunc and
+// identityHandler → authorizer. It binds the access JWT to a specific
+// refresh-token session: revoking that refresh token also kills the access
+// tokens minted alongside it.
+type authSubject struct {
+	User      *models.User
+	SessionID uuid.UUID
+}
 
 type AuthJWT struct {
 	Middleware       *ginjwt.GinJWTMiddleware
@@ -95,22 +126,25 @@ func NewAuthJWT(
 // --- Middleware Callbacks ---
 
 func (a *AuthJWT) payloadFunc(data any) jwt.MapClaims {
-	if user, ok := data.(*models.User); ok {
-		claims := jwt.MapClaims{
-			IdentityKey: user.ID,
-			RoleKey:     user.Role.ToString(),
-			"sub":       user.ID,
-			"iss":       config.Get().JWT.Issuer,
-		}
-
-		// Include admin_role_id if present
-		if user.AdminRoleID != nil {
-			claims[AdminRoleIDKey] = *user.AdminRoleID
-		}
-
-		return claims
+	subj, ok := data.(*authSubject)
+	if !ok || subj.User == nil {
+		return jwt.MapClaims{}
 	}
-	return jwt.MapClaims{}
+
+	user := subj.User
+	claims := jwt.MapClaims{
+		IdentityKey:  user.ID,
+		RoleKey:      user.Role.ToString(),
+		SessionIDKey: subj.SessionID.String(),
+		"sub":        user.ID,
+		"iss":        config.Get().JWT.Issuer,
+	}
+
+	if user.AdminRoleID != nil {
+		claims[AdminRoleIDKey] = *user.AdminRoleID
+	}
+
+	return claims
 }
 
 func (a *AuthJWT) identityHandler(c *gin.Context) any {
@@ -118,17 +152,26 @@ func (a *AuthJWT) identityHandler(c *gin.Context) any {
 	userID, _ := claims[IdentityKey].(float64)
 	role, _ := claims[RoleKey].(string)
 
-	// Extract admin_role_id (optional)
 	var adminRoleID *uint
 	if val, ok := claims[AdminRoleIDKey]; ok && val != nil {
 		id := uint(val.(float64))
 		adminRoleID = &id
 	}
 
-	return &models.User{
-		ID:          uint(userID),
-		Role:        models.UserRole(role),
-		AdminRoleID: adminRoleID,
+	var sessionID uuid.UUID
+	if jtiStr, ok := claims[SessionIDKey].(string); ok {
+		if parsed, err := uuid.Parse(jtiStr); err == nil {
+			sessionID = parsed
+		}
+	}
+
+	return &authSubject{
+		User: &models.User{
+			ID:          uint(userID),
+			Role:        models.UserRole(role),
+			AdminRoleID: adminRoleID,
+		},
+		SessionID: sessionID,
 	}
 }
 
@@ -143,32 +186,44 @@ func (a *AuthJWT) authenticator(c *gin.Context) (any, error) {
 		return nil, ginjwt.ErrFailedAuthentication
 	}
 
+	// Pre-create the refresh-token session so the access JWT can carry its
+	// ID as the jti claim. The authorizer will look this session up on every
+	// request, so revoking it kills the matching access tokens too.
+	refreshTokenStr, sessionID, err := a.createRefreshToken(c.Request.Context(), user.ID)
+	if err != nil {
+		logger.Error("Failed to create refresh token at login", zap.Uint("user_id", user.ID), zap.Error(err))
+		return nil, ginjwt.ErrFailedAuthentication
+	}
+
+	subj := &authSubject{User: user, SessionID: sessionID}
 	c.Set(authUserKey, user)
+	c.Set(authRefreshTokenKey, refreshTokenStr)
 	logger.Info("Login successful", zap.Uint("user_id", user.ID))
-	return user, nil
+	return subj, nil
 }
 
 func (a *AuthJWT) authorizer(c *gin.Context, data any) bool {
-	user, ok := data.(*models.User)
-	if !ok || user.ID == 0 {
+	subj, ok := data.(*authSubject)
+	if !ok || subj.User == nil || subj.User.ID == 0 || subj.SessionID == uuid.Nil {
 		return false
 	}
 
 	ctx := c.Request.Context()
 
-	// Validate user status and session
-	dbUser, err := a.userRepo.FindById(ctx, user.ID)
+	dbUser, err := a.userRepo.FindById(ctx, subj.User.ID)
 	if err != nil || !dbUser.IsActive {
 		return false
 	}
 
-	count, err := a.refreshTokenRepo.GetValidCountByUserID(ctx, user.ID)
-	if err != nil || count == 0 {
+	// Per-session check: the refresh-token row whose ID equals the access
+	// token's jti claim must still be active and belong to this user. Once
+	// that row is revoked (logout, change-password, admin action), every
+	// access token minted for that session stops working immediately.
+	session, err := a.refreshTokenRepo.FindActiveByID(ctx, subj.SessionID)
+	if err != nil || session.UserID != subj.User.ID {
 		return false
 	}
 
-	// Set context values before c.Next() is called
-	// Use dbUser to get the latest admin_role_id from database
 	a.setContextValues(c, dbUser.ID, dbUser.Name, string(dbUser.Role), dbUser.AdminRoleID)
 	return true
 }
@@ -185,14 +240,13 @@ func (a *AuthJWT) loginResponse(c *gin.Context, token *core.Token) {
 		return
 	}
 
-	refreshToken, err := a.createRefreshToken(c.Request.Context(), user.ID)
-	if err != nil {
-		logger.Error("Failed to generate refresh token", zap.Uint("user_id", user.ID), zap.Error(err))
-		c.JSON(http.StatusInternalServerError, response.BuildResponseFailed("failed to generate token"))
+	refreshTokenData, _ := c.Get(authRefreshTokenKey)
+	refreshToken, ok := refreshTokenData.(string)
+	if !ok || refreshToken == "" {
+		c.JSON(http.StatusInternalServerError, response.BuildResponseFailed("internal error"))
 		return
 	}
 
-	// Log admin login
 	if user.Role == models.UserRoleAdmin {
 		a.createLoginLog(user)
 	}
@@ -211,19 +265,20 @@ func (a *AuthJWT) logoutResponse(c *gin.Context) {
 // --- Public Methods ---
 
 func (a *AuthJWT) GenerateTokensForUser(ctx context.Context, user *models.User) (*dto.AuthResponse, error) {
-	token, err := a.Middleware.TokenGenerator(ctx, user)
-	if err != nil {
-		return nil, cerrors.NewInternalServerError("failed to generate access token", err)
-	}
-
-	refreshToken, err := a.createRefreshToken(ctx, user.ID)
+	// Refresh token first so the access token can carry its session ID as jti.
+	refreshTokenStr, sessionID, err := a.createRefreshToken(ctx, user.ID)
 	if err != nil {
 		return nil, cerrors.NewInternalServerError("failed to generate refresh token", err)
 	}
 
+	token, err := a.Middleware.TokenGenerator(ctx, &authSubject{User: user, SessionID: sessionID})
+	if err != nil {
+		return nil, cerrors.NewInternalServerError("failed to generate access token", err)
+	}
+
 	return &dto.AuthResponse{
 		AccessToken:  token.AccessToken,
-		RefreshToken: refreshToken,
+		RefreshToken: refreshTokenStr,
 		TokenType:    "Bearer",
 	}, nil
 }
@@ -243,8 +298,16 @@ func (a *AuthJWT) ValidateAndRotateRefreshToken(ctx context.Context, oldToken st
 		return nil, cerrors.NewBadRequestError("user account is inactive")
 	}
 
-	// Revoke old token (ignore error, continue with new token)
-	_ = a.refreshTokenRepo.RevokeByToken(ctx, oldToken)
+	// Revoke old token before issuing the new one. If revocation fails we
+	// must NOT mint a replacement: the old token would remain reusable and
+	// rotation would silently degrade to "issue extra tokens", letting an
+	// attacker who captured a refresh token replay it indefinitely while the
+	// store is unhealthy.
+	if err := a.refreshTokenRepo.RevokeByToken(ctx, oldToken); err != nil {
+		logger.Error("Failed to revoke refresh token during rotation",
+			zap.Uint("user_id", user.ID), zap.Error(err))
+		return nil, cerrors.NewInternalServerError("failed to rotate refresh token", err)
+	}
 
 	return a.GenerateTokensForUser(ctx, user)
 }
@@ -273,7 +336,6 @@ func (a *AuthJWT) RevokeAllUserTokensExcept(ctx context.Context, userID uint, ex
 
 func (a *AuthJWT) validateCredentials(ctx context.Context, username, password string) (*models.User, error) {
 	username = strings.TrimSpace(username)
-	dummyHash := []byte("$2a$12$dummy.hash.to.prevent.timing.attacks")
 
 	var user *models.User
 	var err error
@@ -285,12 +347,12 @@ func (a *AuthJWT) validateCredentials(ctx context.Context, username, password st
 	}
 
 	if err != nil {
-		bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
+		bcrypt.CompareHashAndPassword(dummyHash(), []byte(password))
 		return nil, err
 	}
 
 	if !user.IsActive {
-		bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
+		bcrypt.CompareHashAndPassword(dummyHash(), []byte(password))
 		return nil, errors.New("inactive account")
 	}
 
@@ -301,17 +363,24 @@ func (a *AuthJWT) validateCredentials(ctx context.Context, username, password st
 	return user, nil
 }
 
-func (a *AuthJWT) createRefreshToken(ctx context.Context, userID uint) (string, error) {
+// createRefreshToken inserts a new refresh-token row and returns both the
+// opaque token string (handed to the client) and the row's UUID, which the
+// caller embeds in the access JWT as the jti claim to bind it to this session.
+func (a *AuthJWT) createRefreshToken(ctx context.Context, userID uint) (string, uuid.UUID, error) {
+	sessionID := uuid.New()
 	token := uuid.New().String() + "-" + uuid.New().String()
 
 	err := a.refreshTokenRepo.Create(ctx, &models.RefreshToken{
-		ID:        uuid.New(),
+		ID:        sessionID,
 		UserID:    userID,
 		Token:     token,
 		ExpiresAt: time.Now().Add(config.Get().JWT.RefreshExpiration),
 	})
+	if err != nil {
+		return "", uuid.Nil, err
+	}
 
-	return token, err
+	return token, sessionID, nil
 }
 
 func (a *AuthJWT) setContextValues(c *gin.Context, userID uint, userName string, role string, adminRoleID *uint) {
