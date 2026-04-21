@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/PhantomX7/athleton/internal/audit"
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/models"
@@ -230,16 +231,7 @@ func (s *authService) Logout(ctx context.Context, req *dto.LogoutRequest) error 
 
 // createLog creates an audit log entry for auth operations (admin only)
 func (s *authService) createLog(ctx context.Context, action models.LogAction, entityID uint, entityName string) {
-	var userID *uint
-	if id, ok := utils.GetUserIDFromContext(ctx); ok {
-		userID = &id
-	}
-
-	userName, _ := utils.GetUserNameFromContext(ctx)
-	if userName == "" {
-		userName = "Unknown"
-	}
-
+	userName := audit.UserName(ctx)
 	var message string
 	switch action {
 	case models.LogActionChangePassword:
@@ -250,22 +242,10 @@ func (s *authService) createLog(ctx context.Context, action models.LogAction, en
 		message = fmt.Sprintf("%s performed %s on user: %s", userName, action, entityName)
 	}
 
-	log := &models.Log{
-		UserID:     userID,
+	audit.Record(ctx, s.logRepository, audit.Entry{
 		Action:     action,
 		EntityType: models.LogEntityTypeUser,
 		EntityID:   entityID,
 		Message:    message,
-	}
-
-	go func() {
-		if err := s.logRepository.Create(context.Background(), log); err != nil {
-			logger.Error("Failed to create audit log",
-				zap.String("entity_type", models.LogEntityTypeUser),
-				zap.Uint("entity_id", entityID),
-				zap.String("action", string(action)),
-				zap.Error(err),
-			)
-		}
-	}()
+	})
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/PhantomX7/athleton/internal/audit"
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/models"
 	adminrolerepo "github.com/PhantomX7/athleton/internal/modules/admin_role/repository"
@@ -379,16 +380,7 @@ func joinStrings(strs []string) string {
 
 // createLog creates an audit log entry for admin role operations
 func (s *adminRoleService) createLog(ctx context.Context, action models.LogAction, entityID uint, entityName string) {
-	var userID *uint
-	if id, ok := utils.GetUserIDFromContext(ctx); ok {
-		userID = &id
-	}
-
-	userName, _ := utils.GetUserNameFromContext(ctx)
-	if userName == "" {
-		userName = "Unknown"
-	}
-
+	userName := audit.UserName(ctx)
 	var message string
 	switch action {
 	case models.LogActionCreate:
@@ -401,22 +393,10 @@ func (s *adminRoleService) createLog(ctx context.Context, action models.LogActio
 		message = fmt.Sprintf("%s performed %s on admin role: %s", userName, action, entityName)
 	}
 
-	log := &models.Log{
-		UserID:     userID,
+	audit.Record(ctx, s.logRepository, audit.Entry{
 		Action:     action,
 		EntityType: models.LogEntityTypeAdminRole,
 		EntityID:   entityID,
 		Message:    message,
-	}
-
-	go func() {
-		if err := s.logRepository.Create(context.Background(), log); err != nil {
-			logger.Error("Failed to create audit log",
-				zap.String("entity_type", models.LogEntityTypeAdminRole),
-				zap.Uint("entity_id", entityID),
-				zap.String("action", string(action)),
-				zap.Error(err),
-			)
-		}
-	}()
+	})
 }
