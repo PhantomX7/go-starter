@@ -5,13 +5,14 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/PhantomX7/athleton/internal/models"
-	userrepository "github.com/PhantomX7/athleton/internal/modules/user/repository"
-	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
+
+	"github.com/PhantomX7/athleton/internal/models"
+	userrepository "github.com/PhantomX7/athleton/internal/modules/user/repository"
+	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 )
 
 func setupDB(t *testing.T) *gorm.DB {

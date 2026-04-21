@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
+
+	"github.com/PhantomX7/athleton/pkg/pagination"
 )
 
 // Test Models
@@ -1768,7 +1769,7 @@ func (suite *PaginationTestSuite) TestDeterministicWhereClauseOrder() {
 	render := func() string {
 		pg := pagination.NewPagination(conditions, filterDef, pagination.PaginationOptions{})
 		stmt := pg.Apply(suite.db.Session(&gorm.Session{DryRun: true})).Find(&[]User{}).Statement
-		return suite.db.Dialector.Explain(stmt.SQL.String(), stmt.Vars...)
+		return suite.db.Explain(stmt.SQL.String(), stmt.Vars...)
 	}
 
 	// 30 runs gives us astronomically high confidence: if WHERE-clause order
@@ -2299,7 +2300,7 @@ func (suite *PaginationTestSuite) TestGetFieldsCachedAfterRegistration() {
 		filterDef, pagination.PaginationOptions{},
 	)
 	stmt := pg.Apply(suite.db.Session(&gorm.Session{DryRun: true})).Find(&[]User{}).Statement
-	sql := suite.db.Dialector.Explain(stmt.SQL.String(), stmt.Vars...)
+	sql := suite.db.Explain(stmt.SQL.String(), stmt.Vars...)
 	suite.Contains(sql, "users.name", "cached fields must still emit the qualified column")
 }
 

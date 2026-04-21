@@ -25,14 +25,14 @@ func createMockFileHeader(filename string, size int64) *multipart.FileHeader {
 // This follows the same pattern as exist_test.go for consistent test setup
 func setupFileValidator(t *testing.T) *validator.Validate {
 	v := validator.New()
-	
+
 	// Create custom validator instance (no database needed for file validators)
 	customValidator := New(nil)
-	
+
 	// Register file validation functions
 	v.RegisterValidation("filesize", customValidator.FileSize())
 	v.RegisterValidation("fileext", customValidator.FileExtension())
-	
+
 	return v
 }
 
@@ -41,11 +41,11 @@ func TestFileSize_ValidatorFunction(t *testing.T) {
 
 	// Test struct with file size validation
 	type TestStruct struct {
-		SmallFile    *multipart.FileHeader `validate:"filesize=1048576"`    // 1MB limit
-		MediumFile   *multipart.FileHeader `validate:"filesize=5242880"`    // 5MB limit
-		LargeFile    *multipart.FileHeader `validate:"filesize=10485760"`   // 10MB limit
-		DefaultFile  *multipart.FileHeader `validate:"filesize"`            // Default 10MB limit
-		OptionalFile *multipart.FileHeader `validate:"omitempty,filesize"`  // Optional with default limit
+		SmallFile    *multipart.FileHeader `validate:"filesize=1048576"`   // 1MB limit
+		MediumFile   *multipart.FileHeader `validate:"filesize=5242880"`   // 5MB limit
+		LargeFile    *multipart.FileHeader `validate:"filesize=10485760"`  // 10MB limit
+		DefaultFile  *multipart.FileHeader `validate:"filesize"`           // Default 10MB limit
+		OptionalFile *multipart.FileHeader `validate:"omitempty,filesize"` // Optional with default limit
 	}
 
 	tests := []struct {
@@ -81,10 +81,10 @@ func TestFileSize_ValidatorFunction(t *testing.T) {
 		{
 			name: "invalid oversized small file",
 			input: TestStruct{
-				SmallFile:    createMockFileHeader("small.txt", 1048577),    // 1MB + 1 byte
-				MediumFile:   createMockFileHeader("medium.pdf", 3145728),   // 3MB < 5MB
-				LargeFile:    createMockFileHeader("large.zip", 8388608),    // 8MB < 10MB
-				DefaultFile:  createMockFileHeader("default.doc", 5242880),  // 5MB < 10MB default
+				SmallFile:    createMockFileHeader("small.txt", 1048577),   // 1MB + 1 byte
+				MediumFile:   createMockFileHeader("medium.pdf", 3145728),  // 3MB < 5MB
+				LargeFile:    createMockFileHeader("large.zip", 8388608),   // 8MB < 10MB
+				DefaultFile:  createMockFileHeader("default.doc", 5242880), // 5MB < 10MB default
 				OptionalFile: nil,
 			},
 			expectValid: false,
@@ -93,10 +93,10 @@ func TestFileSize_ValidatorFunction(t *testing.T) {
 		{
 			name: "invalid oversized medium file",
 			input: TestStruct{
-				SmallFile:    createMockFileHeader("small.txt", 512000),     // 500KB < 1MB
-				MediumFile:   createMockFileHeader("medium.pdf", 5242881),   // 5MB + 1 byte
-				LargeFile:    createMockFileHeader("large.zip", 8388608),    // 8MB < 10MB
-				DefaultFile:  createMockFileHeader("default.doc", 5242880),  // 5MB < 10MB default
+				SmallFile:    createMockFileHeader("small.txt", 512000),    // 500KB < 1MB
+				MediumFile:   createMockFileHeader("medium.pdf", 5242881),  // 5MB + 1 byte
+				LargeFile:    createMockFileHeader("large.zip", 8388608),   // 8MB < 10MB
+				DefaultFile:  createMockFileHeader("default.doc", 5242880), // 5MB < 10MB default
 				OptionalFile: nil,
 			},
 			expectValid: false,
@@ -105,10 +105,10 @@ func TestFileSize_ValidatorFunction(t *testing.T) {
 		{
 			name: "invalid oversized large file",
 			input: TestStruct{
-				SmallFile:    createMockFileHeader("small.txt", 512000),     // 500KB < 1MB
-				MediumFile:   createMockFileHeader("medium.pdf", 3145728),   // 3MB < 5MB
-				LargeFile:    createMockFileHeader("large.zip", 10485761),   // 10MB + 1 byte
-				DefaultFile:  createMockFileHeader("default.doc", 5242880),  // 5MB < 10MB default
+				SmallFile:    createMockFileHeader("small.txt", 512000),    // 500KB < 1MB
+				MediumFile:   createMockFileHeader("medium.pdf", 3145728),  // 3MB < 5MB
+				LargeFile:    createMockFileHeader("large.zip", 10485761),  // 10MB + 1 byte
+				DefaultFile:  createMockFileHeader("default.doc", 5242880), // 5MB < 10MB default
 				OptionalFile: nil,
 			},
 			expectValid: false,
@@ -248,7 +248,7 @@ func TestFileExtension_ValidatorFunction(t *testing.T) {
 		{
 			name: "invalid image file extension",
 			input: TestStruct{
-				ImageFile:    createMockFileHeader("photo.bmp", 1024),    // bmp not allowed for ImageFile
+				ImageFile:    createMockFileHeader("photo.bmp", 1024), // bmp not allowed for ImageFile
 				DocumentFile: createMockFileHeader("document.pdf", 2048),
 				TextFile:     createMockFileHeader("readme.txt", 512),
 				AnyImageFile: createMockFileHeader("image.png", 1536),
@@ -274,7 +274,7 @@ func TestFileExtension_ValidatorFunction(t *testing.T) {
 			input: TestStruct{
 				ImageFile:    createMockFileHeader("photo.jpg", 1024),
 				DocumentFile: createMockFileHeader("document.pdf", 2048),
-				TextFile:     createMockFileHeader("readme.pdf", 512),    // pdf not allowed for TextFile
+				TextFile:     createMockFileHeader("readme.pdf", 512), // pdf not allowed for TextFile
 				AnyImageFile: createMockFileHeader("image.png", 1536),
 				OptionalFile: nil,
 			},
@@ -284,7 +284,7 @@ func TestFileExtension_ValidatorFunction(t *testing.T) {
 		{
 			name: "invalid files without extensions",
 			input: TestStruct{
-				ImageFile:    createMockFileHeader("photo", 1024),       // No extension
+				ImageFile:    createMockFileHeader("photo", 1024), // No extension
 				DocumentFile: createMockFileHeader("document.pdf", 2048),
 				TextFile:     createMockFileHeader("readme.txt", 512),
 				AnyImageFile: createMockFileHeader("image.png", 1536),
@@ -296,7 +296,7 @@ func TestFileExtension_ValidatorFunction(t *testing.T) {
 		{
 			name: "invalid files with dot but no extension",
 			input: TestStruct{
-				ImageFile:    createMockFileHeader("photo.", 1024),      // Dot but no extension
+				ImageFile:    createMockFileHeader("photo.", 1024), // Dot but no extension
 				DocumentFile: createMockFileHeader("document.pdf", 2048),
 				TextFile:     createMockFileHeader("readme.txt", 512),
 				AnyImageFile: createMockFileHeader("image.png", 1536),

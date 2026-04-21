@@ -61,6 +61,22 @@ swag:
 swag-format:
 	swag fmt
 
+lint:
+	@echo "Running golangci-lint..."
+	@golangci-lint run ./...
+
+lint-fix:
+	@echo "Running golangci-lint with --fix..."
+	@golangci-lint run --fix ./...
+
+fmt:
+	@echo "Running formatters..."
+	@golangci-lint fmt
+
+lint-install:
+	@echo "Installing golangci-lint v2.11.0..."
+	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.0
+
 test:
 	go test ./... -coverprofile cp.out
 

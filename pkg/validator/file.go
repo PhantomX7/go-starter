@@ -59,10 +59,11 @@ import (
 //   - The field must be of type multipart.FileHeader
 //
 // Usage Examples:
-//   type FileUploadRequest struct {
-//       Avatar *multipart.FileHeader `validate:"filesize=2097152"` // 2MB limit
-//       Document *multipart.FileHeader `validate:"filesize"`        // 10MB default limit
-//   }
+//
+//	type FileUploadRequest struct {
+//	    Avatar *multipart.FileHeader `validate:"filesize=2097152"` // 2MB limit
+//	    Document *multipart.FileHeader `validate:"filesize"`        // 10MB default limit
+//	}
 //
 // Returns:
 //   - true if the file size is valid (0 < size <= maxSize)
@@ -103,11 +104,12 @@ func (cv customValidator) FileSize() validator.Func {
 //   - Extensions are compared after converting to lowercase
 //
 // Usage Examples:
-//   type FileUploadRequest struct {
-//       Image *multipart.FileHeader `validate:"fileext=jpg&png&gif"`
-//       Document *multipart.FileHeader `validate:"fileext=pdf&doc&docx"`
-//       Avatar *multipart.FileHeader `validate:"fileext=jpg&jpeg&png"`
-//   }
+//
+//	type FileUploadRequest struct {
+//	    Image *multipart.FileHeader `validate:"fileext=jpg&png&gif"`
+//	    Document *multipart.FileHeader `validate:"fileext=pdf&doc&docx"`
+//	    Avatar *multipart.FileHeader `validate:"fileext=jpg&jpeg&png"`
+//	}
 //
 // Security Considerations:
 //   - This validation only checks file extensions, not actual file content
@@ -127,14 +129,14 @@ func (cv customValidator) FileExtension() validator.Func {
 		param := fl.Param()
 
 		allowedExts := strings.Split(param, "&")
-		
+
 		ext := strings.ToLower(filepath.Ext(file.Filename))
-		
+
 		// If no extension, return false
 		if ext == "" {
 			return false
 		}
-		
+
 		// Remove the dot from extension for comparison
 		ext = ext[1:]
 

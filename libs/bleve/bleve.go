@@ -10,12 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/PhantomX7/athleton/pkg/config"
-	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/mapping"
 	"github.com/blevesearch/bleve/v2/search/query"
 	"go.uber.org/zap"
+
+	"github.com/PhantomX7/athleton/pkg/config"
+	"github.com/PhantomX7/athleton/pkg/logger"
 )
 
 // FacetRequest defines a facet request with optional size

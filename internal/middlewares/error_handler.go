@@ -26,25 +26,23 @@ func (m *Middleware) ErrorHandler() gin.HandlerFunc {
 			err := c.Errors.Last().Err
 
 			// Use a switch to handle different types of errors.
-			switch e := err.(type) {
-			case validator.ValidationErrors:
-				// If the error is a validation error, format it.
-				c.AbortWithStatusJSON(http.StatusBadRequest, response.BuildResponseValidationError(
-					e,
-				))
-				return
-			case *cerrors.AppError:
-				if errors.Is(e, cerrors.ErrNotFound) {
-					c.AbortWithStatusJSON(http.StatusNotFound, response.BuildResponseFailed(e.Err.Error()))
+			{
+				var e validator.ValidationErrors
+				var e1 *cerrors.AppError
+				switch {
+				case errors.As(err, &e):
+					c.AbortWithStatusJSON(http.StatusBadRequest, response.BuildResponseValidationError(e))
+					return
+				case errors.As(err, &e1):
+					if errors.Is(e1, cerrors.ErrNotFound) {
+						c.AbortWithStatusJSON(http.StatusNotFound, response.BuildResponseFailed(e1.Err.Error()))
+						return
+					}
+					c.AbortWithStatusJSON(e1.Code, response.BuildResponseFailed(e1.Message))
+				default:
+					c.AbortWithStatusJSON(http.StatusInternalServerError, response.BuildResponseFailed("An unexpected error occurred."))
 					return
 				}
-				c.AbortWithStatusJSON(e.Code, response.BuildResponseFailed(e.Message))
-			default:
-				// For any other error, return a generic 500.
-				c.AbortWithStatusJSON(http.StatusInternalServerError, response.BuildResponseFailed(
-					"An unexpected error occurred.",
-				))
-				return
 			}
 			return
 		}

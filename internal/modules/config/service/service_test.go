@@ -6,6 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"gorm.io/gorm"
+
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/models"
 	configrepository "github.com/PhantomX7/athleton/internal/modules/config/repository"
@@ -16,9 +20,6 @@ import (
 	"github.com/PhantomX7/athleton/pkg/repository"
 	"github.com/PhantomX7/athleton/pkg/response"
 	"github.com/PhantomX7/athleton/pkg/utils"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 type mockConfigRepository struct {

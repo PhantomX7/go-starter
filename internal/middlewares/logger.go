@@ -3,9 +3,10 @@ package middlewares
 import (
 	"time"
 
-	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+
+	"github.com/PhantomX7/athleton/pkg/logger"
 )
 
 // Logger is a middleware that logs HTTP requests and responses

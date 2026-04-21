@@ -248,7 +248,7 @@ func (s3c *s3Client) detectContentType(file *multipart.FileHeader) (string, erro
 
 	buffer := make([]byte, 512)
 	n, err := src.Read(buffer)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}
 

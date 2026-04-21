@@ -1,8 +1,9 @@
 package response
 
 import (
-	"github.com/PhantomX7/athleton/pkg/utils"
 	"github.com/go-playground/validator/v10"
+
+	"github.com/PhantomX7/athleton/pkg/utils"
 )
 
 type Response struct {

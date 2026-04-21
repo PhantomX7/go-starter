@@ -1,9 +1,10 @@
 package middlewares
 
 import (
-	"github.com/PhantomX7/athleton/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+
+	"github.com/PhantomX7/athleton/pkg/utils"
 )
 
 const (

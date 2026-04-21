@@ -6,6 +6,10 @@ import (
 	"testing"
 	"time"
 
+	casbinv2 "github.com/casbin/casbin/v2"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/models"
 	adminrolerepository "github.com/PhantomX7/athleton/internal/modules/admin_role/repository"
@@ -19,9 +23,6 @@ import (
 	"github.com/PhantomX7/athleton/pkg/repository"
 	"github.com/PhantomX7/athleton/pkg/response"
 	"github.com/PhantomX7/athleton/pkg/utils"
-	casbinv2 "github.com/casbin/casbin/v2"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 )
 
 type mockAdminRoleRepository struct {

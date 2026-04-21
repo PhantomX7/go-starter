@@ -5,14 +5,15 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/cron/service"
 	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/repository"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 )
 
 type mockRefreshTokenRepository struct {

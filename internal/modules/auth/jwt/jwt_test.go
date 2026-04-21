@@ -9,6 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/appleboy/gin-jwt/v3/core"
+	"github.com/gin-gonic/gin"
+	jwt "github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/PhantomX7/athleton/internal/models"
 	logrepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
 	refreshtokenrepository "github.com/PhantomX7/athleton/internal/modules/refresh_token/repository"
@@ -19,13 +27,6 @@ import (
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/repository"
 	"github.com/PhantomX7/athleton/pkg/utils"
-	"github.com/appleboy/gin-jwt/v3/core"
-	"github.com/gin-gonic/gin"
-	jwt "github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type mockUserRepository struct {

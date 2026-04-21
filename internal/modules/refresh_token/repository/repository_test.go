@@ -6,14 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PhantomX7/athleton/internal/models"
-	refreshtokenrepository "github.com/PhantomX7/athleton/internal/modules/refresh_token/repository"
-	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
+
+	"github.com/PhantomX7/athleton/internal/models"
+	refreshtokenrepository "github.com/PhantomX7/athleton/internal/modules/refresh_token/repository"
+	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 )
 
 func setupDB(t *testing.T) *gorm.DB {

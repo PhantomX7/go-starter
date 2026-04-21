@@ -4,9 +4,10 @@ import (
 	"context"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/PhantomX7/athleton/internal/modules/refresh_token/repository"
 	"github.com/PhantomX7/athleton/pkg/logger"
-	"gorm.io/gorm"
 
 	"go.uber.org/zap"
 )

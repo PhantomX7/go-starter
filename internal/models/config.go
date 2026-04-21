@@ -8,8 +8,6 @@ import (
 
 type ConfigKey string
 
-const ()
-
 func (c ConfigKey) ToString() string {
 	return string(c)
 }

@@ -5,6 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+
 	"github.com/PhantomX7/athleton/internal/models"
 	logrepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
 	"github.com/PhantomX7/athleton/internal/modules/log/service"
@@ -13,8 +16,6 @@ import (
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/repository"
 	"github.com/PhantomX7/athleton/pkg/utils"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 )
 
 type mockLogRepository struct {

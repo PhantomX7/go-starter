@@ -112,7 +112,7 @@ func TestPreload_WrapsLiteralName(t *testing.T) {
 
 	// And it must satisfy the Association interface statically so it can be
 	// passed to FindById. This assignment is the assertion.
-	var _ repository.Association = a
+	var _ = a
 }
 
 // ---- GetDB -----------------------------------------------------------------

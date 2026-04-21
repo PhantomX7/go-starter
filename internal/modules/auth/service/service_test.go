@@ -5,6 +5,12 @@ import (
 	"testing"
 	"time"
 
+	casbinv2 "github.com/casbin/casbin/v2"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/models"
 	authjwt "github.com/PhantomX7/athleton/internal/modules/auth/jwt"
@@ -20,11 +26,6 @@ import (
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/repository"
 	"github.com/PhantomX7/athleton/pkg/utils"
-	casbinv2 "github.com/casbin/casbin/v2"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type mockUserRepository struct {

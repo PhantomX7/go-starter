@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/PhantomX7/athleton/internal/modules/cron/controller"
 	cronservice "github.com/PhantomX7/athleton/internal/modules/cron/service"
-	"github.com/stretchr/testify/require"
 )
 
 type mockCronService struct {
