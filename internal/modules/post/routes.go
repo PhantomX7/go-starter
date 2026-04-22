@@ -2,11 +2,8 @@
 package post
 
 import (
-	"github.com/PhantomX7/athleton/internal/middlewares"
 	"github.com/PhantomX7/athleton/internal/modules/post/controller"
 	"github.com/PhantomX7/athleton/internal/routes"
-
-	"github.com/gin-gonic/gin"
 )
 
 type routeRegistrar struct {
@@ -19,9 +16,8 @@ func NewRoutes(controller controller.PostController) routes.Registrar {
 }
 
 // RegisterRoutes mounts the post endpoints.
-func (r *routeRegistrar) RegisterRoutes(api *gin.RouterGroup, middleware *middlewares.Middleware) {
-	adminAPI := api.Group("/admin", middleware.RequireAuth())
-	postRoute := adminAPI.Group("/post")
+func (r *routeRegistrar) RegisterRoutes(ctx *routes.Context) {
+	postRoute := ctx.Admin.Group("/post")
 	postRoute.GET("", r.controller.Index)
 	postRoute.GET("/:id", r.controller.FindByID)
 	postRoute.POST("", r.controller.Create)

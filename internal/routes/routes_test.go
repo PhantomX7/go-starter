@@ -8,23 +8,21 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
-
-	"github.com/PhantomX7/athleton/internal/middlewares"
 )
 
 type alphaRegistrar struct{}
 
-func (alphaRegistrar) RegisterRoutes(api *gin.RouterGroup, _ *middlewares.Middleware) {
-	api.GET("/alpha", func(ctx *gin.Context) {
-		ctx.String(http.StatusOK, "alpha")
+func (alphaRegistrar) RegisterRoutes(ctx *Context) {
+	ctx.Root.GET("/alpha", func(c *gin.Context) {
+		c.String(http.StatusOK, "alpha")
 	})
 }
 
 type betaRegistrar struct{}
 
-func (betaRegistrar) RegisterRoutes(api *gin.RouterGroup, _ *middlewares.Middleware) {
-	api.GET("/beta", func(ctx *gin.Context) {
-		ctx.String(http.StatusOK, "beta")
+func (betaRegistrar) RegisterRoutes(ctx *Context) {
+	ctx.Public.GET("/beta", func(c *gin.Context) {
+		c.String(http.StatusOK, "beta")
 	})
 }
 
@@ -45,7 +43,7 @@ func TestRegisterRoutesMountsGroupedRegistrars(t *testing.T) {
 	require.Equal(t, http.StatusOK, alphaRec.Code)
 	require.Equal(t, "alpha", alphaRec.Body.String())
 
-	betaReq := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/beta", nil)
+	betaReq := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/public/beta", nil)
 	betaRec := httptest.NewRecorder()
 	engine.ServeHTTP(betaRec, betaReq)
 	require.Equal(t, http.StatusOK, betaRec.Code)

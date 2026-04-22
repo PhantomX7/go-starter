@@ -2,11 +2,8 @@
 package auth
 
 import (
-	"github.com/PhantomX7/athleton/internal/middlewares"
 	"github.com/PhantomX7/athleton/internal/modules/auth/controller"
 	"github.com/PhantomX7/athleton/internal/routes"
-
-	"github.com/gin-gonic/gin"
 )
 
 type routeRegistrar struct {
@@ -19,14 +16,17 @@ func NewRoutes(controller controller.AuthController) routes.Registrar {
 }
 
 // RegisterRoutes mounts the authentication endpoints.
-func (r *routeRegistrar) RegisterRoutes(api *gin.RouterGroup, middleware *middlewares.Middleware) {
-	authRoute := api.Group("/auth")
-	authRoute.POST("/register", r.controller.Register)
-	authRoute.POST("/login", middleware.LoginHandler())
-	authRoute.POST("/refresh", r.controller.Refresh)
+func (r *routeRegistrar) RegisterRoutes(ctx *routes.Context) {
+	// Unauthenticated entry points. Rate-limit these to blunt credential-stuffing
+	// and refresh-token abuse; see rate_limit.go for the per-IP limiter.
+	rl := ctx.MW.AuthRateLimiter()
+	publicAuth := ctx.Root.Group("/auth")
+	publicAuth.POST("/register", rl, r.controller.Register)
+	publicAuth.POST("/login", rl, ctx.MW.LoginHandler())
+	publicAuth.POST("/refresh", rl, r.controller.Refresh)
 
-	authenticatedAuthRoute := authRoute.Group("", middleware.RequireAuth())
-	authenticatedAuthRoute.GET("/me", r.controller.GetMe)
-	authenticatedAuthRoute.POST("/change-password", r.controller.ChangePassword)
-	authenticatedAuthRoute.POST("/logout", r.controller.Logout)
+	privateAuth := ctx.Root.Group("/auth", ctx.MW.RequireAuth())
+	privateAuth.GET("/me", r.controller.GetMe)
+	privateAuth.POST("/change-password", r.controller.ChangePassword)
+	privateAuth.POST("/logout", r.controller.Logout)
 }

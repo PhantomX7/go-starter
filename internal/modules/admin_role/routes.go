@@ -2,12 +2,9 @@
 package admin_role
 
 import (
-	"github.com/PhantomX7/athleton/internal/middlewares"
 	"github.com/PhantomX7/athleton/internal/modules/admin_role/controller"
 	"github.com/PhantomX7/athleton/internal/routes"
 	"github.com/PhantomX7/athleton/pkg/constants/permissions"
-
-	"github.com/gin-gonic/gin"
 )
 
 type routeRegistrar struct {
@@ -20,13 +17,12 @@ func NewRoutes(controller controller.AdminRoleController) routes.Registrar {
 }
 
 // RegisterRoutes mounts the admin-role endpoints.
-func (r *routeRegistrar) RegisterRoutes(api *gin.RouterGroup, middleware *middlewares.Middleware) {
-	adminAPI := api.Group("/admin", middleware.RequireAuth())
-	adminRoleRoute := adminAPI.Group("/admin-role")
-	adminRoleRoute.GET("", middleware.RequirePermission(permissions.AdminRoleRead), r.controller.Index)
-	adminRoleRoute.GET("/permissions", middleware.RequirePermission(permissions.AdminRoleRead), r.controller.GetAllPermissions)
-	adminRoleRoute.GET("/:id", middleware.RequirePermission(permissions.AdminRoleRead), r.controller.FindByID)
-	adminRoleRoute.POST("", middleware.RequirePermission(permissions.AdminRoleCreate), r.controller.Create)
-	adminRoleRoute.PATCH("/:id", middleware.RequirePermission(permissions.AdminRoleUpdate), r.controller.Update)
-	adminRoleRoute.DELETE("/:id", middleware.RequirePermission(permissions.AdminRoleDelete), r.controller.Delete)
+func (r *routeRegistrar) RegisterRoutes(ctx *routes.Context) {
+	adminRoleRoute := ctx.Admin.Group("/admin-role")
+	adminRoleRoute.GET("", ctx.MW.RequirePermission(permissions.AdminRoleRead), r.controller.Index)
+	adminRoleRoute.GET("/permissions", ctx.MW.RequirePermission(permissions.AdminRoleRead), r.controller.GetAllPermissions)
+	adminRoleRoute.GET("/:id", ctx.MW.RequirePermission(permissions.AdminRoleRead), r.controller.FindByID)
+	adminRoleRoute.POST("", ctx.MW.RequirePermission(permissions.AdminRoleCreate), r.controller.Create)
+	adminRoleRoute.PATCH("/:id", ctx.MW.RequirePermission(permissions.AdminRoleUpdate), r.controller.Update)
+	adminRoleRoute.DELETE("/:id", ctx.MW.RequirePermission(permissions.AdminRoleDelete), r.controller.Delete)
 }

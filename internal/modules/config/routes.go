@@ -2,32 +2,39 @@
 package config
 
 import (
-	"github.com/PhantomX7/athleton/internal/middlewares"
 	"github.com/PhantomX7/athleton/internal/modules/config/controller"
 	"github.com/PhantomX7/athleton/internal/routes"
-
-	"github.com/gin-gonic/gin"
 )
 
-type routeRegistrar struct {
+type adminRoutes struct {
 	controller controller.ConfigController
 }
 
-// NewRoutes constructs the config route registrar.
-func NewRoutes(controller controller.ConfigController) routes.Registrar {
-	return &routeRegistrar{controller: controller}
+// NewAdminRoutes constructs the admin-scoped config route registrar.
+func NewAdminRoutes(controller controller.ConfigController) routes.Registrar {
+	return &adminRoutes{controller: controller}
 }
 
-// RegisterRoutes mounts the configuration endpoints.
-func (r *routeRegistrar) RegisterRoutes(api *gin.RouterGroup, middleware *middlewares.Middleware) {
-	adminAPI := api.Group("/admin", middleware.RequireAuth())
-	adminRoute := adminAPI.Group("/config")
-	adminRoute.GET("", r.controller.Index)
-	adminRoute.GET("/key/:key", r.controller.FindByKey)
-	adminRoute.PATCH("/:id", middleware.RequireRole("root"), r.controller.Update)
+// RegisterRoutes mounts the admin configuration endpoints.
+func (r *adminRoutes) RegisterRoutes(ctx *routes.Context) {
+	cfg := ctx.Admin.Group("/config")
+	cfg.GET("", r.controller.Index)
+	cfg.GET("/key/:key", r.controller.FindByKey)
+	cfg.PATCH("/:id", ctx.MW.RequireRole("root"), r.controller.Update)
+}
 
-	publicAPI := api.Group("/public")
-	publicRoute := publicAPI.Group("/config")
-	publicRoute.GET("", r.controller.Index)
-	publicRoute.GET("/key/:key", r.controller.FindByKey)
+type publicRoutes struct {
+	controller controller.ConfigController
+}
+
+// NewPublicRoutes constructs the public-scoped config route registrar.
+func NewPublicRoutes(controller controller.ConfigController) routes.Registrar {
+	return &publicRoutes{controller: controller}
+}
+
+// RegisterRoutes mounts the public read-only configuration endpoints.
+func (r *publicRoutes) RegisterRoutes(ctx *routes.Context) {
+	cfg := ctx.Public.Group("/config")
+	cfg.GET("", r.controller.Index)
+	cfg.GET("/key/:key", r.controller.FindByKey)
 }

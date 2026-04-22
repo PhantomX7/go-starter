@@ -2,12 +2,9 @@
 package log
 
 import (
-	"github.com/PhantomX7/athleton/internal/middlewares"
 	"github.com/PhantomX7/athleton/internal/modules/log/controller"
 	"github.com/PhantomX7/athleton/internal/routes"
 	"github.com/PhantomX7/athleton/pkg/constants/permissions"
-
-	"github.com/gin-gonic/gin"
 )
 
 type routeRegistrar struct {
@@ -20,8 +17,7 @@ func NewRoutes(controller controller.LogController) routes.Registrar {
 }
 
 // RegisterRoutes mounts the audit-log endpoints.
-func (r *routeRegistrar) RegisterRoutes(api *gin.RouterGroup, middleware *middlewares.Middleware) {
-	adminAPI := api.Group("/admin", middleware.RequireAuth())
-	logRoute := adminAPI.Group("/log")
-	logRoute.GET("", middleware.RequirePermission(permissions.LogRead), r.controller.Index)
+func (r *routeRegistrar) RegisterRoutes(ctx *routes.Context) {
+	logRoute := ctx.Admin.Group("/log")
+	logRoute.GET("", ctx.MW.RequirePermission(permissions.LogRead), r.controller.Index)
 }

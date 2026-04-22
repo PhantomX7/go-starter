@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/PhantomX7/athleton/internal/middlewares"
 	"github.com/PhantomX7/athleton/pkg/config"
 	"github.com/PhantomX7/athleton/pkg/logger"
+	"github.com/PhantomX7/athleton/pkg/response"
 	cvalidator "github.com/PhantomX7/athleton/pkg/validator"
 
 	"github.com/common-nighthawk/go-figure"
@@ -71,18 +73,10 @@ func RegisterLoggerLifecycle(lc fx.Lifecycle) {
 }
 
 // SetupServer configures and returns the Gin engine.
-func SetupServer(m *middlewares.Middleware, cv cvalidator.CustomValidator) *gin.Engine {
+func SetupServer(m *middlewares.Middleware, cv cvalidator.CustomValidator, db *gorm.DB) *gin.Engine {
 	cfg := config.Get()
 
 	logger.Info("Setting up HTTP server")
-
-	// programmatically set swagger info
-	docs.SwaggerInfo.Title = "Komputer Medan API"
-	docs.SwaggerInfo.Description = "This is a sample server Komputer Medan server."
-	docs.SwaggerInfo.Version = "1.0"
-	docs.SwaggerInfo.Host = cfg.GetServerAddress()
-	docs.SwaggerInfo.BasePath = "/api/v1/"
-	docs.SwaggerInfo.Schemes = []string{"http", "https"}
 
 	// gin.New() (not gin.Default()) so the only request logger in play is our
 	// structured zap-based m.Logger(); Gin's stdout logger would just duplicate it.
@@ -108,15 +102,31 @@ func SetupServer(m *middlewares.Middleware, cv cvalidator.CustomValidator) *gin.
 		m.ErrorHandler(), // 6. Error handling (MUST be last)
 	)
 
-	// swagger documentation
-	server.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler, ginswagger.URL("/doc/doc.json")))
-	server.GET("/doc/doc.json", func(ctx *gin.Context) {
-		ctx.Writer.Header().Set("Content-Type", "application/json")
-		ctx.Writer.WriteHeader(200)
-		if _, err := ctx.Writer.Write([]byte(docs.SwaggerInfo.ReadDoc())); err != nil {
-			logger.Error("Failed to write swagger document", zap.Error(err))
-		}
+	// Uniform JSON envelope for unmatched paths and methods so clients see the
+	// same shape as handler errors.
+	server.NoRoute(func(c *gin.Context) {
+		c.JSON(http.StatusNotFound, response.BuildResponseFailed("route not found"))
 	})
+	server.NoMethod(func(c *gin.Context) {
+		c.JSON(http.StatusMethodNotAllowed, response.BuildResponseFailed("method not allowed"))
+	})
+
+	registerHealthRoutes(server, db)
+
+	// Swagger is a discovery surface and shouldn't ship to production.
+	if !cfg.IsProduction() {
+		docs.SwaggerInfo.Title = "Komputer Medan API"
+		docs.SwaggerInfo.Description = "This is a sample server Komputer Medan server."
+		docs.SwaggerInfo.Version = "1.0"
+		docs.SwaggerInfo.Host = cfg.GetServerAddress()
+		docs.SwaggerInfo.BasePath = "/api/v1/"
+		docs.SwaggerInfo.Schemes = []string{"http", "https"}
+
+		server.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler, ginswagger.URL("/doc/doc.json")))
+		server.GET("/doc/doc.json", func(c *gin.Context) {
+			c.Data(http.StatusOK, "application/json", []byte(docs.SwaggerInfo.ReadDoc()))
+		})
+	}
 
 	// register static files
 	server.Static("/assets", cfg.App.Assets)
@@ -126,6 +136,36 @@ func SetupServer(m *middlewares.Middleware, cv cvalidator.CustomValidator) *gin.
 	logger.Info("HTTP server setup completed")
 
 	return server
+}
+
+// registerHealthRoutes exposes liveness and readiness probes for load balancers
+// and orchestrators. /livez and /healthz are cheap pings; /readyz also verifies
+// the database is reachable, so it can fail even while the process is alive.
+func registerHealthRoutes(server *gin.Engine, db *gorm.DB) {
+	server.GET("/livez", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+	server.GET("/healthz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+	server.GET("/readyz", func(c *gin.Context) {
+		if db == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable", "reason": "database not initialized"})
+			return
+		}
+		sqlDB, err := db.DB()
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable", "reason": "database handle unavailable"})
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+		if err := sqlDB.PingContext(ctx); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable", "reason": "database ping failed"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
 }
 
 // StartServer starts the HTTP server using the provided Gin engine and configuration.
@@ -138,7 +178,6 @@ func StartServer(lc fx.Lifecycle, server *gin.Engine) {
 
 	// Initialize HTTP server
 	srv := &http.Server{
-		Addr:         cfg.GetServerAddress(),
 		Handler:      server,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
@@ -148,16 +187,25 @@ func StartServer(lc fx.Lifecycle, server *gin.Engine) {
 	// Start server
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
-			go func() {
-				logger.Info("Starting HTTP server",
-					zap.String("name", cfg.App.Name),
-					zap.String("version", cfg.App.Version),
-					zap.String("address", cfg.GetServerAddress()),
-					zap.String("environment", cfg.App.Environment),
-				)
+			// Bind the listener synchronously so port-in-use failures surface
+			// as an fx startup error, triggering orderly shutdown of already
+			// started components instead of a goroutine Fatal.
+			ln, err := net.Listen("tcp", cfg.GetServerAddress())
+			if err != nil {
+				logger.Error("Failed to bind server address", zap.String("address", cfg.GetServerAddress()), zap.Error(err))
+				return err
+			}
 
-				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-					logger.Fatal("Failed to start server", zap.Error(err))
+			logger.Info("Starting HTTP server",
+				zap.String("name", cfg.App.Name),
+				zap.String("version", cfg.App.Version),
+				zap.String("address", cfg.GetServerAddress()),
+				zap.String("environment", cfg.App.Environment),
+			)
+
+			go func() {
+				if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+					logger.Error("HTTP server exited with error", zap.Error(err))
 				}
 			}()
 			return nil

@@ -17,7 +17,12 @@ var Module = fx.Options(
 		service.NewConfigService,
 		repository.NewConfigRepository,
 		fx.Annotate(
-			NewRoutes,
+			NewAdminRoutes,
+			fx.As(new(routes.Registrar)),
+			fx.ResultTags(`group:"routes"`),
+		),
+		fx.Annotate(
+			NewPublicRoutes,
 			fx.As(new(routes.Registrar)),
 			fx.ResultTags(`group:"routes"`),
 		),
