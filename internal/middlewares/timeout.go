@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// TimeoutMiddleware creates a timeout middleware with the specified duration
+// Fixed: use a context-deadline approach without spawning a goroutine for c.Next()
 func (m *Middleware) TimeoutMiddleware(timeout time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
@@ -16,37 +16,17 @@ func (m *Middleware) TimeoutMiddleware(timeout time.Duration) gin.HandlerFunc {
 
 		c.Request = c.Request.WithContext(ctx)
 
-		finished := make(chan struct{})
-		panicChan := make(chan any, 1)
+		// Let downstream handlers check ctx.Err() / ctx.Done() themselves.
+		// Gin handlers run synchronously — don't wrap c.Next() in a goroutine.
+		c.Next()
 
-		go func() {
-			defer func() {
-				if err := recover(); err != nil {
-					// Capture panic with full stack trace
-					panicChan <- err
-				}
-			}()
-
-			c.Next()
-			close(finished)
-		}()
-
-		select {
-		case <-finished:
-			// Completed successfully
-			return
-
-		case p := <-panicChan:
-			// Re-panic in the main goroutine to preserve stack trace
-			panic(p)
-
-		case <-ctx.Done():
-			// Timeout occurred
-			c.JSON(http.StatusRequestTimeout, gin.H{
+		// If the context deadline was exceeded by a slow DB call / external service,
+		// downstream code should have already noticed. We catch it here as a fallback.
+		if ctx.Err() == context.DeadlineExceeded && !c.Writer.Written() {
+			c.AbortWithStatusJSON(http.StatusRequestTimeout, gin.H{
 				"error":   "Request Timeout",
-				"message": "Request took longer than " + timeout.String(),
+				"message": "Request exceeded " + timeout.String(),
 			})
-			c.Abort()
 		}
 	}
 }

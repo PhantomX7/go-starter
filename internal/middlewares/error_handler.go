@@ -16,35 +16,28 @@ import (
 // structured error responses with appropriate HTTP status codes
 func (m *Middleware) ErrorHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// IMPORTANT: This runs the next handler in the chain.
-		// Any errors that occur will be collected by Gin.
 		c.Next()
 
-		// After the handler has run, check if there are any errors.
-		if len(c.Errors) > 0 {
-			// Get the last error in the list.
-			err := c.Errors.Last().Err
-
-			// Use a switch to handle different types of errors.
-			{
-				var e validator.ValidationErrors
-				var e1 *cerrors.AppError
-				switch {
-				case errors.As(err, &e):
-					c.AbortWithStatusJSON(http.StatusBadRequest, response.BuildResponseValidationError(e))
-					return
-				case errors.As(err, &e1):
-					if errors.Is(e1, cerrors.ErrNotFound) {
-						c.AbortWithStatusJSON(http.StatusNotFound, response.BuildResponseFailed(e1.Err.Error()))
-						return
-					}
-					c.AbortWithStatusJSON(e1.Code, response.BuildResponseFailed(e1.Message))
-				default:
-					c.AbortWithStatusJSON(http.StatusInternalServerError, response.BuildResponseFailed("An unexpected error occurred."))
-					return
-				}
-			}
+		if len(c.Errors) == 0 {
 			return
+		}
+
+		err := c.Errors.Last().Err
+
+		var ve validator.ValidationErrors
+		var ae *cerrors.AppError
+
+		switch {
+		case errors.As(err, &ve):
+			c.AbortWithStatusJSON(http.StatusBadRequest, response.BuildResponseValidationError(ve))
+		case errors.As(err, &ae):
+			if errors.Is(ae, cerrors.ErrNotFound) {
+				c.AbortWithStatusJSON(http.StatusNotFound, response.BuildResponseFailed(ae.Err.Error()))
+				return
+			}
+			c.AbortWithStatusJSON(ae.Code, response.BuildResponseFailed(ae.Message))
+		default:
+			c.AbortWithStatusJSON(http.StatusInternalServerError, response.BuildResponseFailed("An unexpected error occurred."))
 		}
 	}
 }
