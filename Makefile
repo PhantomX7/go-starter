@@ -106,10 +106,7 @@ test-html:
 
 # Usage: make generate-module module_name=inventory_item [model=1] [dto=1]
 generate-module:
-	@if [ -z "$(module_name)" ]; then \
-		echo "Usage: make generate-module module_name=<feature_name> [model=1] [dto=1]"; \
-		exit 1; \
-	fi
+	$(if $(strip $(module_name)),,$(error Usage: make generate-module module_name=<feature_name> [model=1] [dto=1]))
 	@echo "Generating module '$(module_name)' with flags: $(GENERATOR_FLAGS)"
 	go run ./cmd/generate/main.go -name $(module_name) $(GENERATOR_FLAGS)
 

@@ -67,17 +67,15 @@ const modelTemplate = `package models
 
 import (
 	"github.com/PhantomX7/athleton/internal/dto"
-	
-	"gorm.io/gorm"
 )
 
 // {{.PascalCase}} represents the {{.LowerCase}} entity
 type {{.PascalCase}} struct {
-	gorm.Model
-
+	ID          uint   ` + "`json:\"id\" gorm:\"primaryKey\"`" + `
 	Name        string ` + "`gorm:\"type:varchar(255);not null\" json:\"name\"`" + `
 	Description string ` + "`gorm:\"type:text\" json:\"description\"`" + `
 	IsActive    bool   ` + "`gorm:\"default:true\" json:\"is_active\"`" + `
+	Timestamp
 }
 
 // ToResponse converts the {{.PascalCase}} model to a response DTO
