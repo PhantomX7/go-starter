@@ -91,6 +91,6 @@ func NewInternalServerError(message string, err error) *AppError {
 }
 
 // IsNotFound reports whether err wraps the sentinel not-found error.
-func IsNotFound(err AppError) bool {
-	return errors.Is(err.Err, ErrNotFound)
+func IsNotFound(err error) bool {
+	return errors.Is(err, ErrNotFound)
 }

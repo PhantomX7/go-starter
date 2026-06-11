@@ -32,7 +32,7 @@ func (m *Middleware) ErrorHandler() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusBadRequest, response.BuildResponseValidationError(ve))
 		case errors.As(err, &ae):
 			if errors.Is(ae, cerrors.ErrNotFound) {
-				c.AbortWithStatusJSON(http.StatusNotFound, response.BuildResponseFailed(ae.Err.Error()))
+				c.AbortWithStatusJSON(http.StatusNotFound, response.BuildResponseFailed(ae.Message))
 				return
 			}
 			c.AbortWithStatusJSON(ae.Code, response.BuildResponseFailed(ae.Message))
