@@ -1,6 +1,7 @@
 package middlewares_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -35,7 +36,7 @@ func TestRequestIDGeneratesUUIDWhenHeaderMissing(t *testing.T) {
 	r := newRequestIDRouter(capture)
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/test", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil))
 
 	responseID := rec.Header().Get(middlewares.RequestIDHeader)
 	require.NotEmpty(t, responseID)
@@ -50,7 +51,7 @@ func TestRequestIDPropagatesIncomingHeader(t *testing.T) {
 	r := newRequestIDRouter(capture)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
 	req.Header.Set(middlewares.RequestIDHeader, "trace-123")
 	r.ServeHTTP(rec, req)
 

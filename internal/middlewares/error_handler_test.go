@@ -1,6 +1,7 @@
 package middlewares_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -29,7 +30,7 @@ func TestErrorHandlerLeavesSuccessfulRequestsUntouched(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/test", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/test", nil))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.JSONEq(t, `{"ok":true}`, rec.Body.String())
@@ -44,7 +45,7 @@ func TestErrorHandlerFormatsValidationErrors(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(`{"description":"no name"}`))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/test", strings.NewReader(`{"description":"no name"}`))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(rec, req)
 
@@ -69,7 +70,7 @@ func TestErrorHandlerMapsNotFoundAppErrors(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/test", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/test", nil))
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
 
@@ -85,7 +86,7 @@ func TestErrorHandlerUsesAppErrorStatusCode(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/test", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/test", nil))
 
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 
@@ -100,7 +101,7 @@ func TestErrorHandlerHidesUnexpectedErrorDetails(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/test", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/test", nil))
 
 	require.Equal(t, http.StatusInternalServerError, rec.Code)
 	require.NotContains(t, rec.Body.String(), "connection refused")

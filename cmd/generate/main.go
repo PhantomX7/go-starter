@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -83,7 +84,7 @@ func main() {
 	// model. Refresh them now so the project compiles immediately.
 	if generateModel {
 		fmt.Println("Refreshing GORM field helpers (go generate ./internal/models/...)")
-		cmd := exec.Command("go", "generate", "./internal/models/...")
+		cmd := exec.CommandContext(context.Background(), "go", "generate", "./internal/models/...")
 		cmd.Dir = projectRoot
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

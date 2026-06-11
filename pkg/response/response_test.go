@@ -21,7 +21,7 @@ type itemDTO struct {
 }
 
 func (i item) ToResponse() itemDTO {
-	return itemDTO{ID: i.ID, Name: i.Name}
+	return itemDTO(i)
 }
 
 func TestBuildResponseSuccess(t *testing.T) {

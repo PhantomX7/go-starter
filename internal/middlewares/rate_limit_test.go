@@ -1,6 +1,7 @@
 package middlewares_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -20,7 +21,7 @@ func newRateLimitRouter() *gin.Engine {
 
 func performLogin(r *gin.Engine, remoteAddr string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/login", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/login", nil)
 	req.RemoteAddr = remoteAddr
 	r.ServeHTTP(rec, req)
 	return rec

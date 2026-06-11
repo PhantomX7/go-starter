@@ -8,7 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Fixed: use a context-deadline approach without spawning a goroutine for c.Next()
+// TimeoutMiddleware enforces a per-request deadline via the request context
+// without spawning a goroutine for c.Next().
 func (m *Middleware) TimeoutMiddleware(timeout time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)

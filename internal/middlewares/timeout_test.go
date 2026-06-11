@@ -25,7 +25,7 @@ func TestTimeoutMiddlewarePassesFastRequestsThrough(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/test", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.JSONEq(t, `{"ok":true}`, rec.Body.String())
@@ -40,7 +40,7 @@ func TestTimeoutMiddlewareSetsRequestDeadline(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/test", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil))
 
 	require.True(t, <-deadlineCh, "handler should observe a context deadline")
 }
@@ -52,7 +52,7 @@ func TestTimeoutMiddlewareRespondsWithTimeoutWhenHandlerWroteNothing(t *testing.
 	})
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/test", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil))
 
 	require.Equal(t, http.StatusRequestTimeout, rec.Code)
 	require.Contains(t, rec.Body.String(), "Request Timeout")
@@ -65,7 +65,7 @@ func TestTimeoutMiddlewareKeepsResponseWrittenBeforeDeadline(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/test", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.JSONEq(t, `{"ok":true}`, rec.Body.String())
@@ -79,7 +79,7 @@ func TestTimeoutMiddlewareCancelsContextAfterDeadline(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/test", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil))
 
 	require.ErrorIs(t, <-errCh, context.DeadlineExceeded)
 }

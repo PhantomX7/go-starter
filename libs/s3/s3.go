@@ -23,7 +23,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	s3config "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
+	tmtypes "github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
@@ -41,7 +42,7 @@ type Client interface {
 
 type s3Client struct {
 	client       *s3.Client
-	uploader     *manager.Uploader
+	uploader     *transfermanager.Client
 	clientConfig aws.Config
 }
 
@@ -74,7 +75,7 @@ func NewS3Client() (Client, error) {
 	}
 
 	client := s3.NewFromConfig(awsConfig)
-	uploader := manager.NewUploader(client)
+	uploader := transfermanager.New(client)
 
 	logger.Info("S3 client initialized successfully",
 		zap.String("region", config.Get().S3.Region),
@@ -171,12 +172,12 @@ func (s3c *s3Client) UploadImage(ctx context.Context, file *multipart.FileHeader
 	}
 
 	// Upload to S3
-	result, err := s3c.uploader.Upload(ctx, &s3.PutObjectInput{
+	result, err := s3c.uploader.UploadObject(ctx, &transfermanager.UploadObjectInput{
 		Bucket:      aws.String(config.Get().S3.Bucket),
 		Key:         aws.String(key),
 		Body:        uploadBody,
 		ContentType: aws.String(contentType),
-		ACL:         types.ObjectCannedACLPublicRead,
+		ACL:         tmtypes.ObjectCannedACLPublicRead,
 		Metadata: map[string]string{
 			"original-filename": file.Filename,
 			"original-size":     fmt.Sprintf("%d", file.Size),
@@ -198,7 +199,7 @@ func (s3c *s3Client) UploadImage(ctx context.Context, file *multipart.FileHeader
 	uploadResult := &S3UploadResult{
 		Key:      key,
 		URL:      utils.GenerateS3PublicURL(key),
-		Location: result.Location,
+		Location: aws.ToString(result.Location),
 		Bucket:   config.Get().S3.Bucket,
 		ETag:     aws.ToString(result.ETag),
 		Size:     fileSize,

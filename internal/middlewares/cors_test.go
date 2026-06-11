@@ -1,6 +1,7 @@
 package middlewares_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -23,7 +24,7 @@ func TestCORSSetsHeadersOnRegularRequests(t *testing.T) {
 	r := newCORSRouter()
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/test", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "*", rec.Header().Get("Access-Control-Allow-Origin"))
@@ -38,7 +39,7 @@ func TestCORSShortCircuitsPreflightRequests(t *testing.T) {
 	r := newCORSRouter()
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodOptions, "/test", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodOptions, "/test", nil))
 
 	require.Equal(t, http.StatusNoContent, rec.Code)
 	require.Equal(t, "*", rec.Header().Get("Access-Control-Allow-Origin"))

@@ -1,6 +1,7 @@
 package middlewares_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -31,7 +32,7 @@ func newAuthRouter(casbinClient casbin.Client, identity gin.HandlerFunc, guard g
 
 func serve(r *gin.Engine) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/test", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil))
 	return rec
 }
 

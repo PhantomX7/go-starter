@@ -190,7 +190,8 @@ func StartServer(lc fx.Lifecycle, server *gin.Engine) {
 			// Bind the listener synchronously so port-in-use failures surface
 			// as an fx startup error, triggering orderly shutdown of already
 			// started components instead of a goroutine Fatal.
-			ln, err := net.Listen("tcp", cfg.GetServerAddress())
+			var listenConfig net.ListenConfig
+			ln, err := listenConfig.Listen(ctx, "tcp", cfg.GetServerAddress())
 			if err != nil {
 				logger.Error("Failed to bind server address", zap.String("address", cfg.GetServerAddress()), zap.Error(err))
 				return err
