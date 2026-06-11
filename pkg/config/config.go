@@ -312,6 +312,15 @@ func Get() *Config {
 	return cfg
 }
 
+// SetForTesting replaces the process-global configuration and returns a
+// function that restores the previous value. Intended for tests only — it
+// bypasses Load's validation.
+func SetForTesting(c *Config) (restore func()) {
+	prev := cfg
+	cfg = c
+	return func() { cfg = prev }
+}
+
 // GetDatabaseURL constructs and returns the database connection URL
 func (c *Config) GetDatabaseURL() string {
 	urls := map[string]string{
