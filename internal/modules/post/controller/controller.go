@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/PhantomX7/athleton/internal/dto"
+	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/modules/post/service"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
@@ -34,19 +35,23 @@ func NewPostController(postService service.PostService) PostController {
 }
 
 // NewPostPagination creates a new pagination instance for posts.
+// Columns are the typed helpers from internal/generated (run `make gorm-gen`
+// after model changes), so a column rename breaks this registration at compile time.
 func NewPostPagination(conditions map[string][]string) *pagination.Pagination {
 	filterDefinition := pagination.NewFilterDefinition().
 		AddFilter("name", pagination.FilterConfig{
-			Field: "posts.name",
-			Type:  pagination.FilterTypeString,
+			Column:    generated.Post.Name,
+			TableName: "posts",
+			Type:      pagination.FilterTypeString,
 		}).
 		AddFilter("created_at", pagination.FilterConfig{
-			Field: "posts.created_at",
-			Type:  pagination.FilterTypeDate,
+			Column:    generated.Post.CreatedAt,
+			TableName: "posts",
+			Type:      pagination.FilterTypeDate,
 		}).
-		AddSort("id", pagination.SortConfig{Field: "id", Allowed: true}).
-		AddSort("name", pagination.SortConfig{Field: "name", Allowed: true}).
-		AddSort("created_at", pagination.SortConfig{Field: "created_at", Allowed: true})
+		AddSort("id", pagination.SortConfig{Column: generated.Post.ID, Allowed: true}).
+		AddSort("name", pagination.SortConfig{Column: generated.Post.Name, Allowed: true}).
+		AddSort("created_at", pagination.SortConfig{Column: generated.Post.CreatedAt, Allowed: true})
 
 	return pagination.NewPagination(conditions, filterDefinition, pagination.PaginationOptions{
 		DefaultLimit: 20,

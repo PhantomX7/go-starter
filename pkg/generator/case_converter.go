@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/jinzhu/inflection"
 	"github.com/stoewer/go-strcase"
 )
 
@@ -34,6 +35,10 @@ func (c *CaseConverter) ConvertModuleData(moduleName string) ModuleData {
 		PascalCase: pascalCase,
 		LowerCase:  lowerCase,
 		KebabCase:  kebabCase,
+		// inflection is what GORM's naming strategy uses, so this matches the
+		// table name GORM derives from the struct (user_profile -> user_profiles,
+		// category -> categories).
+		TableName: inflection.Plural(snakeCase),
 	}
 }
 

@@ -1,7 +1,9 @@
 package generator
 
 import (
+	"bytes"
 	"fmt"
+	"go/format"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,13 +14,17 @@ import (
 type ModuleGenerator struct {
 	modulesPath  string
 	registryPath string
+	force        bool
 }
 
-// NewModuleGenerator creates a new instance of ModuleGenerator
-func NewModuleGenerator(modulesPath string) *ModuleGenerator {
+// NewModuleGenerator creates a new instance of ModuleGenerator. When force is
+// false, generating over an existing module directory is refused so hand-written
+// code can never be silently overwritten.
+func NewModuleGenerator(modulesPath string, force bool) *ModuleGenerator {
 	return &ModuleGenerator{
 		modulesPath:  modulesPath,
 		registryPath: filepath.Join(modulesPath, "modules.go"),
+		force:        force,
 	}
 }
 
@@ -26,6 +32,13 @@ func NewModuleGenerator(modulesPath string) *ModuleGenerator {
 func (g *ModuleGenerator) GenerateModule(moduleName string) error {
 	// Convert module name to different cases
 	moduleData := g.prepareModuleData(moduleName)
+
+	basePath := filepath.Join(g.modulesPath, moduleData.SnakeCase)
+	if !g.force {
+		if _, err := os.Stat(basePath); err == nil {
+			return fmt.Errorf("module directory %s already exists; pass -force to overwrite it", basePath)
+		}
+	}
 
 	// Create module directory structure
 	if err := g.createDirectoryStructure(moduleData.SnakeCase); err != nil {
@@ -52,6 +65,7 @@ type ModuleData struct {
 	PascalCase string // e.g., "UserProfile"
 	LowerCase  string // e.g., "userprofile"
 	KebabCase  string // e.g., "user-profile"
+	TableName  string // GORM table name, e.g., "user_profiles"
 }
 
 // prepareModuleData converts the module name to different cases
@@ -121,22 +135,31 @@ func (g *ModuleGenerator) generateModuleFiles(data ModuleData) error {
 
 // generateFile creates a file from a template
 func (g *ModuleGenerator) generateFile(filePath string, templateContent string, data ModuleData) error {
+	return writeGoFile(filePath, templateContent, data)
+}
+
+// writeGoFile renders a template, runs the result through gofmt, and writes it
+// to disk. Formatting also acts as a syntax check: a template that renders
+// invalid Go fails here instead of at the next build.
+func writeGoFile(filePath string, templateContent string, data ModuleData) error {
 	tmpl, err := template.New("file").Parse(templateContent)
 	if err != nil {
 		return fmt.Errorf("failed to parse template: %w", err)
 	}
 
-	// #nosec G304 -- generator writes a caller-selected output file inside the workspace.
-	file, err := os.Create(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to create file %s: %w", filePath, err)
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-
-	if err := tmpl.Execute(file, data); err != nil {
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
 		return fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	src, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("generated code for %s is not valid Go: %w", filePath, err)
+	}
+
+	// #nosec G304,G306 -- generator writes a caller-selected output file inside the workspace.
+	if err := os.WriteFile(filePath, src, 0600); err != nil {
+		return fmt.Errorf("failed to write file %s: %w", filePath, err)
 	}
 
 	return nil
@@ -148,11 +171,15 @@ func (g *ModuleGenerator) addModuleToRegistry(data ModuleData) error {
 		return fmt.Errorf("read registry: %w", err)
 	}
 
-	importLine := fmt.Sprintf("\t%s \"github.com/PhantomX7/athleton/internal/modules/%s\"\n", data.SnakeCase, data.SnakeCase)
+	// The package name always equals the directory name, so a plain import is
+	// enough — no alias. The contains check uses just the quoted path so an
+	// existing aliased import of the same module also counts as present.
+	importPath := fmt.Sprintf("\"github.com/PhantomX7/athleton/internal/modules/%s\"", data.SnakeCase)
+	importLine := "\t" + importPath + "\n"
 	moduleLine := fmt.Sprintf("\t%s.Module,\n", data.SnakeCase)
 
 	updated := string(content)
-	if !strings.Contains(updated, importLine) {
+	if !strings.Contains(updated, importPath) {
 		marker := "import (\n"
 		index := strings.Index(updated, marker)
 		if index == -1 {
@@ -176,8 +203,13 @@ func (g *ModuleGenerator) addModuleToRegistry(data ModuleData) error {
 		return nil
 	}
 
+	formatted, err := format.Source([]byte(updated))
+	if err != nil {
+		return fmt.Errorf("format registry: %w", err)
+	}
+
 	// #nosec G306,G703 -- registryPath is derived from the project's internal/modules directory.
-	if err := os.WriteFile(g.registryPath, []byte(updated), 0600); err != nil {
+	if err := os.WriteFile(g.registryPath, formatted, 0600); err != nil {
 		return fmt.Errorf("write registry: %w", err)
 	}
 

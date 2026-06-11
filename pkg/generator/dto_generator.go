@@ -4,18 +4,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"text/template"
 )
 
 // DTOGenerator handles the generation of DTO files
 type DTOGenerator struct {
 	dtoPath string
+	force   bool
 }
 
 // NewDTOGenerator creates a new instance of DTOGenerator
-func NewDTOGenerator(dtoPath string) *DTOGenerator {
+func NewDTOGenerator(dtoPath string, force bool) *DTOGenerator {
 	return &DTOGenerator{
 		dtoPath: dtoPath,
+		force:   force,
 	}
 }
 
@@ -25,34 +26,17 @@ func (g *DTOGenerator) GenerateDTO(moduleName string) error {
 
 	dtoPath := filepath.Join(g.dtoPath, fmt.Sprintf("%s.go", moduleData.SnakeCase))
 
-	if err := g.generateDTOFile(dtoPath, dtoGlobalTemplate, moduleData); err != nil {
+	if !g.force {
+		if _, err := os.Stat(dtoPath); err == nil {
+			return fmt.Errorf("DTO file %s already exists; pass -force to overwrite it", dtoPath)
+		}
+	}
+
+	if err := writeGoFile(dtoPath, dtoGlobalTemplate, moduleData); err != nil {
 		return fmt.Errorf("failed to generate DTO file: %w", err)
 	}
 
 	fmt.Printf("DTO '%s' generated successfully!\n", moduleData.PascalCase)
-	return nil
-}
-
-// generateDTOFile creates a DTO file from a template
-func (g *DTOGenerator) generateDTOFile(filePath string, templateContent string, data ModuleData) error {
-	tmpl, err := template.New("dto").Parse(templateContent)
-	if err != nil {
-		return fmt.Errorf("failed to parse DTO template: %w", err)
-	}
-
-	// #nosec G304 -- generator writes a caller-selected output file inside the workspace.
-	file, err := os.Create(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to create DTO file %s: %w", filePath, err)
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-
-	if err := tmpl.Execute(file, data); err != nil {
-		return fmt.Errorf("failed to execute DTO template: %w", err)
-	}
-
 	return nil
 }
 
@@ -69,10 +53,12 @@ type {{.PascalCase}}CreateRequest struct {
 	Description string ` + "`json:\"description\" form:\"description\"`" + `
 }
 
-// {{.PascalCase}}UpdateRequest defines the structure for updating a {{.LowerCase}}
+// {{.PascalCase}}UpdateRequest defines the structure for updating a {{.LowerCase}}.
+// Fields are pointers so PATCH can tell "omitted" apart from "set to zero value";
+// copier skips nil pointers, so omitted fields keep their current value.
 type {{.PascalCase}}UpdateRequest struct {
-	Name        string ` + "`json:\"name\" form:\"name\"`" + `
-	Description string ` + "`json:\"description\" form:\"description\"`" + `
+	Name        *string ` + "`json:\"name\" form:\"name\"`" + `
+	Description *string ` + "`json:\"description\" form:\"description\"`" + `
 }
 
 // {{.PascalCase}}Response defines the structure for {{.LowerCase}} response

@@ -15,10 +15,12 @@ name    		  ?= new_migration
 module_name       ?=
 model             ?= 1
 dto               ?= 1
+force             ?= 0
 
 # Construct database URL for Atlas
 DATABASE_URL := "$(DATABASE_DRIVER)://$(DATABASE_USERNAME):$(DATABASE_PASSWORD)@$(DATABASE_HOST):$(DATABASE_PORT)/$(DATABASE_DATABASE)?sslmode=$(DATABASE_SSLMODE)"
-GENERATOR_FLAGS := $(if $(filter 1 true yes,$(model)),-model,) $(if $(filter 1 true yes,$(dto)),-dto,)
+# The generator defaults -model/-dto to true, so only opt-outs and -force are passed through.
+GENERATOR_FLAGS := $(if $(filter 0 false no,$(model)),-model=false,) $(if $(filter 0 false no,$(dto)),-dto=false,) $(if $(filter 1 true yes,$(force)),-force,)
 
 .PHONY: dep vendor dev run migrate-create migrate-up migrate-down migrate-status migrate-hash \
 	debug swag swag-format lint lint-fix fmt lint-install hooks-install hooks-uninstall \
@@ -82,8 +84,8 @@ fmt:
 	@golangci-lint fmt
 
 lint-install:
-	@echo "Installing golangci-lint v2.11.0..."
-	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.0
+	@echo "Installing golangci-lint v2.12.2..."
+	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 
 hooks-install:
 	@echo "Installing lefthook and git hooks..."
@@ -104,16 +106,16 @@ test-html:
 	go test $(go list ./... | grep -v /mock/) -coverprofile cp.out
 	go tool cover -html=cp.out
 
-# Usage: make generate-module module_name=inventory_item [model=1] [dto=1]
+# Usage: make generate-module module_name=inventory_item [model=0] [dto=0] [force=1]
 generate-module:
-	$(if $(strip $(module_name)),,$(error Usage: make generate-module module_name=<feature_name> [model=1] [dto=1]))
+	$(if $(strip $(module_name)),,$(error Usage: make generate-module module_name=<feature_name> [model=0] [dto=0] [force=1]))
 	@echo "Generating module '$(module_name)' with flags: $(GENERATOR_FLAGS)"
 	go run ./cmd/generate/main.go -name $(module_name) $(GENERATOR_FLAGS)
 
 module: generate-module
 
 # Regenerate GORM CLI field helpers from internal/models into internal/generated.
-# Requires: go install gorm.io/cli/gorm@latest
+# Uses the go.mod tool directive (gorm.io/cli/gorm) — nothing to install.
 gorm-gen:
 	@echo "Generating GORM CLI field helpers..."
 	go generate ./internal/models/...

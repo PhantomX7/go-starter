@@ -44,8 +44,8 @@ internal/         Application code (not importable by other modules)
   middlewares/      auth, has_role, request logging, recovery
   models/           GORM entities (source of truth for schema)
   modules/          Vertical slices — one folder per domain
-                    (auth, user, admin_role, config, cron, log, refresh_token)
-                    Each module has controller/ service/ repository/ dto/.
+                    (auth, user, admin_role, config, cron, log, post, refresh_token)
+                    Each module has controller/ service/ repository/ + routes.go.
   routes/           Route registration per module
   dto/              Shared request/response DTOs
   audit/            Audit log helpers
@@ -64,10 +64,19 @@ docs/             Swagger output (swagger.json / swagger.yaml / docs.go)
 ### Adding a new module
 
 ```bash
-make module name=widget   # scaffolds internal/modules/widget/ with model + DTO
+make module module_name=widget                    # module + model + DTO (default)
+make module module_name=widget model=0 dto=0      # module only (model/DTO already exist)
+make module module_name=widget force=1            # overwrite an existing module
 ```
 
-Then register the module in [cmd/main.go](cmd/main.go) and add routes under [internal/routes/](internal/routes/).
+The scaffolder wires everything automatically: registers the module in
+[internal/modules/modules.go](internal/modules/modules.go), mounts admin CRUD
+routes via the module's `routes.go`, and refreshes the typed field helpers in
+[internal/generated/](internal/generated/) (`make gorm-gen`). Existing files are
+never overwritten unless `force=1` is passed. After scaffolding: fill in the
+business logic, create a migration (`make migrate-create`), and replace the
+placeholder tests. See [cmd/generate/README_GENERATOR.md](cmd/generate/README_GENERATOR.md)
+for details.
 
 ## Make targets
 
@@ -105,7 +114,7 @@ Then register the module in [cmd/main.go](cmd/main.go) and add routes under [int
 | Target | Description |
 | --- | --- |
 | `make swag` | Regenerate Swagger docs |
-| `make module name=foo` | Scaffold a new module |
+| `make module module_name=foo [model=0] [dto=0] [force=1]` | Scaffold a new module (+ model + DTO by default) |
 | `make gorm-gen` | Regenerate GORM CLI field helpers |
 
 ## Testing

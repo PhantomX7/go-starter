@@ -72,6 +72,10 @@ func (m *mockPostRepository) Count(ctx context.Context, pg *pagination.Paginatio
 
 var _ postrepository.PostRepository = (*mockPostRepository)(nil)
 
+func strPtr(s string) *string {
+	return &s
+}
+
 func setupLogger(t *testing.T) {
 	t.Helper()
 
@@ -189,17 +193,20 @@ func TestPostServiceUpdateAppliesChanges(t *testing.T) {
 		updateFn: func(ctx context.Context, post *models.Post) error {
 			require.Equal(t, uint(4), post.ID)
 			require.Equal(t, "Updated", post.Name)
+			// Omitted fields (nil pointers) must keep their current value.
+			require.Equal(t, "old text", post.Description)
 			return nil
 		},
 	}
 
 	svc := service.NewPostService(repo)
 
-	post, err := svc.Update(context.Background(), 4, &dto.PostUpdateRequest{Name: "Updated"})
+	post, err := svc.Update(context.Background(), 4, &dto.PostUpdateRequest{Name: strPtr("Updated")})
 
 	require.NoError(t, err)
 	require.NotNil(t, post)
 	require.Equal(t, "Updated", post.Name)
+	require.Equal(t, "old text", post.Description)
 }
 
 func TestPostServiceUpdatePropagatesNotFound(t *testing.T) {
@@ -213,7 +220,7 @@ func TestPostServiceUpdatePropagatesNotFound(t *testing.T) {
 
 	svc := service.NewPostService(repo)
 
-	post, err := svc.Update(context.Background(), 4, &dto.PostUpdateRequest{Name: "Updated"})
+	post, err := svc.Update(context.Background(), 4, &dto.PostUpdateRequest{Name: strPtr("Updated")})
 
 	require.Nil(t, post)
 	require.ErrorIs(t, err, cerrors.ErrNotFound)

@@ -181,8 +181,9 @@ func TestPostControllerUpdateReturnsUpdatedResponse(t *testing.T) {
 	svc := &mockPostService{
 		updateFn: func(ctx context.Context, postID uint, req *dto.PostUpdateRequest) (*models.Post, error) {
 			require.Equal(t, uint(5), postID)
-			require.Equal(t, "Renamed", req.Name)
-			updated := &models.Post{Name: req.Name}
+			require.NotNil(t, req.Name)
+			require.Equal(t, "Renamed", *req.Name)
+			updated := &models.Post{Name: *req.Name}
 			updated.ID = postID
 			return updated, nil
 		},

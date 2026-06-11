@@ -31,11 +31,8 @@ const routesTemplate = `// Package {{.SnakeCase}} wires the {{.KebabCase}} modul
 package {{.SnakeCase}}
 
 import (
-	"github.com/PhantomX7/athleton/internal/middlewares"
 	"github.com/PhantomX7/athleton/internal/modules/{{.SnakeCase}}/controller"
 	"github.com/PhantomX7/athleton/internal/routes"
-
-	"github.com/gin-gonic/gin"
 )
 
 type routeRegistrar struct {
@@ -48,9 +45,8 @@ func NewRoutes(controller controller.{{.PascalCase}}Controller) routes.Registrar
 }
 
 // RegisterRoutes mounts the {{.KebabCase}} endpoints.
-func (r *routeRegistrar) RegisterRoutes(api *gin.RouterGroup, middleware *middlewares.Middleware) {
-	adminAPI := api.Group("/admin", middleware.RequireAuth())
-	{{.CamelCase}}Route := adminAPI.Group("/{{.KebabCase}}")
+func (r *routeRegistrar) RegisterRoutes(ctx *routes.Context) {
+	{{.CamelCase}}Route := ctx.Admin.Group("/{{.KebabCase}}")
 	{{.CamelCase}}Route.GET("", r.controller.Index)
 	{{.CamelCase}}Route.GET("/:id", r.controller.FindByID)
 	{{.CamelCase}}Route.POST("", r.controller.Create)
@@ -67,6 +63,7 @@ import (
 	"strconv"
 
 	"github.com/PhantomX7/athleton/internal/dto"
+	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/modules/{{.SnakeCase}}/service"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
@@ -95,19 +92,23 @@ func New{{.PascalCase}}Controller({{.CamelCase}}Service service.{{.PascalCase}}S
 }
 
 // New{{.PascalCase}}Pagination creates a new pagination instance for {{.LowerCase}}s.
+// Columns are the typed helpers from internal/generated (run ` + "`make gorm-gen`" + ` after
+// adding the model), so a column rename breaks this registration at compile time.
 func New{{.PascalCase}}Pagination(conditions map[string][]string) *pagination.Pagination {
 	filterDefinition := pagination.NewFilterDefinition().
 		AddFilter("name", pagination.FilterConfig{
-			Field: "{{.LowerCase}}s.name",
-			Type:  pagination.FilterTypeString,
+			Column:    generated.{{.PascalCase}}.Name,
+			TableName: "{{.TableName}}",
+			Type:      pagination.FilterTypeString,
 		}).
 		AddFilter("created_at", pagination.FilterConfig{
-			Field: "{{.LowerCase}}s.created_at",
-			Type:  pagination.FilterTypeDate,
+			Column:    generated.{{.PascalCase}}.CreatedAt,
+			TableName: "{{.TableName}}",
+			Type:      pagination.FilterTypeDate,
 		}).
-		AddSort("id", pagination.SortConfig{Field: "id", Allowed: true}).
-		AddSort("name", pagination.SortConfig{Field: "name", Allowed: true}).
-		AddSort("created_at", pagination.SortConfig{Field: "created_at", Allowed: true})
+		AddSort("id", pagination.SortConfig{Column: generated.{{.PascalCase}}.ID, Allowed: true}).
+		AddSort("name", pagination.SortConfig{Column: generated.{{.PascalCase}}.Name, Allowed: true}).
+		AddSort("created_at", pagination.SortConfig{Column: generated.{{.PascalCase}}.CreatedAt, Allowed: true})
 
 	return pagination.NewPagination(conditions, filterDefinition, pagination.PaginationOptions{
 		DefaultLimit: 20,

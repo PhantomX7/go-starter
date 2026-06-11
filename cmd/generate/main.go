@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/PhantomX7/athleton/pkg/generator"
@@ -15,12 +16,16 @@ func main() {
 	var moduleName string
 	var generateModel bool
 	var generateDTO bool
+	var force bool
 	var help bool
 
-	// Define command line flags
+	// Define command line flags. Model and DTO generation default to on because
+	// the module templates reference dto.<X>CreateRequest and models.<X> — a
+	// module generated without them does not compile.
 	flag.StringVar(&moduleName, "name", "", "Name of the module to generate (required)")
-	flag.BoolVar(&generateModel, "model", false, "Also generate the corresponding model file")
-	flag.BoolVar(&generateDTO, "dto", false, "Also generate the corresponding DTO file")
+	flag.BoolVar(&generateModel, "model", true, "Also generate the corresponding model file")
+	flag.BoolVar(&generateDTO, "dto", true, "Also generate the corresponding DTO file")
+	flag.BoolVar(&force, "force", false, "Overwrite existing module/model/DTO files")
 	flag.BoolVar(&help, "help", false, "Show help message")
 	flag.Parse()
 
@@ -52,14 +57,14 @@ func main() {
 	dtoPath := filepath.Join(projectRoot, "internal", "dto")
 
 	// Generate the module
-	moduleGen := generator.NewModuleGenerator(modulesPath)
+	moduleGen := generator.NewModuleGenerator(modulesPath, force)
 	if err := moduleGen.GenerateModule(moduleName); err != nil {
 		log.Fatalf("Error generating module: %v", err)
 	}
 
 	// Generate the model if requested
 	if generateModel {
-		modelGen := generator.NewModelGenerator(modelsPath)
+		modelGen := generator.NewModelGenerator(modelsPath, force)
 		if err := modelGen.GenerateModel(moduleName); err != nil {
 			log.Fatalf("Error generating model: %v", err)
 		}
@@ -67,9 +72,24 @@ func main() {
 
 	// Generate the DTO if requested
 	if generateDTO {
-		dtoGen := generator.NewDTOGenerator(dtoPath)
+		dtoGen := generator.NewDTOGenerator(dtoPath, force)
 		if err := dtoGen.GenerateDTO(moduleName); err != nil {
 			log.Fatalf("Error generating DTO: %v", err)
+		}
+	}
+
+	// The generated controller references typed field helpers from
+	// internal/generated, which only exist after the GORM CLI runs over the new
+	// model. Refresh them now so the project compiles immediately.
+	if generateModel {
+		fmt.Println("Refreshing GORM field helpers (go generate ./internal/models/...)")
+		cmd := exec.Command("go", "generate", "./internal/models/...")
+		cmd.Dir = projectRoot
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			log.Printf("WARNING: failed to refresh field helpers: %v", err)
+			log.Printf("Run `make gorm-gen` manually — the generated controller will not compile until you do.")
 		}
 	}
 
@@ -77,10 +97,10 @@ func main() {
 
 	// Get converted module data for display
 	moduleData := converter.ConvertModuleData(moduleName)
-	fmt.Printf("�� Module created at: %s\n", filepath.Join(modulesPath, moduleData.SnakeCase))
+	fmt.Printf("📦 Module created at: %s\n", filepath.Join(modulesPath, moduleData.SnakeCase))
 
 	if generateModel {
-		fmt.Printf("�� Model created at: %s\n", filepath.Join(modelsPath, fmt.Sprintf("%s.go", moduleData.LowerCase)))
+		fmt.Printf("🗃️ Model created at: %s\n", filepath.Join(modelsPath, fmt.Sprintf("%s.go", moduleData.SnakeCase)))
 	}
 
 	if generateDTO {
@@ -109,14 +129,15 @@ func showHelp() {
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  -name string    Name of the module to generate (required)")
-	fmt.Println("  -model          Also generate the corresponding model file")
-	fmt.Println("  -dto            Also generate the corresponding DTO file")
+	fmt.Println("  -model          Also generate the corresponding model file (default true)")
+	fmt.Println("  -dto            Also generate the corresponding DTO file (default true)")
+	fmt.Println("  -force          Overwrite existing module/model/DTO files")
 	fmt.Println("  -help           Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  go run cmd/generate/main.go -name UserProfile")
-	fmt.Println("  go run cmd/generate/main.go -name ProductCategory -model -dto")
-	fmt.Println("  go run cmd/generate/main.go -name productCategory -model -dto")
+	fmt.Println("  go run cmd/generate/main.go -name ProductCategory")
+	fmt.Println("  go run cmd/generate/main.go -name productCategory -model=false -dto=false")
 	fmt.Println()
 	fmt.Println("Naming Conventions:")
 	fmt.Println("  - Package names: snake_case (e.g., user_profile)")
