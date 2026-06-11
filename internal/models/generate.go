@@ -9,4 +9,4 @@
 
 package models
 
-//go:generate gorm gen -i . -o ../generated
+//go:generate go tool gorm gen -i . -o ../generated

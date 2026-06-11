@@ -3,7 +3,7 @@ package middlewares_test
 import (
 	"testing"
 
-	casbinv2 "github.com/casbin/casbin/v2"
+	casbinv2 "github.com/casbin/casbin/v3"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 

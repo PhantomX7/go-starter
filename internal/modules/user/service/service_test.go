@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	casbinv2 "github.com/casbin/casbin/v2"
+	casbinv2 "github.com/casbin/casbin/v3"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
