@@ -2,6 +2,8 @@
 package models
 
 import (
+	"time"
+
 	"github.com/PhantomX7/athleton/internal/dto"
 )
 
@@ -39,6 +41,10 @@ type User struct {
 	Role         UserRole `json:"role" gorm:"type:user_role;not null"`
 	AdminRoleID  *uint    `json:"admin_role_id" gorm:"type:bigint;null;index"`
 	Password     string   `json:"-" gorm:"type:varchar(255);not null"`
+	// PasswordChangedAt is nil while the account still uses a password it did
+	// not choose itself (e.g. the seeder's default). Admin/root accounts with a
+	// nil value are blocked from /admin routes until they change it.
+	PasswordChangedAt *time.Time `json:"-" gorm:"null;default:null"`
 	Timestamp
 
 	// Relationships

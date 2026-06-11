@@ -182,12 +182,13 @@ func newTestApp(t *testing.T) *testApp {
 	logService := logservice.NewLogService(logRepo)
 
 	// Mirror routes.RegisterRoutes: shared /api/v1 groups with the same
-	// middleware stack (rate limiting before auth on /admin).
+	// middleware stack (rate limiting before auth on /admin, then the
+	// must-change-default-password gate).
 	root := engine.Group("/api/v1")
 	routeCtx := &routes.Context{
 		Root:   root,
 		Public: root.Group("/public"),
-		Admin:  root.Group("/admin", mw.AdminRateLimiter(), mw.RequireAuth()),
+		Admin:  root.Group("/admin", mw.AdminRateLimiter(), mw.RequireAuth(), mw.RequirePasswordChanged()),
 		MW:     mw,
 	}
 	authmodule.NewRoutes(authcontroller.NewAuthController(authService)).RegisterRoutes(routeCtx)
@@ -216,24 +217,30 @@ func (a *testApp) seed(t *testing.T) {
 	require.NoError(t, a.db.Create(&a.adminRole).Error)
 
 	hash := testPasswordHash()
+	// The fixture users already "changed" their password so the
+	// RequirePasswordChanged gate on /admin stays out of the way for the rest
+	// of the suite; the gate itself is covered by password_gate_test.go.
+	passwordChangedAt := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	a.rootUser = models.User{
-		Username: rootUsername,
-		Name:     "Root User",
-		Email:    "root@test.local",
-		Phone:    "+620000000001",
-		IsActive: true,
-		Role:     models.UserRoleRoot,
-		Password: hash,
+		Username:          rootUsername,
+		Name:              "Root User",
+		Email:             "root@test.local",
+		Phone:             "+620000000001",
+		IsActive:          true,
+		Role:              models.UserRoleRoot,
+		Password:          hash,
+		PasswordChangedAt: &passwordChangedAt,
 	}
 	a.adminUser = models.User{
-		Username:    adminUsername,
-		Name:        "Admin User",
-		Email:       "admin@test.local",
-		Phone:       "+620000000002",
-		IsActive:    true,
-		Role:        models.UserRoleAdmin,
-		AdminRoleID: &a.adminRole.ID,
-		Password:    hash,
+		Username:          adminUsername,
+		Name:              "Admin User",
+		Email:             "admin@test.local",
+		Phone:             "+620000000002",
+		IsActive:          true,
+		Role:              models.UserRoleAdmin,
+		AdminRoleID:       &a.adminRole.ID,
+		Password:          hash,
+		PasswordChangedAt: &passwordChangedAt,
 	}
 	a.memberUser = models.User{
 		Username: memberUsername,

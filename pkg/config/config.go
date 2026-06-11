@@ -65,8 +65,6 @@ type AppConfig struct {
 	Name        string `mapstructure:"APP_NAME"`
 	Version     string `mapstructure:"APP_VERSION"`
 	Environment string `mapstructure:"APP_ENVIRONMENT"`
-	Debug       bool   `mapstructure:"APP_DEBUG"`
-	LogLevel    string `mapstructure:"APP_LOG_LEVEL"`
 	Assets      string `mapstructure:"APP_ASSETS"`
 }
 
@@ -83,7 +81,6 @@ type S3Config struct {
 // BleveConfig holds Bleve-related configuration
 type BleveConfig struct {
 	IndexPath string `mapstructure:"BLEVE_INDEX_PATH"`
-	IndexType string `mapstructure:"BLEVE_INDEX_TYPE"`
 }
 
 // AdminConfig holds admin-related configuration
@@ -174,8 +171,6 @@ func setDefaults(v *viper.Viper) {
 		"APP_NAME":        "Starter",
 		"APP_VERSION":     "1.0.0",
 		"APP_ENVIRONMENT": "development",
-		"APP_DEBUG":       true,
-		"APP_LOG_LEVEL":   "info",
 		"APP_ASSETS":      "./assets",
 
 		// S3
@@ -187,7 +182,6 @@ func setDefaults(v *viper.Viper) {
 
 		// Bleve
 		"BLEVE_INDEX_PATH": "./bleve",
-		"BLEVE_INDEX_TYPE": "scorch",
 
 		// Admin
 		"ADMIN_DEFAULT_PASSWORD": "q1w2e3r4",

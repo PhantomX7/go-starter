@@ -8,29 +8,31 @@ import (
 )
 
 var User = struct {
-	ID           field.Number[uint]
-	Username     field.String
-	Name         field.String
-	BusinessName field.String
-	Email        field.String
-	Phone        field.String
-	IsActive     field.Bool
-	Role         field.Struct[models.UserRole]
-	AdminRoleID  field.Number[uint]
-	Password     field.String
-	AdminRole    field.Struct[models.AdminRole]
-	Logs         field.Slice[models.Log]
+	ID                field.Number[uint]
+	Username          field.String
+	Name              field.String
+	BusinessName      field.String
+	Email             field.String
+	Phone             field.String
+	IsActive          field.Bool
+	Role              field.Struct[models.UserRole]
+	AdminRoleID       field.Number[uint]
+	Password          field.String
+	PasswordChangedAt field.Time
+	AdminRole         field.Struct[models.AdminRole]
+	Logs              field.Slice[models.Log]
 }{
-	ID:           field.Number[uint]{}.WithColumn("id"),
-	Username:     field.String{}.WithColumn("username"),
-	Name:         field.String{}.WithColumn("name"),
-	BusinessName: field.String{}.WithColumn("business_name"),
-	Email:        field.String{}.WithColumn("email"),
-	Phone:        field.String{}.WithColumn("phone"),
-	IsActive:     field.Bool{}.WithColumn("is_active"),
-	Role:         field.Struct[models.UserRole]{}.WithName("Role"),
-	AdminRoleID:  field.Number[uint]{}.WithColumn("admin_role_id"),
-	Password:     field.String{}.WithColumn("password"),
-	AdminRole:    field.Struct[models.AdminRole]{}.WithName("AdminRole"),
-	Logs:         field.Slice[models.Log]{}.WithName("Logs"),
+	ID:                field.Number[uint]{}.WithColumn("id"),
+	Username:          field.String{}.WithColumn("username"),
+	Name:              field.String{}.WithColumn("name"),
+	BusinessName:      field.String{}.WithColumn("business_name"),
+	Email:             field.String{}.WithColumn("email"),
+	Phone:             field.String{}.WithColumn("phone"),
+	IsActive:          field.Bool{}.WithColumn("is_active"),
+	Role:              field.Struct[models.UserRole]{}.WithName("Role"),
+	AdminRoleID:       field.Number[uint]{}.WithColumn("admin_role_id"),
+	Password:          field.String{}.WithColumn("password"),
+	PasswordChangedAt: field.Time{}.WithColumn("password_changed_at"),
+	AdminRole:         field.Struct[models.AdminRole]{}.WithName("AdminRole"),
+	Logs:              field.Slice[models.Log]{}.WithName("Logs"),
 }

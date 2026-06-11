@@ -41,7 +41,11 @@ const (
 	// SessionIDKey stores the refresh-token session identifier in claims.
 	SessionIDKey = "jti"
 
-	authUserKey         = "auth_user"
+	// AuthUserKey is the gin-context key under which the authorizer stores the
+	// freshly loaded *models.User for downstream middleware (e.g. the
+	// must-change-default-password gate) — saving them a second DB lookup.
+	AuthUserKey = "auth_user"
+
 	authRefreshTokenKey = "auth_refresh_token" // #nosec G101 -- identifier name, not a credential
 
 	// dummyBcryptCost matches the production bcrypt cost (see service.BcryptCost)
@@ -207,7 +211,7 @@ func (a *AuthJWT) authenticator(c *gin.Context) (any, error) {
 	}
 
 	subj := &authSubject{User: user, SessionID: sessionID}
-	c.Set(authUserKey, user)
+	c.Set(AuthUserKey, user)
 	c.Set(authRefreshTokenKey, refreshTokenStr)
 	logger.Info("Login successful", zap.Uint("user_id", user.ID))
 	return subj, nil
@@ -236,6 +240,9 @@ func (a *AuthJWT) authorizer(c *gin.Context, data any) bool {
 	}
 
 	a.setContextValues(c, dbUser.ID, dbUser.Name, string(dbUser.Role), dbUser.AdminRoleID)
+	// Expose the loaded user so later middleware (e.g. RequirePasswordChanged)
+	// can inspect fields like PasswordChangedAt without another DB query.
+	c.Set(AuthUserKey, dbUser)
 	return true
 }
 
@@ -244,7 +251,7 @@ func (a *AuthJWT) unauthorized(c *gin.Context, code int, message string) {
 }
 
 func (a *AuthJWT) loginResponse(c *gin.Context, token *core.Token) {
-	userData, _ := c.Get(authUserKey)
+	userData, _ := c.Get(AuthUserKey)
 	user, ok := userData.(*models.User)
 	if !ok {
 		c.JSON(http.StatusInternalServerError, response.BuildResponseFailed("internal error"))

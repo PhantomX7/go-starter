@@ -286,6 +286,7 @@ func TestAuthServiceRegisterCreatesUserAndTokens(t *testing.T) {
 			require.Equal(t, models.UserRoleUser, user.Role)
 			require.True(t, user.IsActive)
 			require.NoError(t, bcrypt.CompareHashAndPassword([]byte(user.Password), []byte("secret123")))
+			require.NotNil(t, user.PasswordChangedAt, "a self-chosen password at registration counts as changed")
 			user.ID = 9
 			return nil
 		},
@@ -374,6 +375,7 @@ func TestAuthServiceChangePasswordUpdatesHashRevokesTokensAndLogsAdmin(t *testin
 		updateFn: func(ctx context.Context, entity *models.User) error {
 			require.Same(t, user, entity)
 			require.NoError(t, bcrypt.CompareHashAndPassword([]byte(entity.Password), []byte("new-password")))
+			require.NotNil(t, entity.PasswordChangedAt, "ChangePassword must clear the must-change-default-password gate")
 			return nil
 		},
 	}

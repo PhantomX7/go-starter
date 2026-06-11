@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/PhantomX7/athleton/internal/audit"
 	"github.com/PhantomX7/athleton/internal/dto"
@@ -115,6 +116,10 @@ func (s *authService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 		return nil, cerrors.NewInternalServerError("failed to process password", err)
 	}
 	user.Password = string(hashedPassword)
+	// A self-chosen password at registration counts as changed, so the
+	// must-change-default-password gate never fires for self-registered users.
+	now := time.Now()
+	user.PasswordChangedAt = &now
 
 	// Create user and tokens in transaction
 	var authResponse *dto.AuthResponse
@@ -190,6 +195,9 @@ func (s *authService) ChangePassword(ctx context.Context, req *dto.ChangePasswor
 	// Update password and revoke tokens in transaction
 	err = s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
 		user.Password = string(hashedPassword)
+		// Clears the must-change-default-password gate for seeded accounts.
+		now := time.Now()
+		user.PasswordChangedAt = &now
 		if err := s.userRepo.Update(txCtx, user); err != nil {
 			return err
 		}

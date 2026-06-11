@@ -462,6 +462,7 @@ func TestUserServiceChangePasswordUpdatesHashRevokesTokensAndLogs(t *testing.T) 
 			require.Same(t, current, entity)
 			require.NotEqual(t, "old", entity.Password)
 			require.NoError(t, bcrypt.CompareHashAndPassword([]byte(entity.Password), []byte("new-password")))
+			require.NotNil(t, entity.PasswordChangedAt, "ChangePassword must clear the must-change-default-password gate")
 			return nil
 		},
 	}

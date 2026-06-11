@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/PhantomX7/athleton/internal/audit"
 	"github.com/PhantomX7/athleton/internal/dto"
@@ -306,6 +307,9 @@ func (s *userService) ChangePassword(ctx context.Context, userID uint, req *dto.
 	// partial failure cannot leave the password changed while stale sessions
 	// remain valid (or vice versa).
 	user.Password = string(hashedPassword)
+	// Clears the must-change-default-password gate for the target account.
+	now := time.Now()
+	user.PasswordChangedAt = &now
 	err = s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
 		if err := s.userRepository.Update(txCtx, user); err != nil {
 			logger.Error("Failed to update password",

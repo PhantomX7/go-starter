@@ -43,7 +43,16 @@ func RegisterRoutes(engine *gin.Engine, middleware *middlewares.Middleware, para
 	}
 	if middleware != nil {
 		// Rate limit before auth so rejected floods don't pay JWT parsing.
-		ctx.Admin = root.Group("/admin", middleware.AdminRateLimiter(), middleware.RequireAuth())
+		// RequirePasswordChanged runs after RequireAuth (it reads the user the
+		// authorizer loaded) and blocks seeded admin/root accounts that still
+		// use the default password. The escape hatches — /auth/change-password
+		// and /auth/logout — are mounted on Root by the auth module, outside
+		// this group, so gated accounts can always rotate their password.
+		ctx.Admin = root.Group("/admin",
+			middleware.AdminRateLimiter(),
+			middleware.RequireAuth(),
+			middleware.RequirePasswordChanged(),
+		)
 	}
 
 	for _, registrar := range params.Registrars {
