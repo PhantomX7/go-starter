@@ -33,6 +33,12 @@ type ServerConfig struct {
 	ReadTimeout  time.Duration `mapstructure:"SERVER_READ_TIMEOUT"`
 	WriteTimeout time.Duration `mapstructure:"SERVER_WRITE_TIMEOUT"`
 	IdleTimeout  time.Duration `mapstructure:"SERVER_IDLE_TIMEOUT"`
+	// RequestTimeout bounds a single request's handler work (its context is
+	// canceled past this); distinct from ReadTimeout, which bounds reading the
+	// request off the wire.
+	RequestTimeout time.Duration `mapstructure:"SERVER_REQUEST_TIMEOUT"`
+	// MaxBodyBytes caps the request body size accepted by the API.
+	MaxBodyBytes int64 `mapstructure:"SERVER_MAX_BODY_BYTES"`
 }
 
 // DatabaseConfig holds database-related configuration
@@ -141,11 +147,13 @@ func Load() (*Config, error) {
 func setDefaults(v *viper.Viper) {
 	defaults := map[string]interface{}{
 		// Server
-		"SERVER_HOST":          "localhost",
-		"SERVER_PORT":          8080,
-		"SERVER_READ_TIMEOUT":  "30s",
-		"SERVER_WRITE_TIMEOUT": "30s",
-		"SERVER_IDLE_TIMEOUT":  "120s",
+		"SERVER_HOST":            "localhost",
+		"SERVER_PORT":            8080,
+		"SERVER_READ_TIMEOUT":    "30s",
+		"SERVER_WRITE_TIMEOUT":   "30s",
+		"SERVER_IDLE_TIMEOUT":    "120s",
+		"SERVER_REQUEST_TIMEOUT": "30s",
+		"SERVER_MAX_BODY_BYTES":  10 << 20, // 10 MiB
 
 		// Database
 		"DATABASE_DRIVER":   "postgres",
@@ -227,6 +235,12 @@ func (c *Config) validateServer() error {
 	if c.Server.Port <= 0 || c.Server.Port > 65535 {
 		return fmt.Errorf("invalid port: %d (must be between 1-65535)", c.Server.Port)
 	}
+	if c.Server.RequestTimeout <= 0 {
+		return fmt.Errorf("request timeout must be greater than 0")
+	}
+	if c.Server.MaxBodyBytes <= 0 {
+		return fmt.Errorf("max body bytes must be greater than 0")
+	}
 	return nil
 }
 
@@ -245,6 +259,9 @@ func (c *Config) validateDatabase() error {
 func (c *Config) validateJWT() error {
 	if c.JWT.Secret == "" || c.JWT.Secret == "your-secret-key" {
 		return fmt.Errorf("secret must be set and not use default value")
+	}
+	if len(c.JWT.Secret) < 32 {
+		return fmt.Errorf("secret must be at least 32 characters (got %d)", len(c.JWT.Secret))
 	}
 	if c.JWT.Expiration <= 0 {
 		return fmt.Errorf("expiration must be greater than 0")

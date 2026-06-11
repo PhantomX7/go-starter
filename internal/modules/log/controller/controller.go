@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/modules/log/service"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
@@ -33,36 +34,36 @@ func NewLogController(logService service.LogService) LogController {
 func newLogPagination(conditions map[string][]string) *pagination.Pagination {
 	filterDefinition := pagination.NewFilterDefinition().
 		AddFilter("user_id", pagination.FilterConfig{
-			Field:     "user_id",
+			Column:    generated.Log.UserID,
 			TableName: "logs",
 			Type:      pagination.FilterTypeID,
 		}).
 		AddFilter("action", pagination.FilterConfig{
-			Field:     "action",
+			Field:     "action", // enum column is models.LogAction, not a scalar field helper — stay on the string path
 			TableName: "logs",
 			Type:      pagination.FilterTypeString,
 		}).
 		AddFilter("entity_id", pagination.FilterConfig{
-			Field:     "entity_id",
+			Column:    generated.Log.EntityID,
 			TableName: "logs",
 			Type:      pagination.FilterTypeID,
 		}).
 		AddFilter("entity_type", pagination.FilterConfig{
-			Field:     "entity_type",
+			Column:    generated.Log.EntityType,
 			TableName: "logs",
 			Type:      pagination.FilterTypeString,
 		}).
 		AddFilter("message", pagination.FilterConfig{
-			Field:     "message",
+			Column:    generated.Log.Message,
 			TableName: "logs",
 			Type:      pagination.FilterTypeString,
 		}).
 		AddFilter("created_at", pagination.FilterConfig{
-			Field: "created_at",
-			Type:  pagination.FilterTypeDate,
+			Column: generated.Timestamp.CreatedAt,
+			Type:   pagination.FilterTypeDate,
 		}).
-		AddSort("id", pagination.SortConfig{Field: "id", Allowed: true}).
-		AddSort("created_at", pagination.SortConfig{Field: "created_at", Allowed: true})
+		AddSort("id", pagination.SortConfig{Column: generated.Log.ID, Allowed: true}).
+		AddSort("created_at", pagination.SortConfig{Column: generated.Timestamp.CreatedAt, Allowed: true})
 
 	return pagination.NewPagination(conditions, filterDefinition, pagination.PaginationOptions{
 		DefaultLimit: 20,

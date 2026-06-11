@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/PhantomX7/athleton/internal/audit"
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/models"
 	logRepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
@@ -86,6 +87,10 @@ func NewAuthJWT(
 	logRepository logRepository.LogRepository,
 ) (*AuthJWT, error) {
 	cfg := config.Get()
+
+	// Force dummy-hash generation now so a bcrypt failure surfaces as a boot
+	// error instead of a panic on the first login attempt.
+	_ = dummyHash()
 
 	a := &AuthJWT{
 		userRepo:         userRepo,
@@ -421,7 +426,8 @@ func (a *AuthJWT) createLoginLog(user *models.User) {
 		Message:    message,
 	}
 
-	go func() {
+	// Tracked by audit.Drain so graceful shutdown waits for the write.
+	audit.Go(func() {
 		if err := a.logRepository.Create(context.Background(), log); err != nil {
 			logger.Error("Failed to create login audit log",
 				zap.String("entity_type", models.LogEntityTypeUser),
@@ -430,5 +436,5 @@ func (a *AuthJWT) createLoginLog(user *models.User) {
 				zap.Error(err),
 			)
 		}
-	}()
+	})
 }

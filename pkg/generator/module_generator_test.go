@@ -119,4 +119,29 @@ func requireGeneratedModuleFiles(t *testing.T, moduleDir string) {
 		require.NoError(t, err, file)
 		require.Greater(t, info.Size(), int64(0), file)
 	}
+
+	requireRealGeneratedTests(t, moduleDir)
+}
+
+// requireRealGeneratedTests asserts the generated test files contain real test
+// functions rather than t.Skip placeholders.
+func requireRealGeneratedTests(t *testing.T, moduleDir string) {
+	t.Helper()
+
+	testFiles := []string{
+		filepath.Join("controller", "controller_test.go"),
+		filepath.Join("service", "service_test.go"),
+		filepath.Join("repository", "repository_test.go"),
+	}
+
+	for _, file := range testFiles {
+		raw, err := os.ReadFile(filepath.Join(moduleDir, file))
+		require.NoError(t, err, file)
+		content := string(raw)
+
+		require.Contains(t, content, "func Test", file)
+		require.NotContains(t, content, "t.Skip", file)
+		// Real tests exercise behavior through testify assertions.
+		require.Contains(t, content, "require.", file)
+	}
 }

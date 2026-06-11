@@ -15,6 +15,7 @@ import (
 	rtokenrepo "github.com/PhantomX7/athleton/internal/modules/refresh_token/repository"
 	"github.com/PhantomX7/athleton/internal/modules/user/repository"
 	"github.com/PhantomX7/athleton/libs/casbin"
+	"github.com/PhantomX7/athleton/libs/transaction_manager"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/pagination"
@@ -43,6 +44,7 @@ type userService struct {
 	refreshTokenRepo    rtokenrepo.RefreshTokenRepository
 	logRepository       logRepository.LogRepository
 	casbinClient        casbin.Client
+	txManager           transaction_manager.TransactionManager
 }
 
 // NewUserService creates a new instance of UserService
@@ -52,6 +54,7 @@ func NewUserService(
 	refreshTokenRepo rtokenrepo.RefreshTokenRepository,
 	logRepository logRepository.LogRepository,
 	casbinClient casbin.Client,
+	txManager transaction_manager.TransactionManager,
 ) UserService {
 	return &userService{
 		userRepository:      userRepository,
@@ -59,6 +62,7 @@ func NewUserService(
 		refreshTokenRepo:    refreshTokenRepo,
 		logRepository:       logRepository,
 		casbinClient:        casbinClient,
+		txManager:           txManager,
 	}
 }
 
@@ -203,36 +207,46 @@ func (s *userService) AssignAdminRole(ctx context.Context, userID uint, req *dto
 		zap.Uint("admin_role_id", req.AdminRoleID),
 	)
 
-	// Find user
-	user, err := s.userRepository.FindByID(ctx, userID)
+	// Run the find→check→assign→update sequence inside a single transaction so
+	// a failure at any step rolls everything back and concurrent writers cannot
+	// interleave between the read and the role assignment.
+	var user *models.User
+	err := s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
+		// Find user
+		var err error
+		user, err = s.userRepository.FindByID(txCtx, userID)
+		if err != nil {
+			logger.Error("Failed to find user",
+				zap.String("request_id", requestID),
+				zap.Uint("user_id", userID),
+				zap.Error(err),
+			)
+			return err
+		}
+
+		// Prevent modifying root users
+		if user.Role == models.UserRoleRoot {
+			logger.Warn("Attempted to modify root user",
+				zap.String("request_id", requestID),
+				zap.Uint("user_id", userID),
+			)
+			return cerrors.NewForbiddenError("cannot modify root user")
+		}
+
+		// Assign admin role and set role to admin
+		user.AdminRoleID = &req.AdminRoleID
+
+		if err := s.userRepository.Update(txCtx, user); err != nil {
+			logger.Error("Failed to assign admin role",
+				zap.String("request_id", requestID),
+				zap.Uint("user_id", userID),
+				zap.Error(err),
+			)
+			return err
+		}
+		return nil
+	})
 	if err != nil {
-		logger.Error("Failed to find user",
-			zap.String("request_id", requestID),
-			zap.Uint("user_id", userID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	// Prevent modifying root users
-	if user.Role == models.UserRoleRoot {
-		logger.Warn("Attempted to modify root user",
-			zap.String("request_id", requestID),
-			zap.Uint("user_id", userID),
-		)
-		return nil, cerrors.NewForbiddenError("cannot modify root user")
-	}
-
-	// Assign admin role and set role to admin
-	user.AdminRoleID = &req.AdminRoleID
-
-	err = s.userRepository.Update(ctx, user)
-	if err != nil {
-		logger.Error("Failed to assign admin role",
-			zap.String("request_id", requestID),
-			zap.Uint("user_id", userID),
-			zap.Error(err),
-		)
 		return nil, err
 	}
 
@@ -288,23 +302,33 @@ func (s *userService) ChangePassword(ctx context.Context, userID uint, req *dto.
 		return cerrors.NewInternalServerError("failed to process new password", err)
 	}
 
+	// Update the password and revoke all refresh tokens in one transaction so a
+	// partial failure cannot leave the password changed while stale sessions
+	// remain valid (or vice versa).
 	user.Password = string(hashedPassword)
-	if err := s.userRepository.Update(ctx, user); err != nil {
-		logger.Error("Failed to update password",
-			zap.String("request_id", requestID),
-			zap.Uint("target_user_id", userID),
-			zap.Error(err),
-		)
-		return err
-	}
+	err = s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.userRepository.Update(txCtx, user); err != nil {
+			logger.Error("Failed to update password",
+				zap.String("request_id", requestID),
+				zap.Uint("target_user_id", userID),
+				zap.Error(err),
+			)
+			return err
+		}
 
-	// Revoke all refresh tokens for the target user
-	if err := s.refreshTokenRepo.RevokeAllByUserID(ctx, userID); err != nil {
-		logger.Error("Failed to revoke tokens after password change",
-			zap.String("request_id", requestID),
-			zap.Uint("target_user_id", userID),
-			zap.Error(err),
-		)
+		// Revoke all refresh tokens for the target user
+		if err := s.refreshTokenRepo.RevokeAllByUserID(txCtx, userID); err != nil {
+			logger.Error("Failed to revoke tokens after password change",
+				zap.String("request_id", requestID),
+				zap.Uint("target_user_id", userID),
+				zap.Error(err),
+			)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 
 	logger.Info("Admin password changed by root",

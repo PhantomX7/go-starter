@@ -42,7 +42,8 @@ func RegisterRoutes(engine *gin.Engine, middleware *middlewares.Middleware, para
 		MW:     middleware,
 	}
 	if middleware != nil {
-		ctx.Admin = root.Group("/admin", middleware.RequireAuth())
+		// Rate limit before auth so rejected floods don't pay JWT parsing.
+		ctx.Admin = root.Group("/admin", middleware.AdminRateLimiter(), middleware.RequireAuth())
 	}
 
 	for _, registrar := range params.Registrars {

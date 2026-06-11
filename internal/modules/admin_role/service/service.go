@@ -12,6 +12,7 @@ import (
 	adminrolerepo "github.com/PhantomX7/athleton/internal/modules/admin_role/repository"
 	logRepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
 	"github.com/PhantomX7/athleton/libs/casbin"
+	"github.com/PhantomX7/athleton/libs/transaction_manager"
 	"github.com/PhantomX7/athleton/pkg/constants/permissions"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/logger"
@@ -37,6 +38,7 @@ type adminRoleService struct {
 	adminRoleRepo adminrolerepo.AdminRoleRepository
 	logRepository logRepository.LogRepository
 	casbinClient  casbin.Client
+	txManager     transaction_manager.TransactionManager
 }
 
 // NewAdminRoleService builds an AdminRoleService from its dependencies.
@@ -44,11 +46,13 @@ func NewAdminRoleService(
 	adminRoleRepo adminrolerepo.AdminRoleRepository,
 	logRepository logRepository.LogRepository,
 	casbinClient casbin.Client,
+	txManager transaction_manager.TransactionManager,
 ) AdminRoleService {
 	return &adminRoleService{
 		adminRoleRepo: adminRoleRepo,
 		logRepository: logRepository,
 		casbinClient:  casbinClient,
+		txManager:     txManager,
 	}
 }
 
@@ -131,7 +135,8 @@ func (s *adminRoleService) Create(ctx context.Context, req *dto.CreateAdminRoleR
 		return nil, cerrors.NewInternalServerError("failed to process admin role data", err)
 	}
 
-	// Save to database
+	// Save to database. This is the only DB write in Create, so it is atomic on
+	// its own and needs no explicit transaction.
 	if err := s.adminRoleRepo.Create(ctx, adminRole); err != nil {
 		logger.Error("Failed to create admin role",
 			zap.String("request_id", requestID),
@@ -140,15 +145,28 @@ func (s *adminRoleService) Create(ctx context.Context, req *dto.CreateAdminRoleR
 		return nil, err
 	}
 
-	// Add permissions to Casbin
+	// Add permissions to Casbin only after the role row is committed.
+	//
+	// Residual atomicity gap: Casbin policies are persisted through the casbin
+	// client's own GORM adapter, which does not join our transaction context,
+	// so the role write and the policy write can never be fully atomic. If the
+	// Casbin sync fails we attempt a compensating delete of the role; if that
+	// delete also fails, a role without permissions is left behind and must be
+	// repaired manually (it grants no access, so it fails closed).
 	if err := s.casbinClient.AddRolePermissions(adminRole.ID, req.Permissions); err != nil {
 		logger.Error("Failed to add permissions to casbin",
 			zap.String("request_id", requestID),
 			zap.Uint("role_id", adminRole.ID),
 			zap.Error(err),
 		)
-		// Rollback: delete the created role
-		_ = s.adminRoleRepo.Delete(ctx, adminRole)
+		// Compensating action: delete the created role
+		if delErr := s.adminRoleRepo.Delete(ctx, adminRole); delErr != nil {
+			logger.Error("CRITICAL: failed to roll back admin role after casbin sync failure; role exists without permissions",
+				zap.String("request_id", requestID),
+				zap.Uint("role_id", adminRole.ID),
+				zap.Error(delErr),
+			)
+		}
 		return nil, cerrors.NewInternalServerError("failed to set role permissions", err)
 	}
 
@@ -178,53 +196,72 @@ func (s *adminRoleService) Update(ctx context.Context, roleID uint, req *dto.Upd
 		zap.Uint("role_id", roleID),
 	)
 
-	// Find existing role
-	adminRole, err := s.adminRoleRepo.FindByID(ctx, roleID)
-	if err != nil {
-		logger.Error("Failed to find admin role for update",
-			zap.String("request_id", requestID),
-			zap.Uint("role_id", roleID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	// Validate permissions if provided
-	if req.Permissions != nil {
-		invalidPerms := s.validatePermissions(req.Permissions)
-		if len(invalidPerms) > 0 {
-			logger.Warn("Invalid permissions provided",
-				zap.String("request_id", requestID),
-				zap.Strings("invalid_permissions", invalidPerms),
-			)
-			return nil, cerrors.NewBadRequestError("invalid permissions: " + joinStrings(invalidPerms))
-		}
-	}
-
-	// Update fields
-	if req.Name != nil {
-		adminRole.Name = *req.Name
-	}
-	if req.Description != nil {
-		adminRole.Description = *req.Description
-	}
-
-	// Save to database
-	if err := s.adminRoleRepo.Update(ctx, adminRole); err != nil {
-		logger.Error("Failed to update admin role",
-			zap.String("request_id", requestID),
-			zap.Uint("role_id", roleID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	// Update permissions in Casbin if provided
-	if req.Permissions != nil {
-		if err := s.casbinClient.SetRolePermissions(adminRole.ID, req.Permissions); err != nil {
-			logger.Error("Failed to update permissions in casbin",
+	// Run the find→modify→update sequence inside a single transaction so a
+	// failure at any step rolls the role row back and concurrent writers cannot
+	// interleave between the read and the write.
+	var adminRole *models.AdminRole
+	err := s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
+		// Find existing role
+		var err error
+		adminRole, err = s.adminRoleRepo.FindByID(txCtx, roleID)
+		if err != nil {
+			logger.Error("Failed to find admin role for update",
 				zap.String("request_id", requestID),
 				zap.Uint("role_id", roleID),
+				zap.Error(err),
+			)
+			return err
+		}
+
+		// Validate permissions if provided
+		if req.Permissions != nil {
+			invalidPerms := s.validatePermissions(req.Permissions)
+			if len(invalidPerms) > 0 {
+				logger.Warn("Invalid permissions provided",
+					zap.String("request_id", requestID),
+					zap.Strings("invalid_permissions", invalidPerms),
+				)
+				return cerrors.NewBadRequestError("invalid permissions: " + joinStrings(invalidPerms))
+			}
+		}
+
+		// Update fields
+		if req.Name != nil {
+			adminRole.Name = *req.Name
+		}
+		if req.Description != nil {
+			adminRole.Description = *req.Description
+		}
+
+		// Save to database
+		if err := s.adminRoleRepo.Update(txCtx, adminRole); err != nil {
+			logger.Error("Failed to update admin role",
+				zap.String("request_id", requestID),
+				zap.Uint("role_id", roleID),
+				zap.Error(err),
+			)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Sync permissions in Casbin only after the DB transaction has committed.
+	//
+	// Residual atomicity gap: Casbin policies are persisted through the casbin
+	// client's own GORM adapter, which does not join the transaction context,
+	// so the role update and the policy sync can never be fully atomic. By
+	// ordering the DB commit first, a Casbin failure leaves the role row
+	// updated but its permissions unchanged — we log loudly and surface the
+	// error so the caller can retry the permission sync.
+	if req.Permissions != nil {
+		if err := s.casbinClient.SetRolePermissions(adminRole.ID, req.Permissions); err != nil {
+			logger.Error("CRITICAL: admin role updated in DB but casbin permission sync failed; permissions are stale",
+				zap.String("request_id", requestID),
+				zap.Uint("role_id", roleID),
+				zap.Strings("requested_permissions", req.Permissions),
 				zap.Error(err),
 			)
 			return nil, cerrors.NewInternalServerError("failed to update role permissions", err)
@@ -256,49 +293,69 @@ func (s *adminRoleService) Delete(ctx context.Context, roleID uint) error {
 		zap.Uint("role_id", roleID),
 	)
 
-	// Find existing role
-	adminRole, err := s.adminRoleRepo.FindByID(ctx, roleID)
+	// Run the find→guard→delete sequence inside a single transaction so a
+	// failure at any step rolls everything back and the assigned-users check
+	// cannot race with the delete.
+	var adminRole *models.AdminRole
+	err := s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
+		// Find existing role
+		var err error
+		adminRole, err = s.adminRoleRepo.FindByID(txCtx, roleID)
+		if err != nil {
+			logger.Error("Failed to find admin role for deletion",
+				zap.String("request_id", requestID),
+				zap.Uint("role_id", roleID),
+				zap.Error(err),
+			)
+			return err
+		}
+
+		// Check if any users have this role
+		userCount, err := s.adminRoleRepo.CountUsersWithRole(txCtx, roleID)
+		if err != nil {
+			logger.Error("Failed to count users with role",
+				zap.String("request_id", requestID),
+				zap.Uint("role_id", roleID),
+				zap.Error(err),
+			)
+			return err
+		}
+		if userCount > 0 {
+			return cerrors.NewBadRequestError("cannot delete role that is assigned to users")
+		}
+
+		// Delete from database
+		if err := s.adminRoleRepo.Delete(txCtx, adminRole); err != nil {
+			logger.Error("Failed to delete admin role",
+				zap.String("request_id", requestID),
+				zap.Uint("role_id", roleID),
+				zap.Error(err),
+			)
+			return err
+		}
+		return nil
+	})
 	if err != nil {
-		logger.Error("Failed to find admin role for deletion",
-			zap.String("request_id", requestID),
-			zap.Uint("role_id", roleID),
-			zap.Error(err),
-		)
 		return err
 	}
 
-	// Check if any users have this role
-	userCount, err := s.adminRoleRepo.CountUsersWithRole(ctx, roleID)
-	if err != nil {
-		logger.Error("Failed to count users with role",
-			zap.String("request_id", requestID),
-			zap.Uint("role_id", roleID),
-			zap.Error(err),
-		)
-		return err
-	}
-	if userCount > 0 {
-		return cerrors.NewBadRequestError("cannot delete role that is assigned to users")
-	}
-
-	// Delete permissions from Casbin
+	// Delete permissions from Casbin only after the DB transaction has
+	// committed, so a Casbin failure can never wipe policies for a role that
+	// still exists.
+	//
+	// Residual atomicity gap: Casbin policies are persisted through the casbin
+	// client's own GORM adapter, which does not join the transaction context,
+	// so the role delete and the policy cleanup can never be fully atomic. If
+	// the cleanup fails, orphaned policies remain for the deleted role ID —
+	// they are inert (no user can hold the deleted role, the assigned-users
+	// guard ran inside the transaction), so we log loudly and still report
+	// success rather than fail an operation whose primary effect is committed.
 	if err := s.casbinClient.DeleteRole(roleID); err != nil {
-		logger.Error("Failed to delete permissions from casbin",
+		logger.Error("CRITICAL: admin role deleted from DB but casbin policy cleanup failed; orphaned policies remain",
 			zap.String("request_id", requestID),
 			zap.Uint("role_id", roleID),
 			zap.Error(err),
 		)
-		return cerrors.NewInternalServerError("failed to delete role permissions", err)
-	}
-
-	// Delete from database
-	if err := s.adminRoleRepo.Delete(ctx, adminRole); err != nil {
-		logger.Error("Failed to delete admin role",
-			zap.String("request_id", requestID),
-			zap.Uint("role_id", roleID),
-			zap.Error(err),
-		)
-		return err
 	}
 
 	logger.Info("Admin role deleted successfully",

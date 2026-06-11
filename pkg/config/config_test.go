@@ -18,8 +18,10 @@ import (
 func validConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
-			Host: "localhost",
-			Port: 8080,
+			Host:           "localhost",
+			Port:           8080,
+			RequestTimeout: 30 * time.Second,
+			MaxBodyBytes:   10 << 20,
 		},
 		Database: DatabaseConfig{
 			Driver: "postgres",
@@ -27,7 +29,7 @@ func validConfig() *Config {
 			Port:   5432,
 		},
 		JWT: JWTConfig{
-			Secret:            "unit-test-secret",
+			Secret:            "unit-test-secret-of-at-least-32-chars",
 			Expiration:        10 * time.Minute,
 			RefreshExpiration: 72 * time.Hour,
 			Issuer:            "starter",
@@ -70,6 +72,14 @@ func TestValidateServer(t *testing.T) {
 		{"highest valid port", 65535, false},
 	}
 
+	c := validConfig()
+	c.Server.RequestTimeout = 0
+	require.ErrorContains(t, c.validateServer(), "request timeout")
+
+	c = validConfig()
+	c.Server.MaxBodyBytes = 0
+	require.ErrorContains(t, c.validateServer(), "max body bytes")
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -111,6 +121,10 @@ func TestValidateJWT(t *testing.T) {
 	c = validConfig()
 	c.JWT.Secret = "your-secret-key" // the shipped default must be rejected
 	require.ErrorContains(t, c.validateJWT(), "not use default value")
+
+	c = validConfig()
+	c.JWT.Secret = "too-short" // non-default but under the 32-char minimum
+	require.ErrorContains(t, c.validateJWT(), "at least 32 characters")
 
 	c = validConfig()
 	c.JWT.Expiration = 0

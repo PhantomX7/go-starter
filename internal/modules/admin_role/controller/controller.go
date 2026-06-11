@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/PhantomX7/athleton/internal/dto"
+	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/modules/admin_role/service"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
@@ -38,20 +39,20 @@ func NewAdminRoleController(adminRoleService service.AdminRoleService) AdminRole
 func newAdminRolePagination(conditions map[string][]string) *pagination.Pagination {
 	filterDefinition := pagination.NewFilterDefinition().
 		AddFilter("name", pagination.FilterConfig{
-			Field: "name",
-			Type:  pagination.FilterTypeString,
+			Column: generated.AdminRole.Name,
+			Type:   pagination.FilterTypeString,
 		}).
 		AddFilter("is_active", pagination.FilterConfig{
-			Field: "is_active",
-			Type:  pagination.FilterTypeBool,
+			Column: generated.AdminRole.IsActive,
+			Type:   pagination.FilterTypeBool,
 		}).
 		AddFilter("created_at", pagination.FilterConfig{
-			Field: "created_at",
-			Type:  pagination.FilterTypeDate,
+			Column: generated.Timestamp.CreatedAt,
+			Type:   pagination.FilterTypeDate,
 		}).
-		AddSort("id", pagination.SortConfig{Field: "id", Allowed: true}).
-		AddSort("name", pagination.SortConfig{Field: "name", Allowed: true}).
-		AddSort("created_at", pagination.SortConfig{Field: "created_at", Allowed: true})
+		AddSort("id", pagination.SortConfig{Column: generated.AdminRole.ID, Allowed: true}).
+		AddSort("name", pagination.SortConfig{Column: generated.AdminRole.Name, Allowed: true}).
+		AddSort("created_at", pagination.SortConfig{Column: generated.Timestamp.CreatedAt, Allowed: true})
 
 	return pagination.NewPagination(conditions, filterDefinition, pagination.PaginationOptions{
 		DefaultLimit: 20,

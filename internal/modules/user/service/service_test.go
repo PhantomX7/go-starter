@@ -20,6 +20,7 @@ import (
 	userrepository "github.com/PhantomX7/athleton/internal/modules/user/repository"
 	"github.com/PhantomX7/athleton/internal/modules/user/service"
 	"github.com/PhantomX7/athleton/libs/casbin"
+	"github.com/PhantomX7/athleton/libs/transaction_manager"
 	"github.com/PhantomX7/athleton/pkg/constants/permissions"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/logger"
@@ -226,6 +227,29 @@ func (m *mockCasbinClient) DeleteRole(uint) error { panic("unexpected DeleteRole
 
 var _ casbin.Client = (*mockCasbinClient)(nil)
 
+type mockTxManager struct {
+	executeFn func(context.Context, func(context.Context) error) error
+}
+
+func (m *mockTxManager) ExecuteInTransaction(ctx context.Context, fn func(context.Context) error) error {
+	if m.executeFn == nil {
+		panic("unexpected ExecuteInTransaction call")
+	}
+	return m.executeFn(ctx, fn)
+}
+
+var _ transaction_manager.TransactionManager = (*mockTxManager)(nil)
+
+// passthroughTxManager returns a mock transaction manager that simply invokes
+// the closure with the original context, mimicking a committed transaction.
+func passthroughTxManager() *mockTxManager {
+	return &mockTxManager{
+		executeFn: func(ctx context.Context, fn func(context.Context) error) error {
+			return fn(ctx)
+		},
+	}
+}
+
 func setupLogger(t *testing.T) {
 	t.Helper()
 
@@ -256,7 +280,7 @@ func TestUserServiceIndexReturnsUsersAndMeta(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{})
+	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, &mockTxManager{})
 	ctx := utils.SetRequestIDToContext(context.Background(), "req-1")
 
 	users, meta, err := svc.Index(ctx, pg)
@@ -293,7 +317,7 @@ func TestUserServiceFindByIDHydratesAdminRolePermissions(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, casbinClient)
+	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, casbinClient, &mockTxManager{})
 	ctx := utils.SetRequestIDToContext(context.Background(), "req-2")
 
 	user, err := svc.FindByID(ctx, 7)
@@ -312,13 +336,108 @@ func TestUserServiceAssignAdminRoleRejectsRootUser(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{})
+	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, passthroughTxManager())
 
 	user, err := svc.AssignAdminRole(context.Background(), 3, &dto.UserAssignAdminRoleRequest{AdminRoleID: 5})
 
 	require.Nil(t, user)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, cerrors.ErrForbidden))
+}
+
+func TestUserServiceAssignAdminRoleUpdatesUserInTransaction(t *testing.T) {
+	setupLogger(t)
+
+	logCh := make(chan *models.Log, 1)
+	current := &models.User{ID: 6, Name: "Admin User", Role: models.UserRoleAdmin}
+	repo := &mockUserRepository{
+		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
+			require.Equal(t, uint(6), id)
+			return current, nil
+		},
+		updateFn: func(ctx context.Context, entity *models.User) error {
+			require.Same(t, current, entity)
+			require.NotNil(t, entity.AdminRoleID)
+			require.Equal(t, uint(5), *entity.AdminRoleID)
+			return nil
+		},
+	}
+	logRepo := &mockLogRepository{
+		createFn: func(ctx context.Context, entry *models.Log) error {
+			logCh <- entry
+			return nil
+		},
+	}
+	txCalls := 0
+	txManager := &mockTxManager{
+		executeFn: func(ctx context.Context, fn func(context.Context) error) error {
+			txCalls++
+			return fn(ctx)
+		},
+	}
+
+	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, logRepo, &mockCasbinClient{}, txManager)
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{UserID: 1, UserName: "Root"})
+
+	user, err := svc.AssignAdminRole(ctx, 6, &dto.UserAssignAdminRoleRequest{AdminRoleID: 5})
+
+	require.NoError(t, err)
+	require.Same(t, current, user)
+	require.Equal(t, 1, txCalls)
+	select {
+	case entry := <-logCh:
+		require.Equal(t, models.LogActionUpdate, entry.Action)
+		require.Equal(t, uint(6), entry.EntityID)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for audit log")
+	}
+}
+
+func TestUserServiceAssignAdminRolePropagatesUpdateErrorFromTransaction(t *testing.T) {
+	setupLogger(t)
+
+	expectedErr := errors.New("update failed")
+	repo := &mockUserRepository{
+		findByIDFn: func(context.Context, uint, ...repository.Association) (*models.User, error) {
+			return &models.User{ID: 6, Role: models.UserRoleAdmin}, nil
+		},
+		updateFn: func(context.Context, *models.User) error {
+			return expectedErr
+		},
+	}
+
+	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, passthroughTxManager())
+
+	user, err := svc.AssignAdminRole(context.Background(), 6, &dto.UserAssignAdminRoleRequest{AdminRoleID: 5})
+
+	require.Nil(t, user)
+	require.ErrorIs(t, err, expectedErr)
+}
+
+func TestUserServiceChangePasswordFailsWhenTokenRevocationFails(t *testing.T) {
+	setupLogger(t)
+
+	expectedErr := errors.New("revoke failed")
+	repo := &mockUserRepository{
+		findByIDFn: func(context.Context, uint, ...repository.Association) (*models.User, error) {
+			return &models.User{ID: 10, Role: models.UserRoleAdmin, Password: "old"}, nil
+		},
+		updateFn: func(context.Context, *models.User) error {
+			return nil
+		},
+	}
+	refreshRepo := &mockRefreshTokenRepository{
+		revokeAllByUserIDFn: func(ctx context.Context, userID uint) error {
+			require.Equal(t, uint(10), userID)
+			return expectedErr
+		},
+	}
+
+	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, refreshRepo, &mockLogRepository{}, &mockCasbinClient{}, passthroughTxManager())
+
+	err := svc.ChangePassword(context.Background(), 10, &dto.ChangeAdminPasswordRequest{NewPassword: "new-password"})
+
+	require.ErrorIs(t, err, expectedErr)
 }
 
 func TestUserServiceChangePasswordUpdatesHashRevokesTokensAndLogs(t *testing.T) {
@@ -360,7 +479,7 @@ func TestUserServiceChangePasswordUpdatesHashRevokesTokensAndLogs(t *testing.T) 
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, refreshRepo, logRepo, &mockCasbinClient{})
+	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, refreshRepo, logRepo, &mockCasbinClient{}, passthroughTxManager())
 	ctx := utils.SetRequestIDToContext(context.Background(), "req-3")
 	ctx = utils.NewContextWithValues(ctx, utils.ContextValues{UserID: 1, UserName: "Root"})
 
@@ -387,7 +506,7 @@ func TestUserServiceChangePasswordRejectsNonAdmin(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{})
+	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, &mockTxManager{})
 
 	err := svc.ChangePassword(context.Background(), 4, &dto.ChangeAdminPasswordRequest{NewPassword: "new-password"})
 
@@ -409,7 +528,7 @@ func TestUserServiceIndexReturnsRepositoryError(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{})
+	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, &mockTxManager{})
 
 	users, meta, err := svc.Index(context.Background(), pagination.NewPagination(nil, nil, pagination.PaginationOptions{}))
 

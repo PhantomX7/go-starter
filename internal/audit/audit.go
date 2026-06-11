@@ -7,6 +7,7 @@ package audit
 
 import (
 	"context"
+	"sync"
 
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/log/repository"
@@ -15,6 +16,38 @@ import (
 
 	"go.uber.org/zap"
 )
+
+// pending tracks in-flight background writes so graceful shutdown can wait
+// for them (via Drain) before the database connection is closed.
+var pending sync.WaitGroup
+
+// Go runs fn in a background goroutine tracked by Drain. Use it for audit-ish
+// writes that can't go through Record (e.g. attribution known before the user
+// exists in the request context) so shutdown still waits for them.
+func Go(fn func()) {
+	pending.Add(1)
+	go func() {
+		defer pending.Done()
+		fn()
+	}()
+}
+
+// Drain blocks until every in-flight audit write has finished, or until ctx
+// expires. Call it during shutdown after the HTTP server has stopped and
+// before the DB closes.
+func Drain(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		pending.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
 
 // Entry is a single audit record to emit. Message is built by the caller.
 type Entry struct {
@@ -53,7 +86,9 @@ func Record(ctx context.Context, repo repository.LogRepository, entry Entry) {
 	}
 
 	bgCtx := context.WithoutCancel(ctx)
+	pending.Add(1)
 	go func() {
+		defer pending.Done()
 		if err := repo.Create(bgCtx, log); err != nil {
 			logger.Ctx(bgCtx).Error("Failed to create audit log",
 				zap.String("entity_type", entry.EntityType),

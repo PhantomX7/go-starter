@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/PhantomX7/athleton/internal/dto"
+	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/modules/config/service"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
@@ -35,11 +36,11 @@ func NewConfigController(configService service.ConfigService) ConfigController {
 func newConfigPagination(conditions map[string][]string) *pagination.Pagination {
 	filterDefinition := pagination.NewFilterDefinition().
 		AddFilter("key", pagination.FilterConfig{
-			Field: "key",
-			Type:  pagination.FilterTypeString,
+			Column: generated.Config.Key,
+			Type:   pagination.FilterTypeString,
 		}).
-		AddSort("key", pagination.SortConfig{Field: "key", Allowed: true}).
-		AddSort("created_at", pagination.SortConfig{Field: "created_at", Allowed: true})
+		AddSort("key", pagination.SortConfig{Column: generated.Config.Key, Allowed: true}).
+		AddSort("created_at", pagination.SortConfig{Column: generated.Config.CreatedAt, Allowed: true})
 
 	return pagination.NewPagination(conditions, filterDefinition, pagination.PaginationOptions{
 		DefaultLimit: 20,

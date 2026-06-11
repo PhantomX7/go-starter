@@ -171,7 +171,7 @@ var _ logrepository.LogRepository = (*mockLogRepository)(nil)
 func setupConfig(t *testing.T) {
 	t.Helper()
 
-	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("JWT_SECRET", "test-secret-of-at-least-32-characters")
 	t.Setenv("JWT_EXPIRATION", "10m")
 	t.Setenv("JWT_REFRESH_EXPIRATION", "72h")
 	t.Setenv("JWT_ISSUER", "athleton-test")

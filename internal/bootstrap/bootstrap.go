@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/PhantomX7/athleton/docs"
+	"github.com/PhantomX7/athleton/internal/audit"
 	"github.com/PhantomX7/athleton/internal/middlewares"
 	"github.com/PhantomX7/athleton/pkg/config"
 	"github.com/PhantomX7/athleton/pkg/logger"
@@ -94,16 +95,19 @@ func SetupServer(m *middlewares.Middleware, cv cvalidator.CustomValidator, db *g
 
 	// Apply middleware in order (ORDER IS IMPORTANT!)
 	server.Use(
-		m.RequestID(), // 1. Generate/extract request ID (MUST be before logger)
-		m.CORS(),      // 2. CORS handling
-		// m.TimeoutMiddleware(cfg.Server.ReadTimeout), // 3. Request timeout
-		m.Logger(),       // 4. Request logging (outer, so it sees recovered panics)
-		gin.Recovery(),   // 5. Panic recovery (inner, so Logger still logs the 500)
-		m.ErrorHandler(), // 6. Error handling (MUST be last)
+		m.RequestID(),                            // 1. Generate/extract request ID (MUST be before logger)
+		m.CORS(),                                 // 2. CORS handling
+		m.BodySizeLimit(cfg.Server.MaxBodyBytes), // 3. Reject oversized payloads
+		m.TimeoutMiddleware(cfg.Server.RequestTimeout), // 4. Request deadline via context
+		m.Logger(),       // 5. Request logging (outer, so it sees recovered panics)
+		gin.Recovery(),   // 6. Panic recovery (inner, so Logger still logs the 500)
+		m.ErrorHandler(), // 7. Error handling (MUST be last)
 	)
 
 	// Uniform JSON envelope for unmatched paths and methods so clients see the
-	// same shape as handler errors.
+	// same shape as handler errors. HandleMethodNotAllowed is off by default in
+	// gin.New(), which would leave the NoMethod handler unreachable.
+	server.HandleMethodNotAllowed = true
 	server.NoRoute(func(c *gin.Context) {
 		c.JSON(http.StatusNotFound, response.BuildResponseFailed("route not found"))
 	})
@@ -115,8 +119,8 @@ func SetupServer(m *middlewares.Middleware, cv cvalidator.CustomValidator, db *g
 
 	// Swagger is a discovery surface and shouldn't ship to production.
 	if !cfg.IsProduction() {
-		docs.SwaggerInfo.Title = "Komputer Medan API"
-		docs.SwaggerInfo.Description = "This is a sample server Komputer Medan server."
+		docs.SwaggerInfo.Title = cfg.App.Name + " API"
+		docs.SwaggerInfo.Description = "REST API documentation for " + cfg.App.Name + "."
 		docs.SwaggerInfo.Version = "1.0"
 		docs.SwaggerInfo.Host = cfg.GetServerAddress()
 		docs.SwaggerInfo.BasePath = "/api/v1/"
@@ -183,6 +187,16 @@ func StartServer(lc fx.Lifecycle, server *gin.Engine) {
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  cfg.Server.IdleTimeout,
 	}
+
+	// Drain in-flight audit writes after the HTTP server stops accepting
+	// requests but before the DB hook (appended earlier, so stopped later)
+	// closes the connection. fx runs OnStop hooks in reverse append order.
+	lc.Append(fx.Hook{
+		OnStop: func(ctx context.Context) error {
+			logger.Info("Draining pending audit writes")
+			return audit.Drain(ctx)
+		},
+	})
 
 	// Start server
 	lc.Append(fx.Hook{

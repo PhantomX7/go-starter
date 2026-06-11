@@ -22,7 +22,8 @@ func (m *Middleware) ErrorHandler() gin.HandlerFunc {
 			return
 		}
 
-		err := c.Errors.Last().Err
+		last := c.Errors.Last()
+		err := last.Err
 
 		var ve validator.ValidationErrors
 		var ae *cerrors.AppError
@@ -36,6 +37,11 @@ func (m *Middleware) ErrorHandler() gin.HandlerFunc {
 				return
 			}
 			c.AbortWithStatusJSON(ae.Code, response.BuildResponseFailed(ae.Message))
+		case last.IsType(gin.ErrorTypeBind):
+			// Bind failures that aren't validator.ValidationErrors (malformed
+			// JSON, wrong field types, oversized body) are client errors, not
+			// server faults — don't report them as 500.
+			c.AbortWithStatusJSON(http.StatusBadRequest, response.BuildResponseFailed("Invalid request body."))
 		default:
 			c.AbortWithStatusJSON(http.StatusInternalServerError, response.BuildResponseFailed("An unexpected error occurred."))
 		}

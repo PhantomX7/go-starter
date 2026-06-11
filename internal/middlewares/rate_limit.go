@@ -76,3 +76,18 @@ func (m *Middleware) AuthRateLimiter() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// AdminRateLimiter returns a per-client-IP limiter for the /admin surface.
+// Far looser than the auth limiter (10 req/sec, burst 20) — it exists to slow
+// scripted abuse of mutating endpoints, not to throttle normal dashboard use.
+func (m *Middleware) AdminRateLimiter() gin.HandlerFunc {
+	limiter := newIPRateLimiter(rate.Every(100*time.Millisecond), 20, 10*time.Minute)
+	return func(c *gin.Context) {
+		if !limiter.allow(c.ClientIP()) {
+			c.Header("Retry-After", "1")
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, response.BuildResponseFailed("too many requests"))
+			return
+		}
+		c.Next()
+	}
+}
