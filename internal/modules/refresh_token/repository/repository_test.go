@@ -255,3 +255,20 @@ func TestRefreshTokenRepositoryRevokeByTokenRevokesMatchingToken(t *testing.T) {
 	require.NoError(t, db.First(&got, "id = ?", token.ID).Error)
 	require.NotNil(t, got.RevokedAt)
 }
+
+func TestRefreshTokenRepositoryRevokeByTokenIfActiveReportsReuse(t *testing.T) {
+	db := setupDB(t)
+	repo := refreshtokenrepository.NewRefreshTokenRepository(db)
+	user := seedUser(t, db, "ivan")
+	seedToken(t, db, user.ID, "rotate-once", time.Now().Add(time.Hour), nil)
+
+	// First revoke wins and reports a row was revoked.
+	revoked, err := repo.RevokeByTokenIfActive(context.Background(), "rotate-once")
+	require.NoError(t, err)
+	require.True(t, revoked)
+
+	// Second revoke of the same token finds nothing active: the reuse signal.
+	revoked, err = repo.RevokeByTokenIfActive(context.Background(), "rotate-once")
+	require.NoError(t, err)
+	require.False(t, revoked)
+}

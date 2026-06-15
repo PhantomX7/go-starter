@@ -3,10 +3,10 @@ package controller
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/modules/log/service"
+	"github.com/PhantomX7/athleton/pkg/ginx"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 
@@ -97,13 +97,12 @@ func (c *logController) Index(ctx *gin.Context) {
 // @Failure      500  {object}  response.Response
 // @Router       /log/{id} [get]
 func (c *logController) FindByID(ctx *gin.Context) {
-	logID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
-	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+	logID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
 		return
 	}
 
-	log, err := c.logService.FindByID(ctx.Request.Context(), uint(logID))
+	log, err := c.logService.FindByID(ctx.Request.Context(), logID)
 	if err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return

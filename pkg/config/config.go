@@ -39,6 +39,12 @@ type ServerConfig struct {
 	RequestTimeout time.Duration `mapstructure:"SERVER_REQUEST_TIMEOUT"`
 	// MaxBodyBytes caps the request body size accepted by the API.
 	MaxBodyBytes int64 `mapstructure:"SERVER_MAX_BODY_BYTES"`
+	// TrustedProxies is the set of proxy IPs/CIDRs whose X-Forwarded-For header
+	// is honored when deriving the client IP (used by the rate limiters). Empty
+	// means trust none — c.ClientIP() falls back to the direct RemoteAddr, so a
+	// spoofed header cannot mint a fresh rate-limit bucket. Set this to your load
+	// balancer's address(es) when deployed behind one. Comma-separated in env.
+	TrustedProxies []string `mapstructure:"SERVER_TRUSTED_PROXIES"`
 }
 
 // DatabaseConfig holds database-related configuration
@@ -151,6 +157,7 @@ func setDefaults(v *viper.Viper) {
 		"SERVER_IDLE_TIMEOUT":    "120s",
 		"SERVER_REQUEST_TIMEOUT": "30s",
 		"SERVER_MAX_BODY_BYTES":  10 << 20, // 10 MiB
+		"SERVER_TRUSTED_PROXIES": "",       // trust none by default; set to LB CIDR(s) in prod
 
 		// Database
 		"DATABASE_DRIVER":   "postgres",

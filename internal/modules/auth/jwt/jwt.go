@@ -323,10 +323,25 @@ func (a *AuthJWT) ValidateAndRotateRefreshToken(ctx context.Context, oldToken st
 	// rotation would silently degrade to "issue extra tokens", letting an
 	// attacker who captured a refresh token replay it indefinitely while the
 	// store is unhealthy.
-	if err := a.refreshTokenRepo.RevokeByToken(ctx, oldToken); err != nil {
+	revoked, err := a.refreshTokenRepo.RevokeByTokenIfActive(ctx, oldToken)
+	if err != nil {
 		logger.Error("Failed to revoke refresh token during rotation",
 			zap.Uint("user_id", user.ID), zap.Error(err))
 		return nil, cerrors.NewInternalServerError("failed to rotate refresh token", err)
+	}
+
+	// The token was active at FindByToken but no longer active by the time we
+	// revoked it: another request already rotated it, i.e. this token is being
+	// reused. Treat it as a breach — revoke every session for the user so a
+	// stolen-then-replayed token cannot outlive detection — and refuse.
+	if !revoked {
+		logger.Warn("Refresh-token reuse detected during rotation; revoking all sessions",
+			zap.Uint("user_id", user.ID))
+		if err := a.refreshTokenRepo.RevokeAllByUserID(ctx, user.ID); err != nil {
+			logger.Error("Failed to revoke sessions after refresh-token reuse",
+				zap.Uint("user_id", user.ID), zap.Error(err))
+		}
+		return nil, cerrors.NewBadRequestError("invalid or expired refresh token")
 	}
 
 	return a.GenerateTokensForUser(ctx, user)

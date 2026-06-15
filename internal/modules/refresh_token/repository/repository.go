@@ -40,6 +40,7 @@ type RefreshTokenRepository interface {
 	RevokeAllByUserID(ctx context.Context, userID uint) error
 	RevokeAllByUserIDExcept(ctx context.Context, userID uint, exceptToken string) error
 	RevokeByToken(ctx context.Context, token string) error
+	RevokeByTokenIfActive(ctx context.Context, token string) (bool, error)
 }
 
 type refreshTokenRepository struct {
@@ -183,22 +184,31 @@ func (r *refreshTokenRepository) RevokeAllByUserIDExcept(ctx context.Context, us
 }
 
 // RevokeByToken revokes one specific refresh token by its plaintext value.
-// The plaintext is hashed before matching since that is what is stored.
-// NOTE: this does not return ErrNotFound when the token is already revoked or
-// missing — current callers either call FindByToken first or treat 0-row
-// updates as success. If you add a new caller that needs to detect reuse
-// (e.g. defensive token-reuse mitigation in rotation), capture rows-affected
-// from gorm and surface it.
+// The plaintext is hashed before matching since that is what is stored. A
+// 0-row update (token already revoked or missing) is treated as success — this
+// is the idempotent variant used by logout. Callers that must DETECT reuse
+// (e.g. rotation) should use RevokeByTokenIfActive instead.
 func (r *refreshTokenRepository) RevokeByToken(ctx context.Context, token string) error {
+	_, err := r.RevokeByTokenIfActive(ctx, token)
+	return err
+}
+
+// RevokeByTokenIfActive atomically revokes the active token matching the
+// plaintext value and reports whether a row was actually revoked. The
+// not-revoked + atomic update means two concurrent callers racing on the same
+// token cannot both win: exactly one sees revoked == true. A false return
+// signals the token was already revoked or never existed — the reuse signal a
+// rotation caller needs to refuse and tear down the session family.
+func (r *refreshTokenRepository) RevokeByTokenIfActive(ctx context.Context, token string) (bool, error) {
 	now := time.Now()
 	hashed := HashRefreshToken(token)
-	_, err := gorm.G[models.RefreshToken](r.GetDB(ctx)).
+	rows, err := gorm.G[models.RefreshToken](r.GetDB(ctx)).
 		Where(generated.RefreshToken.Token.Eq(hashed)).
 		Where(generated.RefreshToken.RevokedAt.IsNull()).
 		Set(generated.RefreshToken.RevokedAt.Set(now)).
 		Update(ctx)
 	if err != nil {
-		return cerrors.NewInternalServerError("failed to revoke by token", err)
+		return false, cerrors.NewInternalServerError("failed to revoke by token", err)
 	}
-	return nil
+	return rows > 0, nil
 }

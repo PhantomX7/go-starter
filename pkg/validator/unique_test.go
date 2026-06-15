@@ -240,12 +240,12 @@ func TestUnique_DatabaseError(t *testing.T) {
 		description string
 	}{
 		{
-			name: "database error should pass validation",
+			name: "database error should fail validation",
 			input: TestStruct{
 				UserEmail: "test@example.com",
 			},
-			expectValid: true, // Should pass when database error occurs (fail open)
-			description: "Should pass validation when database error occurs",
+			expectValid: false, // Should fail closed when a database error occurs
+			description: "Should reject validation when database error occurs",
 		},
 	}
 
@@ -382,8 +382,8 @@ func TestUnique_NonExistentTable(t *testing.T) {
 			input: TestStruct{
 				Value: "test@example.com",
 			},
-			expectValid: true,
-			description: "Should pass validation for non-existent table (no records found = unique)",
+			expectValid: false,
+			description: "Should fail closed for non-existent table (query errors = cannot verify uniqueness)",
 		},
 	}
 
@@ -423,8 +423,8 @@ func TestUnique_NonExistentColumn(t *testing.T) {
 			input: TestStruct{
 				Value: "test@example.com",
 			},
-			expectValid: true,
-			description: "Should pass validation for non-existent column (no records found = unique)",
+			expectValid: false,
+			description: "Should fail closed for non-existent column (query errors = cannot verify uniqueness)",
 		},
 	}
 

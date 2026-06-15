@@ -60,11 +60,11 @@ package controller
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/modules/{{.SnakeCase}}/service"
+	"github.com/PhantomX7/athleton/pkg/ginx"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 
@@ -149,19 +149,18 @@ func (c *{{.CamelCase}}Controller) Create(ctx *gin.Context) {
 
 // Update handles updates to an existing {{.LowerCase}}.
 func (c *{{.CamelCase}}Controller) Update(ctx *gin.Context) {
-	{{.LowerCase}}ID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
-	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+	{{.LowerCase}}ID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
 		return
 	}
 
 	var req dto.{{.PascalCase}}UpdateRequest
-	if err = ctx.ShouldBind(&req); err != nil {
+	if err := ctx.ShouldBind(&req); err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypeBind)
 		return
 	}
 
-	{{.LowerCase}}, err := c.{{.CamelCase}}Service.Update(ctx.Request.Context(), uint({{.LowerCase}}ID), &req)
+	{{.LowerCase}}, err := c.{{.CamelCase}}Service.Update(ctx.Request.Context(), {{.LowerCase}}ID, &req)
 	if err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
@@ -172,13 +171,12 @@ func (c *{{.CamelCase}}Controller) Update(ctx *gin.Context) {
 
 // Delete handles deletion of an existing {{.LowerCase}}.
 func (c *{{.CamelCase}}Controller) Delete(ctx *gin.Context) {
-	{{.LowerCase}}ID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
-	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+	{{.LowerCase}}ID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
 		return
 	}
 
-	if err := c.{{.CamelCase}}Service.Delete(ctx.Request.Context(), uint({{.LowerCase}}ID)); err != nil {
+	if err := c.{{.CamelCase}}Service.Delete(ctx.Request.Context(), {{.LowerCase}}ID); err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
@@ -188,13 +186,12 @@ func (c *{{.CamelCase}}Controller) Delete(ctx *gin.Context) {
 
 // FindByID handles fetching a single {{.LowerCase}} by ID.
 func (c *{{.CamelCase}}Controller) FindByID(ctx *gin.Context) {
-	{{.LowerCase}}ID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
-	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+	{{.LowerCase}}ID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
 		return
 	}
 
-	{{.LowerCase}}, err := c.{{.CamelCase}}Service.FindByID(ctx.Request.Context(), uint({{.LowerCase}}ID))
+	{{.LowerCase}}, err := c.{{.CamelCase}}Service.FindByID(ctx.Request.Context(), {{.LowerCase}}ID)
 	if err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return

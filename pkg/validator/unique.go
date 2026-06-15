@@ -29,9 +29,12 @@ func (cv customValidator) Unique() validator.Func {
 
 		err := query.Count(&count).Error
 
-		// If there's a database error, fail open (assume unique)
+		// Fail closed on a database error: report "not unique" so the request is
+		// rejected rather than admitting a value we could not verify. This mirrors
+		// Exist (which also fails closed) — a transient DB outage should never be
+		// the reason a duplicate slips past validation into the table.
 		if err != nil {
-			return true
+			return false
 		}
 
 		return count == 0

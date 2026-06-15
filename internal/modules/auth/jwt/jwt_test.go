@@ -77,6 +77,8 @@ type mockRefreshTokenRepository struct {
 	findActiveByIDFn          func(context.Context, uuid.UUID) (*models.RefreshToken, error)
 	getValidCountByUserIDFn   func(context.Context, uint) (int64, error)
 	revokeByTokenFn           func(context.Context, string) error
+	revokeByTokenIfActiveFn   func(context.Context, string) (bool, error)
+	revokeAllByUserIDFn       func(context.Context, uint) error
 	revokeAllByUserIDExceptFn func(context.Context, uint, string) error
 }
 
@@ -122,8 +124,11 @@ func (m *mockRefreshTokenRepository) GetValidCountByUserID(ctx context.Context, 
 func (m *mockRefreshTokenRepository) DeleteInvalidToken(context.Context) error {
 	panic("unexpected DeleteInvalidToken call")
 }
-func (m *mockRefreshTokenRepository) RevokeAllByUserID(context.Context, uint) error {
-	panic("unexpected RevokeAllByUserID call")
+func (m *mockRefreshTokenRepository) RevokeAllByUserID(ctx context.Context, userID uint) error {
+	if m.revokeAllByUserIDFn == nil {
+		panic("unexpected RevokeAllByUserID call")
+	}
+	return m.revokeAllByUserIDFn(ctx, userID)
 }
 func (m *mockRefreshTokenRepository) RevokeAllByUserIDExcept(ctx context.Context, userID uint, exceptToken string) error {
 	if m.revokeAllByUserIDExceptFn == nil {
@@ -136,6 +141,12 @@ func (m *mockRefreshTokenRepository) RevokeByToken(ctx context.Context, token st
 		panic("unexpected RevokeByToken call")
 	}
 	return m.revokeByTokenFn(ctx, token)
+}
+func (m *mockRefreshTokenRepository) RevokeByTokenIfActive(ctx context.Context, token string) (bool, error) {
+	if m.revokeByTokenIfActiveFn == nil {
+		panic("unexpected RevokeByTokenIfActive call")
+	}
+	return m.revokeByTokenIfActiveFn(ctx, token)
 }
 
 var _ refreshtokenrepository.RefreshTokenRepository = (*mockRefreshTokenRepository)(nil)
@@ -492,10 +503,10 @@ func TestValidateAndRotateRefreshTokenReturnsNewTokens(t *testing.T) {
 			require.Equal(t, "old-token", token)
 			return &models.RefreshToken{UserID: 11, Token: token}, nil
 		},
-		revokeByTokenFn: func(ctx context.Context, token string) error {
+		revokeByTokenIfActiveFn: func(ctx context.Context, token string) (bool, error) {
 			require.Equal(t, "old-token", token)
 			revokeCalled = true
-			return nil
+			return true, nil
 		},
 		createFn: func(ctx context.Context, entity *models.RefreshToken) error {
 			require.Equal(t, uint(11), entity.UserID)
@@ -525,8 +536,8 @@ func TestValidateAndRotateRefreshTokenFailsWhenRevokeFails(t *testing.T) {
 		findByTokenFn: func(ctx context.Context, token string) (*models.RefreshToken, error) {
 			return &models.RefreshToken{UserID: 11, Token: token}, nil
 		},
-		revokeByTokenFn: func(ctx context.Context, token string) error {
-			return cerrors.NewInternalServerError("db boom", errors.New("boom"))
+		revokeByTokenIfActiveFn: func(ctx context.Context, token string) (bool, error) {
+			return false, cerrors.NewInternalServerError("db boom", errors.New("boom"))
 		},
 		createFn: func(ctx context.Context, entity *models.RefreshToken) error {
 			createCalled = true
@@ -540,6 +551,43 @@ func TestValidateAndRotateRefreshTokenFailsWhenRevokeFails(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, res)
 	require.False(t, createCalled, "must not mint a replacement refresh token when revoke fails")
+}
+
+// When a token passes the active-lookup but revoke reports 0 rows, it is being
+// reused (already rotated by a concurrent request). Rotation must refuse AND
+// revoke every session for the user so a replayed stolen token cannot survive.
+func TestValidateAndRotateRefreshTokenDetectsReuse(t *testing.T) {
+	userRepo := &mockUserRepository{
+		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
+			return &models.User{ID: 11, Role: models.UserRoleUser, IsActive: true}, nil
+		},
+	}
+	createCalled := false
+	revokeAllUser := uint(0)
+	refreshRepo := &mockRefreshTokenRepository{
+		findByTokenFn: func(ctx context.Context, token string) (*models.RefreshToken, error) {
+			return &models.RefreshToken{UserID: 11, Token: token}, nil
+		},
+		revokeByTokenIfActiveFn: func(ctx context.Context, token string) (bool, error) {
+			return false, nil // lost the race: already revoked
+		},
+		revokeAllByUserIDFn: func(ctx context.Context, userID uint) error {
+			revokeAllUser = userID
+			return nil
+		},
+		createFn: func(ctx context.Context, entity *models.RefreshToken) error {
+			createCalled = true
+			return nil
+		},
+	}
+
+	a := newAuthJWT(t, userRepo, refreshRepo, &mockLogRepository{})
+	res, err := a.ValidateAndRotateRefreshToken(context.Background(), "old-token")
+
+	require.Error(t, err)
+	require.Nil(t, res)
+	require.False(t, createCalled, "must not mint a replacement token on reuse")
+	require.Equal(t, uint(11), revokeAllUser, "must revoke all sessions for the user on reuse")
 }
 
 func TestRevokeRefreshTokenIsIdempotentWhenTokenMissing(t *testing.T) {

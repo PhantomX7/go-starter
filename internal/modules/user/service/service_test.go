@@ -166,6 +166,9 @@ func (m *mockRefreshTokenRepository) RevokeAllByUserIDExcept(context.Context, ui
 func (m *mockRefreshTokenRepository) RevokeByToken(context.Context, string) error {
 	panic("unexpected RevokeByToken call")
 }
+func (m *mockRefreshTokenRepository) RevokeByTokenIfActive(context.Context, string) (bool, error) {
+	panic("unexpected RevokeByTokenIfActive call")
+}
 
 var _ refreshtokenrepository.RefreshTokenRepository = (*mockRefreshTokenRepository)(nil)
 

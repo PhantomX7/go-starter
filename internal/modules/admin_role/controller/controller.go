@@ -3,11 +3,11 @@ package controller
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/modules/admin_role/service"
+	"github.com/PhantomX7/athleton/pkg/ginx"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 
@@ -127,9 +127,8 @@ func (c *adminRoleController) Create(ctx *gin.Context) {
 // @Failure      500  {object}  response.Response
 // @Router       /admin/admin-role/{id} [put]
 func (c *adminRoleController) Update(ctx *gin.Context) {
-	roleID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
-	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+	roleID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
 		return
 	}
 
@@ -139,7 +138,7 @@ func (c *adminRoleController) Update(ctx *gin.Context) {
 		return
 	}
 
-	adminRole, err := c.adminRoleService.Update(ctx.Request.Context(), uint(roleID), &req)
+	adminRole, err := c.adminRoleService.Update(ctx.Request.Context(), roleID, &req)
 	if err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
@@ -161,13 +160,12 @@ func (c *adminRoleController) Update(ctx *gin.Context) {
 // @Failure      500  {object}  response.Response
 // @Router       /admin/admin-role/{id} [delete]
 func (c *adminRoleController) Delete(ctx *gin.Context) {
-	roleID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
-	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+	roleID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
 		return
 	}
 
-	if err := c.adminRoleService.Delete(ctx.Request.Context(), uint(roleID)); err != nil {
+	if err := c.adminRoleService.Delete(ctx.Request.Context(), roleID); err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
@@ -187,13 +185,12 @@ func (c *adminRoleController) Delete(ctx *gin.Context) {
 // @Failure      500  {object}  response.Response
 // @Router       /admin/admin-role/{id} [get]
 func (c *adminRoleController) FindByID(ctx *gin.Context) {
-	roleID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
-	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+	roleID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
 		return
 	}
 
-	adminRole, err := c.adminRoleService.FindByID(ctx.Request.Context(), uint(roleID))
+	adminRole, err := c.adminRoleService.FindByID(ctx.Request.Context(), roleID)
 	if err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return

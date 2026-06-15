@@ -3,12 +3,12 @@ package controller
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/user/service"
+	"github.com/PhantomX7/athleton/pkg/ginx"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 
@@ -96,20 +96,18 @@ func (c *userController) Index(ctx *gin.Context) {
 // @Failure		500		{object}	response.Response
 // @Router			/user/{id} [put]
 func (c *userController) Update(ctx *gin.Context) {
-	userID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
-	if err != nil {
-		// Let the error middleware handle the parameter parsing error
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+	userID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
 		return
 	}
 
 	var req dto.UserUpdateRequest
-	if err = ctx.ShouldBind(&req); err != nil {
+	if err := ctx.ShouldBind(&req); err != nil {
 		// Let the error middleware handle the validation error
 		_ = ctx.Error(err).SetType(gin.ErrorTypeBind)
 		return
 	}
-	user, err := c.userService.Update(ctx.Request.Context(), uint(userID), &req)
+	user, err := c.userService.Update(ctx.Request.Context(), userID, &req)
 	if err != nil {
 		// Let the error middleware handle the internal error
 		_ = ctx.Error(err)
@@ -129,13 +127,11 @@ func (c *userController) Update(ctx *gin.Context) {
 // @Failure		500	{object}	response.Response
 // @Router			/user/{id} [get]
 func (c *userController) FindByID(ctx *gin.Context) {
-	userID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
-	if err != nil {
-		// Let the error middleware handle the parameter parsing error
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+	userID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
 		return
 	}
-	user, err := c.userService.FindByID(ctx.Request.Context(), uint(userID))
+	user, err := c.userService.FindByID(ctx.Request.Context(), userID)
 	if err != nil {
 		// Let the error middleware handle the internal error
 		_ = ctx.Error(err)
@@ -158,9 +154,8 @@ func (c *userController) FindByID(ctx *gin.Context) {
 // @Failure      500  {object}  response.Response
 // @Router       /admin/user/{id}/admin-role [post]
 func (c *userController) AssignAdminRole(ctx *gin.Context) {
-	userID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
-	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+	userID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
 		return
 	}
 
@@ -170,7 +165,7 @@ func (c *userController) AssignAdminRole(ctx *gin.Context) {
 		return
 	}
 
-	user, err := c.userService.AssignAdminRole(ctx.Request.Context(), uint(userID), &req)
+	user, err := c.userService.AssignAdminRole(ctx.Request.Context(), userID, &req)
 	if err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
@@ -181,9 +176,8 @@ func (c *userController) AssignAdminRole(ctx *gin.Context) {
 
 // ChangePassword handles root changing an admin's password
 func (c *userController) ChangePassword(ctx *gin.Context) {
-	userID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
-	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+	userID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
 		return
 	}
 
@@ -193,8 +187,7 @@ func (c *userController) ChangePassword(ctx *gin.Context) {
 		return
 	}
 
-	err = c.userService.ChangePassword(ctx.Request.Context(), uint(userID), &req)
-	if err != nil {
+	if err := c.userService.ChangePassword(ctx.Request.Context(), userID, &req); err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}

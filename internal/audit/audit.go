@@ -25,11 +25,7 @@ var pending sync.WaitGroup
 // writes that can't go through Record (e.g. attribution known before the user
 // exists in the request context) so shutdown still waits for them.
 func Go(fn func()) {
-	pending.Add(1)
-	go func() {
-		defer pending.Done()
-		fn()
-	}()
+	pending.Go(fn)
 }
 
 // Drain blocks until every in-flight audit write has finished, or until ctx
@@ -86,9 +82,7 @@ func Record(ctx context.Context, repo repository.LogRepository, entry Entry) {
 	}
 
 	bgCtx := context.WithoutCancel(ctx)
-	pending.Add(1)
-	go func() {
-		defer pending.Done()
+	Go(func() {
 		if err := repo.Create(bgCtx, log); err != nil {
 			logger.Ctx(bgCtx).Error("Failed to create audit log",
 				zap.String("entity_type", entry.EntityType),
@@ -97,5 +91,5 @@ func Record(ctx context.Context, repo repository.LogRepository, entry Entry) {
 				zap.Error(err),
 			)
 		}
-	}()
+	})
 }

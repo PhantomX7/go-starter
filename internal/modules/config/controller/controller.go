@@ -3,11 +3,11 @@ package controller
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/modules/config/service"
+	"github.com/PhantomX7/athleton/pkg/ginx"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 
@@ -89,19 +89,18 @@ func (c *configController) Index(ctx *gin.Context) {
 // @Failure      500  {object}  response.Response
 // @Router       /config/{id} [put]
 func (c *configController) Update(ctx *gin.Context) {
-	configID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
-	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+	configID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
 		return
 	}
 
 	var req dto.ConfigUpdateRequest
-	if err = ctx.ShouldBind(&req); err != nil {
+	if err := ctx.ShouldBind(&req); err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypeBind)
 		return
 	}
 
-	config, err := c.configService.Update(ctx.Request.Context(), uint(configID), &req)
+	config, err := c.configService.Update(ctx.Request.Context(), configID, &req)
 	if err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return

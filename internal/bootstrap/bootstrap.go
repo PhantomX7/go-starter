@@ -83,6 +83,16 @@ func SetupServer(m *middlewares.Middleware, cv cvalidator.CustomValidator, db *g
 	// structured zap-based m.Logger(); Gin's stdout logger would just duplicate it.
 	server := gin.New()
 
+	// Constrain which proxies' X-Forwarded-For is trusted when deriving the
+	// client IP. Gin trusts ALL proxies by default, which lets a client spoof
+	// the header and bypass the per-IP rate limiters. An empty list trusts none
+	// (direct RemoteAddr); deployments behind a load balancer set its CIDR(s).
+	if err := server.SetTrustedProxies(cfg.Server.TrustedProxies); err != nil {
+		logger.Warn("Failed to set trusted proxies; falling back to trusting none",
+			zap.Strings("trusted_proxies", cfg.Server.TrustedProxies), zap.Error(err))
+		_ = server.SetTrustedProxies(nil)
+	}
+
 	// list of custom validators
 	validators := map[string]validator.Func{
 		"unique":   cv.Unique(),

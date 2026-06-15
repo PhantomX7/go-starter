@@ -74,6 +74,7 @@ type mockRefreshTokenRepository struct {
 	createFn                  func(context.Context, *models.RefreshToken) error
 	findByTokenFn             func(context.Context, string) (*models.RefreshToken, error)
 	revokeByTokenFn           func(context.Context, string) error
+	revokeByTokenIfActiveFn   func(context.Context, string) (bool, error)
 	revokeAllByUserIDExceptFn func(context.Context, uint, string) error
 }
 
@@ -127,6 +128,12 @@ func (m *mockRefreshTokenRepository) RevokeByToken(ctx context.Context, token st
 		panic("unexpected RevokeByToken call")
 	}
 	return m.revokeByTokenFn(ctx, token)
+}
+func (m *mockRefreshTokenRepository) RevokeByTokenIfActive(ctx context.Context, token string) (bool, error) {
+	if m.revokeByTokenIfActiveFn == nil {
+		panic("unexpected RevokeByTokenIfActive call")
+	}
+	return m.revokeByTokenIfActiveFn(ctx, token)
 }
 
 var _ refreshtokenrepository.RefreshTokenRepository = (*mockRefreshTokenRepository)(nil)
@@ -336,9 +343,9 @@ func TestAuthServiceRefreshRotatesToken(t *testing.T) {
 			require.Equal(t, "old-token", token)
 			return &models.RefreshToken{UserID: 3, Token: token}, nil
 		},
-		revokeByTokenFn: func(ctx context.Context, token string) error {
+		revokeByTokenIfActiveFn: func(ctx context.Context, token string) (bool, error) {
 			require.Equal(t, "old-token", token)
-			return nil
+			return true, nil
 		},
 		createFn: func(ctx context.Context, entity *models.RefreshToken) error {
 			require.Equal(t, uint(3), entity.UserID)

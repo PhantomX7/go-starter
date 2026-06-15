@@ -3,11 +3,11 @@ package controller
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/modules/post/service"
+	"github.com/PhantomX7/athleton/pkg/ginx"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 
@@ -92,19 +92,18 @@ func (c *postController) Create(ctx *gin.Context) {
 
 // Update handles updates to an existing post.
 func (c *postController) Update(ctx *gin.Context) {
-	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
-	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+	postID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
 		return
 	}
 
 	var req dto.PostUpdateRequest
-	if err = ctx.ShouldBind(&req); err != nil {
+	if err := ctx.ShouldBind(&req); err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypeBind)
 		return
 	}
 
-	post, err := c.postService.Update(ctx.Request.Context(), uint(postID), &req)
+	post, err := c.postService.Update(ctx.Request.Context(), postID, &req)
 	if err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
@@ -115,13 +114,12 @@ func (c *postController) Update(ctx *gin.Context) {
 
 // Delete handles deletion of an existing post.
 func (c *postController) Delete(ctx *gin.Context) {
-	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
-	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+	postID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
 		return
 	}
 
-	if err := c.postService.Delete(ctx.Request.Context(), uint(postID)); err != nil {
+	if err := c.postService.Delete(ctx.Request.Context(), postID); err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
 	}
@@ -131,13 +129,12 @@ func (c *postController) Delete(ctx *gin.Context) {
 
 // FindByID handles fetching a single post by ID.
 func (c *postController) FindByID(ctx *gin.Context) {
-	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
-	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+	postID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
 		return
 	}
 
-	post, err := c.postService.FindByID(ctx.Request.Context(), uint(postID))
+	post, err := c.postService.FindByID(ctx.Request.Context(), postID)
 	if err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return
