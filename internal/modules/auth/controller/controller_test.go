@@ -10,12 +10,25 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/require"
 
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/modules/auth/controller"
 	authservice "github.com/PhantomX7/athleton/internal/modules/auth/service"
 )
+
+// RegisterRequest carries a DB-backed unique= tag registered only in bootstrap.
+// Register a no-op so a valid register payload binds without a database; these
+// tests exercise controller plumbing, not the uniqueness rule.
+func init() {
+	gin.SetMode(gin.TestMode)
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+		_ = v.RegisterValidation("unique", func(validator.FieldLevel) bool { return true })
+		_ = v.RegisterValidation("exist", func(validator.FieldLevel) bool { return true })
+	}
+}
 
 type mockAuthService struct {
 	getMeFn          func(context.Context) (*dto.MeResponse, error)
@@ -195,6 +208,101 @@ func TestAuthControllerRegisterRejectsInvalidPayload(t *testing.T) {
 
 	require.Len(t, ctx.Errors, 1)
 	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypeBind))
+}
+
+func TestAuthControllerRegisterReturnsTokensOnSuccess(t *testing.T) {
+	svc := &mockAuthService{
+		registerFn: func(ctx context.Context, req *dto.RegisterRequest) (*dto.AuthResponse, error) {
+			require.NotNil(t, ctx)
+			require.Equal(t, "alice@example.com", req.Email)
+			return &dto.AuthResponse{
+				AccessToken:  "access",
+				RefreshToken: "refresh",
+				TokenType:    "Bearer",
+			}, nil
+		},
+	}
+
+	ctrl := controller.NewAuthController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	body := `{"name":"Alice","business_name":"Acme","email":"alice@example.com","phone":"081","password":"supersecret"}`
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/register", bytes.NewBufferString(body))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	ctrl.Register(ctx)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "register success", resp["message"])
+	data, _ := resp["data"].(map[string]any)
+	require.Equal(t, "access", data["access_token"])
+	require.Equal(t, "refresh", data["refresh_token"])
+}
+
+func TestAuthControllerRefreshPropagatesServiceError(t *testing.T) {
+	expectedErr := errors.New("service failed")
+	svc := &mockAuthService{
+		refreshFn: func(context.Context, *dto.RefreshRequest) (*dto.AuthResponse, error) {
+			return nil, expectedErr
+		},
+	}
+
+	ctrl := controller.NewAuthController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/refresh", bytes.NewBufferString(`{"refresh_token":"t"}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	ctrl.Refresh(ctx)
+
+	require.Len(t, ctx.Errors, 1)
+	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
+}
+
+func TestAuthControllerChangePasswordPropagatesServiceError(t *testing.T) {
+	expectedErr := errors.New("service failed")
+	svc := &mockAuthService{
+		changePasswordFn: func(context.Context, *dto.ChangePasswordRequest) error {
+			return expectedErr
+		},
+	}
+
+	ctrl := controller.NewAuthController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	body := `{"old_password":"old-password","new_password":"new-password","except_token":"keep"}`
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/change-password", bytes.NewBufferString(body))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	ctrl.ChangePassword(ctx)
+
+	require.Len(t, ctx.Errors, 1)
+	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
+}
+
+func TestAuthControllerLogoutPropagatesServiceError(t *testing.T) {
+	expectedErr := errors.New("service failed")
+	svc := &mockAuthService{
+		logoutFn: func(context.Context, *dto.LogoutRequest) error {
+			return expectedErr
+		},
+	}
+
+	ctrl := controller.NewAuthController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/logout", bytes.NewBufferString(`{"refresh_token":"t"}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	ctrl.Logout(ctx)
+
+	require.Len(t, ctx.Errors, 1)
+	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
 }
 
 func TestAuthControllerGetMePropagatesServiceError(t *testing.T) {

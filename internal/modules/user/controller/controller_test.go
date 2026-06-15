@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/require"
 
 	"github.com/PhantomX7/athleton/internal/dto"
@@ -19,6 +21,18 @@ import (
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 )
+
+// The DTOs carry DB-backed custom tags (exist=, unique=) registered only in
+// bootstrap. Register no-op versions on the binding engine so valid payloads
+// bind without a database — these tests exercise controller plumbing, not the
+// DB-backed validators (covered in pkg/validator and the integration suite).
+func init() {
+	gin.SetMode(gin.TestMode)
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+		_ = v.RegisterValidation("unique", func(validator.FieldLevel) bool { return true })
+		_ = v.RegisterValidation("exist", func(validator.FieldLevel) bool { return true })
+	}
+}
 
 type mockUserService struct {
 	indexFn           func(context.Context, *pagination.Pagination) ([]*models.User, response.Meta, error)
@@ -212,6 +226,91 @@ func TestUserControllerChangePasswordReturnsSuccessResponse(t *testing.T) {
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	require.Equal(t, "Password changed successfully", body["message"])
+}
+
+func TestUserControllerUpdatePropagatesServiceError(t *testing.T) {
+	expectedErr := errors.New("service failed")
+	svc := &mockUserService{
+		updateFn: func(context.Context, uint, *dto.UserUpdateRequest) (*models.User, error) {
+			return nil, expectedErr
+		},
+	}
+
+	ctrl := controller.NewUserController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/user/5", bytes.NewBufferString(`{"name":"Alice"}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx.Params = gin.Params{{Key: "id", Value: "5"}}
+
+	ctrl.Update(ctx)
+
+	require.Len(t, ctx.Errors, 1)
+	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
+}
+
+func TestUserControllerFindByIDPropagatesServiceError(t *testing.T) {
+	expectedErr := errors.New("service failed")
+	svc := &mockUserService{
+		findByIDFn: func(context.Context, uint) (*models.User, error) {
+			return nil, expectedErr
+		},
+	}
+
+	ctrl := controller.NewUserController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/user/7", nil)
+	ctx.Params = gin.Params{{Key: "id", Value: "7"}}
+
+	ctrl.FindByID(ctx)
+
+	require.Len(t, ctx.Errors, 1)
+	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
+}
+
+func TestUserControllerAssignAdminRolePropagatesServiceError(t *testing.T) {
+	expectedErr := errors.New("service failed")
+	svc := &mockUserService{
+		assignAdminRoleFn: func(context.Context, uint, *dto.UserAssignAdminRoleRequest) (*models.User, error) {
+			return nil, expectedErr
+		},
+	}
+
+	ctrl := controller.NewUserController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/user/5/admin-role", bytes.NewBufferString(`{"admin_role_id":3}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx.Params = gin.Params{{Key: "id", Value: "5"}}
+
+	ctrl.AssignAdminRole(ctx)
+
+	require.Len(t, ctx.Errors, 1)
+	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
+}
+
+func TestUserControllerChangePasswordPropagatesServiceError(t *testing.T) {
+	expectedErr := errors.New("service failed")
+	svc := &mockUserService{
+		changePasswordFn: func(context.Context, uint, *dto.ChangeAdminPasswordRequest) error {
+			return expectedErr
+		},
+	}
+
+	ctrl := controller.NewUserController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/user/9/change-password", bytes.NewBufferString(`{"new_password":"new-password"}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx.Params = gin.Params{{Key: "id", Value: "9"}}
+
+	ctrl.ChangePassword(ctx)
+
+	require.Len(t, ctx.Errors, 1)
+	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
 }
 
 func TestUserControllerIndexPropagatesServiceError(t *testing.T) {

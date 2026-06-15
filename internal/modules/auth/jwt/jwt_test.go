@@ -441,6 +441,40 @@ func TestAuthorizerRejectsRevokedSession(t *testing.T) {
 	require.False(t, allowed)
 }
 
+// A user deactivated AFTER login still holds a validly-signed access token.
+// The authorizer re-reads the user every request, so a now-inactive account
+// must be rejected even though its token and session are otherwise intact.
+func TestAuthorizerRejectsUserDeactivatedAfterLogin(t *testing.T) {
+	setupLogger(t)
+
+	sessionID := uuid.New()
+	sessionLookedUp := false
+	repo := &mockUserRepository{
+		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
+			return &models.User{ID: 5, IsActive: false, Role: models.UserRoleUser}, nil
+		},
+	}
+	refreshRepo := &mockRefreshTokenRepository{
+		findActiveByIDFn: func(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error) {
+			sessionLookedUp = true
+			return &models.RefreshToken{ID: id, UserID: 5}, nil
+		},
+	}
+
+	a := &AuthJWT{userRepo: repo, refreshTokenRepo: refreshRepo}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/protected", nil)
+
+	allowed := a.authorizer(c, &authSubject{
+		User:      &models.User{ID: 5},
+		SessionID: sessionID,
+	})
+
+	require.False(t, allowed)
+	require.False(t, sessionLookedUp, "inactive user must be rejected before the session lookup")
+}
+
 func TestAuthorizerRejectsSessionBelongingToDifferentUser(t *testing.T) {
 	setupLogger(t)
 

@@ -1,6 +1,7 @@
 package controller_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/require"
 
 	"github.com/PhantomX7/athleton/internal/dto"
@@ -19,8 +22,23 @@ import (
 	"github.com/PhantomX7/athleton/pkg/response"
 )
 
+// The DTOs carry DB-backed custom tags (unique=, exist=) that are only
+// registered in bootstrap. Register no-op versions on the binding engine so
+// valid payloads bind here without a database — these controller tests exercise
+// the bind→service→response plumbing, not the uniqueness rules (those are
+// covered in pkg/validator and the integration suite).
+func init() {
+	gin.SetMode(gin.TestMode)
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+		_ = v.RegisterValidation("unique", func(validator.FieldLevel) bool { return true })
+		_ = v.RegisterValidation("exist", func(validator.FieldLevel) bool { return true })
+	}
+}
+
 type mockAdminRoleService struct {
 	indexFn             func(context.Context, *pagination.Pagination) ([]*models.AdminRole, response.Meta, error)
+	createFn            func(context.Context, *dto.CreateAdminRoleRequest) (*models.AdminRole, error)
+	updateFn            func(context.Context, uint, *dto.UpdateAdminRoleRequest) (*models.AdminRole, error)
 	deleteFn            func(context.Context, uint) error
 	findByIDFn          func(context.Context, uint) (*models.AdminRole, error)
 	getAllPermissionsFn func(context.Context) map[string][]map[string]string
@@ -33,12 +51,18 @@ func (m *mockAdminRoleService) Index(ctx context.Context, pg *pagination.Paginat
 	return m.indexFn(ctx, pg)
 }
 
-func (m *mockAdminRoleService) Create(context.Context, *dto.CreateAdminRoleRequest) (*models.AdminRole, error) {
-	panic("unexpected Create call")
+func (m *mockAdminRoleService) Create(ctx context.Context, req *dto.CreateAdminRoleRequest) (*models.AdminRole, error) {
+	if m.createFn == nil {
+		panic("unexpected Create call")
+	}
+	return m.createFn(ctx, req)
 }
 
-func (m *mockAdminRoleService) Update(context.Context, uint, *dto.UpdateAdminRoleRequest) (*models.AdminRole, error) {
-	panic("unexpected Update call")
+func (m *mockAdminRoleService) Update(ctx context.Context, roleID uint, req *dto.UpdateAdminRoleRequest) (*models.AdminRole, error) {
+	if m.updateFn == nil {
+		panic("unexpected Update call")
+	}
+	return m.updateFn(ctx, roleID, req)
 }
 
 func (m *mockAdminRoleService) Delete(ctx context.Context, roleID uint) error {
@@ -169,6 +193,143 @@ func TestAdminRoleControllerGetAllPermissionsReturnsResponse(t *testing.T) {
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	require.Equal(t, "Permissions retrieved successfully", body["message"])
+}
+
+func TestAdminRoleControllerCreateReturnsCreatedResponse(t *testing.T) {
+	svc := &mockAdminRoleService{
+		createFn: func(ctx context.Context, req *dto.CreateAdminRoleRequest) (*models.AdminRole, error) {
+			require.NotNil(t, ctx)
+			require.Equal(t, "Manager", req.Name)
+			require.Equal(t, []string{"admin_role:read"}, req.Permissions)
+			return &models.AdminRole{ID: 9, Name: req.Name, IsActive: true}, nil
+		},
+	}
+
+	ctrl := controller.NewAdminRoleController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	body := `{"name":"Manager","description":"manages","permissions":["admin_role:read"]}`
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/admin-role", bytes.NewBufferString(body))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	ctrl.Create(ctx)
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "Admin role created successfully", resp["message"])
+}
+
+func TestAdminRoleControllerCreateRejectsInvalidPayload(t *testing.T) {
+	svc := &mockAdminRoleService{
+		createFn: func(context.Context, *dto.CreateAdminRoleRequest) (*models.AdminRole, error) {
+			t.Fatal("Create should not be called for invalid payloads")
+			return nil, nil
+		},
+	}
+
+	ctrl := controller.NewAdminRoleController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	// Missing required name and permissions.
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/admin-role", bytes.NewBufferString(`{}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	ctrl.Create(ctx)
+
+	require.Len(t, ctx.Errors, 1)
+	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypeBind))
+}
+
+func TestAdminRoleControllerCreatePropagatesServiceError(t *testing.T) {
+	expectedErr := errors.New("service failed")
+	svc := &mockAdminRoleService{
+		createFn: func(context.Context, *dto.CreateAdminRoleRequest) (*models.AdminRole, error) {
+			return nil, expectedErr
+		},
+	}
+
+	ctrl := controller.NewAdminRoleController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	body := `{"name":"Manager","permissions":["admin_role:read"]}`
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/admin-role", bytes.NewBufferString(body))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	ctrl.Create(ctx)
+
+	require.Len(t, ctx.Errors, 1)
+	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
+}
+
+func TestAdminRoleControllerUpdateReturnsSuccessResponse(t *testing.T) {
+	svc := &mockAdminRoleService{
+		updateFn: func(ctx context.Context, roleID uint, req *dto.UpdateAdminRoleRequest) (*models.AdminRole, error) {
+			require.NotNil(t, ctx)
+			require.Equal(t, uint(5), roleID)
+			require.Equal(t, []string{"admin_role:read"}, req.Permissions)
+			return &models.AdminRole{ID: roleID, Name: "Support", IsActive: true}, nil
+		},
+	}
+
+	ctrl := controller.NewAdminRoleController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	body := `{"permissions":["admin_role:read"]}`
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/admin/admin-role/5", bytes.NewBufferString(body))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx.Params = gin.Params{{Key: "id", Value: "5"}}
+
+	ctrl.Update(ctx)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "Admin role updated successfully", resp["message"])
+}
+
+func TestAdminRoleControllerUpdateRejectsInvalidID(t *testing.T) {
+	svc := &mockAdminRoleService{
+		updateFn: func(context.Context, uint, *dto.UpdateAdminRoleRequest) (*models.AdminRole, error) {
+			t.Fatal("Update should not be called for invalid ids")
+			return nil, nil
+		},
+	}
+
+	ctrl := controller.NewAdminRoleController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/admin/admin-role/bad", bytes.NewBufferString(`{"permissions":["x"]}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx.Params = gin.Params{{Key: "id", Value: "bad"}}
+
+	ctrl.Update(ctx)
+
+	require.Len(t, ctx.Errors, 1)
+	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+}
+
+func TestAdminRoleControllerUpdatePropagatesServiceError(t *testing.T) {
+	expectedErr := errors.New("service failed")
+	svc := &mockAdminRoleService{
+		updateFn: func(context.Context, uint, *dto.UpdateAdminRoleRequest) (*models.AdminRole, error) {
+			return nil, expectedErr
+		},
+	}
+
+	ctrl := controller.NewAdminRoleController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/admin/admin-role/5", bytes.NewBufferString(`{"permissions":["x"]}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx.Params = gin.Params{{Key: "id", Value: "5"}}
+
+	ctrl.Update(ctx)
+
+	require.Len(t, ctx.Errors, 1)
+	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
 }
 
 func TestAdminRoleControllerIndexPropagatesServiceError(t *testing.T) {

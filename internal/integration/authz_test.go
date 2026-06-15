@@ -59,6 +59,33 @@ func TestPermissionEnforcementOnGuardedEndpoint(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 }
 
+// TestRolePermissionRevocationRemovesAccess covers the replace semantics the
+// admin-role Update endpoint relies on (casbin SetRolePermissions): a role
+// granted log:read reaches the guarded endpoint, and once its permission set is
+// replaced with an unrelated grant the SAME access token is denied — proving a
+// permission edit propagates to live sessions without re-login. The existing
+// enforcement test only covers the grant direction; this covers revocation.
+func TestRolePermissionRevocationRemovesAccess(t *testing.T) {
+	app := newTestApp(t)
+
+	adminTokens := app.loginAs(t, adminUsername, testPassword)
+
+	// Grant log:read via the same replace call the Update endpoint issues.
+	require.NoError(t, app.casbinClient.SetRolePermissions(
+		app.adminRole.ID, []string{permissions.LogRead.String()},
+	))
+	rec := app.request(t, http.MethodGet, "/api/v1/admin/log", nil, adminTokens.AccessToken)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	// Replace the role's permissions with an unrelated grant: log:read is dropped.
+	require.NoError(t, app.casbinClient.SetRolePermissions(
+		app.adminRole.ID, []string{permissions.UserRead.String()},
+	))
+	rec = app.request(t, http.MethodGet, "/api/v1/admin/log", nil, adminTokens.AccessToken)
+	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+	require.Equal(t, "insufficient permissions", decodeEnvelope(t, rec).Message)
+}
+
 // TestNonAdminRoleDeniedOnGuardedEndpoint verifies that an authenticated user
 // whose role is neither root nor admin is denied on a permission-guarded
 // endpoint regardless of casbin state.
