@@ -53,7 +53,7 @@ The library depends on:
 | Dependency | Purpose |
 |---|---|
 | `gorm.io/gorm` | ORM query builder |
-| Go 1.21+ | Uses `maps.Clone`, `slices.Contains`, `strings.Cut` |
+| Go 1.21+ | Uses `slices.Clone`, `slices.Contains`, `strings.Cut` |
 
 ---
 
@@ -223,6 +223,7 @@ Controls pagination defaults and limits.
 type PaginationOptions struct {
     DefaultLimit int            // Default page size (default: 20)
     MaxLimit     int            // Maximum page size (default: 100)
+    MaxOffset    int            // Maximum offset; 0 = no cap (DefaultPaginationOptions: 1,000,000)
     DefaultOrder string         // Fallback ORDER BY (default: "id desc")
     Timezone     *time.Location // For date/datetime parsing (default: Asia/Jakarta)
 }
@@ -242,6 +243,7 @@ opts.Timezone = time.UTC
 |---|---|---|
 | `DefaultLimit` | 20 | Falls back to 20 if ≤ 0 |
 | `MaxLimit` | 100 | Falls back to 100 if ≤ 0; user requests above this are clamped |
+| `MaxOffset` | 1,000,000 (via `DefaultPaginationOptions`); `0` on a bare struct | Caps `?offset=` to bound deep-offset scans; `0` means no cap. Requests above it are clamped. |
 | `DefaultOrder` | `"id desc"` | Must be a valid order literal or falls back to `"id desc"` |
 | `Timezone` | `Asia/Jakarta` | Used by `FilterTypeDate` and `FilterTypeDateTime` |
 
@@ -260,7 +262,7 @@ p := pagination.NewPagination(conditions, filterDef, opts)
 | `Apply(db)` | Applies filters + scopes + `LIMIT` + `OFFSET` + `ORDER BY` |
 | `ApplyWithoutMeta(db)` | Applies filters + scopes only (for `COUNT(*)` queries) |
 | `AddCustomScope(scopes...)` | Adds arbitrary GORM scopes (chainable) |
-| `GetConditions()` | Returns a shallow clone of the raw conditions |
+| `GetConditions()` | Returns a deep clone of the raw conditions (outer map and inner slices) |
 | `GetPage()` | Current page number (1-indexed) |
 | `GetPageSize()` | Current page size (`Limit`) |
 | `GetTotalPages(total)` | Calculates total page count from a row count |
@@ -325,12 +327,12 @@ pagination.FilterConfig{
 
 ```
 ?name=eq:John
-?name=like:john           → LOWER(name) LIKE LOWER('%john%') ESCAPE '\'
+?name=like:john           → LOWER(name) LIKE LOWER('%john%') ESCAPE '!'
 ?name=in:Alice,Bob
 ?name=neq:Charlie
 ```
 
-**LIKE escaping:** User input containing `%`, `_`, or `\` is automatically escaped. `?name=like:50%` matches the literal string "50%", not "50" followed by anything.
+**LIKE escaping:** User input containing the wildcard characters `%` and `_`, or the escape character `!` itself, is automatically escaped using an explicit `ESCAPE '!'` clause. `?name=like:50%` matches the literal string "50%", not "50" followed by anything. (`!` is used instead of `\` because `\` is a parse hazard in MySQL's default SQL mode; `!` is non-special across MySQL, Postgres, and SQLite.)
 
 **Allowed operators:** `eq`, `neq`, `in`, `not_in`, `like`, `is_null`, `is_not_null`
 
@@ -483,7 +485,7 @@ pagination.FilterConfig{
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `limit` | int | 20 | Page size. Clamped to `MaxLimit`. |
-| `offset` | int | 0 | Number of rows to skip. |
+| `offset` | int | 0 | Number of rows to skip. Clamped to `MaxOffset` when set (negative values fall back to 0). |
 
 ```
 ?limit=25&offset=50    → Page 3 of 25-row pages
@@ -548,9 +550,9 @@ Generates:
 
 ```sql
 WHERE (
-    LOWER(name) LIKE LOWER('%john%') ESCAPE '\'
-    OR LOWER(email) LIKE LOWER('%john%') ESCAPE '\'
-    OR LOWER(phone) LIKE LOWER('%john%') ESCAPE '\'
+    LOWER(name) LIKE LOWER('%john%') ESCAPE '!'
+    OR LOWER(email) LIKE LOWER('%john%') ESCAPE '!'
+    OR LOWER(phone) LIKE LOWER('%john%') ESCAPE '!'
 )
 ```
 
@@ -825,7 +827,7 @@ The library is designed to prevent SQL injection at multiple layers:
 | **Registration (startup)** | `AddFilter` and `AddSort` reject identifiers that fail `isIdent` / `isQualifiedIdent` checks. Only `[a-zA-Z_][a-zA-Z0-9_]*` (optionally dot-separated) are accepted. |
 | **Filter values (runtime)** | All user values are passed as parameterized `?` placeholders via GORM — never interpolated into SQL strings. |
 | **Sort clause (runtime)** | `parseOrder` reconstructs the `ORDER BY` from validated tokens. Raw user input never reaches `db.Order()`. Table prefixes must match the registered `SortConfig.TableName`. |
-| **LIKE patterns** | Wildcard characters (`%`, `_`, `\`) in user input are escaped via `likeEscaper` with an explicit `ESCAPE '\'` clause. |
+| **LIKE patterns** | Wildcard characters (`%`, `_`) and the escape character (`!`) in user input are escaped via `likeEscaper` with an explicit `ESCAPE '!'` clause. (`!`, not `\`, for cross-DB portability — `\` breaks under MySQL's default SQL mode.) |
 | **DefaultOrder (config)** | Validated by `isValidOrderLiteral` at construction; malformed values fall back to `"id desc"`. |
 | **Enum values** | Compared against the `EnumValues` allowlist; invalid values are dropped individually. |
 
@@ -839,8 +841,9 @@ To prevent a single malicious request from consuming unbounded memory or CPU:
 |---|---|---|
 | `maxFilterValues` | 256 | Max comma-separated values in `in:` / `not_in:` lists |
 | `maxSortParts` | 16 | Max comma-separated parts in `?sort=` |
+| `MaxOffset` (option) | 1,000,000 default | Caps `?offset=` to bound deep-offset scans (`0` = no cap) |
 
-Requests exceeding these limits are silently rejected (the filter is dropped or the sort falls back to default).
+When a value list exceeds `maxFilterValues`, the filter **fails closed** (`WHERE 1 = 0`, zero rows) rather than being dropped — dropping it would widen the result to every row. An oversized `?sort=` falls back to the default order. An `?offset=` above `MaxOffset` is clamped down to `MaxOffset`.
 
 ---
 
@@ -857,6 +860,8 @@ The library follows a **fail-closed, silent-drop** strategy:
 | Invalid sort field | Entire sort falls back to `DefaultOrder` |
 | `in:` with all unparseable values | 0 rows returned (`WHERE 1 = 0`) |
 | `not_in:` with all unparseable values | Filter becomes no-op (no exclusion) |
+| Value list exceeds `maxFilterValues` (256) | Fails closed → 0 rows (`WHERE 1 = 0`) if the operator is valid for the filter, else dropped |
+| `offset` exceeds `MaxOffset` | Clamped down to `MaxOffset` |
 | Unsafe identifier at registration | `AddFilter` / `AddSort` silently skips it |
 
 This design ensures that malformed input never widens the result set beyond what the user explicitly asked for.

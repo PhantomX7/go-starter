@@ -70,6 +70,20 @@ func (suite *PaginationTestSuite) TearDownTest() {
 	// Clean up after each test if needed
 }
 
+// queryUsers builds a Pagination from conditions + filterDef with zero-value
+// options, applies it, asserts the query ran without error, and returns the
+// matched rows. It collapses the construct/apply/find/no-error plumbing
+// repeated across the result-oriented tests; each test keeps its own
+// conditions, filterDef, and assertions visible. Tests that need custom
+// options or the Pagination object itself still build it inline.
+func (suite *PaginationTestSuite) queryUsers(conditions map[string][]string, filterDef *pagination.FilterDefinition) []User {
+	suite.T().Helper()
+	pg := pagination.NewPagination(conditions, filterDef, pagination.PaginationOptions{})
+	var users []User
+	suite.NoError(pg.Apply(suite.db).Find(&users).Error)
+	return users
+}
+
 // Test Basic Pagination
 func (suite *PaginationTestSuite) TestBasicPagination() {
 	conditions := map[string][]string{
@@ -148,13 +162,7 @@ func (suite *PaginationTestSuite) TestStringFilterEquals() {
 			Type:  pagination.FilterTypeString,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	for _, user := range users {
 		suite.Equal("active", user.Status)
@@ -173,13 +181,7 @@ func (suite *PaginationTestSuite) TestStringFilterLike() {
 			Type:  pagination.FilterTypeString,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	for _, user := range users {
 		suite.Contains(user.Name, "John")
@@ -198,13 +200,7 @@ func (suite *PaginationTestSuite) TestStringFilterIn() {
 			Type:  pagination.FilterTypeString,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	for _, user := range users {
 		suite.Contains([]string{"active", "pending"}, user.Status)
@@ -223,13 +219,7 @@ func (suite *PaginationTestSuite) TestMultiFieldSearch() {
 			Type:         pagination.FilterTypeString,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Len(users, 2)
 	for _, user := range users {
 		joined := strings.ToLower(user.Name + " " + user.Email)
@@ -249,13 +239,7 @@ func (suite *PaginationTestSuite) TestNumberFilterGt() {
 			Type:  pagination.FilterTypeNumber,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	for _, user := range users {
 		suite.Greater(user.Age, 30)
@@ -274,13 +258,7 @@ func (suite *PaginationTestSuite) TestNumberFilterBetween() {
 			Type:  pagination.FilterTypeNumber,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	for _, user := range users {
 		suite.GreaterOrEqual(user.Age, 25)
@@ -300,13 +278,7 @@ func (suite *PaginationTestSuite) TestBooleanFilter() {
 			Type:  pagination.FilterTypeBool,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	for _, user := range users {
 		suite.True(user.IsActive)
@@ -326,13 +298,7 @@ func (suite *PaginationTestSuite) TestEnumFilter() {
 			EnumValues: []string{"admin", "moderator", "user"},
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	for _, user := range users {
 		suite.Contains([]string{"admin", "moderator"}, user.Role)
@@ -352,13 +318,7 @@ func (suite *PaginationTestSuite) TestInvalidEnumValue() {
 			EnumValues: []string{"admin", "moderator", "user"},
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	// Invalid enum value must NOT widen the result set. We emit a no-match
 	// scope so the response is empty rather than leaking every row.
 	suite.Equal(0, len(users))
@@ -379,13 +339,7 @@ func (suite *PaginationTestSuite) TestDateFilterBetween() {
 			Type:  pagination.FilterTypeDate,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Len(users, 7)
 	for _, user := range users {
 		suite.False(user.CreatedAt.Before(suite.now.AddDate(0, 0, -7)))
@@ -405,13 +359,7 @@ func (suite *PaginationTestSuite) TestSorting() {
 			Allowed: true,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 1)
 
 	// Verify descending order
@@ -430,13 +378,7 @@ func (suite *PaginationTestSuite) TestMultipleSortFields() {
 		AddSort("status", pagination.SortConfig{Field: "status", Allowed: true}).
 		AddSort("age", pagination.SortConfig{Field: "age", Allowed: true})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 1)
 	for i := 0; i < len(users)-1; i++ {
 		current := users[i]
@@ -483,13 +425,7 @@ func (suite *PaginationTestSuite) TestCombinedFilters() {
 		AddFilter("is_active", pagination.FilterConfig{Field: "is_active", Type: pagination.FilterTypeBool}).
 		AddSort("age", pagination.SortConfig{Field: "age", Allowed: true})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	suite.LessOrEqual(len(users), 5)
 
@@ -555,13 +491,7 @@ func (suite *PaginationTestSuite) TestEmptyConditions() {
 	conditions := map[string][]string{}
 
 	filterDef := pagination.NewFilterDefinition()
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Equal(10, len(users)) // Should return all users with default limit
 }
 
@@ -578,13 +508,7 @@ func (suite *PaginationTestSuite) TestTableNamePrefix() {
 			Type:      pagination.FilterTypeString,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 }
 
@@ -844,12 +768,7 @@ func (suite *PaginationTestSuite) TestInvalidDateFormats() {
 			Type:  pagination.FilterTypeDate,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)          // Should not error, just ignore invalid filter
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Equal(10, len(users)) // Should return all users
 }
 
@@ -864,12 +783,7 @@ func (suite *PaginationTestSuite) TestInvalidDateTimeFormats() {
 			Type:  pagination.FilterTypeDateTime,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)          // Should not error, just ignore invalid filter
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Equal(10, len(users)) // Should return all users
 }
 
@@ -1011,12 +925,7 @@ func (suite *PaginationTestSuite) TestIDFilterType() {
 			Type:  pagination.FilterTypeID,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Equal(1, len(users))
 	suite.Equal(uint(1), users[0].ID)
 }
@@ -1032,12 +941,7 @@ func (suite *PaginationTestSuite) TestIDFilterIn() {
 			Type:  pagination.FilterTypeID,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Equal(3, len(users))
 }
 
@@ -1052,12 +956,7 @@ func (suite *PaginationTestSuite) TestStringFilterNotEquals() {
 			Type:  pagination.FilterTypeString,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	for _, user := range users {
 		suite.NotEqual("inactive", user.Status)
@@ -1075,12 +974,7 @@ func (suite *PaginationTestSuite) TestStringFilterNotIn() {
 			Type:  pagination.FilterTypeString,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	for _, user := range users {
 		suite.NotEqual("inactive", user.Status)
@@ -1098,12 +992,7 @@ func (suite *PaginationTestSuite) TestNumberFilterNotEquals() {
 			Type:  pagination.FilterTypeNumber,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	for _, user := range users {
 		suite.NotEqual(30, user.Age)
@@ -1121,12 +1010,7 @@ func (suite *PaginationTestSuite) TestNumberFilterNotIn() {
 			Type:  pagination.FilterTypeNumber,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	for _, user := range users {
 		suite.NotEqual(30, user.Age)
@@ -1145,12 +1029,7 @@ func (suite *PaginationTestSuite) TestNumberFilterLt() {
 			Type:  pagination.FilterTypeNumber,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	for _, user := range users {
 		suite.Less(user.Age, 30)
@@ -1168,12 +1047,7 @@ func (suite *PaginationTestSuite) TestNumberFilterLte() {
 			Type:  pagination.FilterTypeNumber,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	for _, user := range users {
 		suite.LessOrEqual(user.Age, 30)
@@ -1192,12 +1066,7 @@ func (suite *PaginationTestSuite) TestEnumFilterEquals() {
 			EnumValues: []string{"admin", "moderator", "user"},
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	for _, user := range users {
 		suite.Equal("admin", user.Role)
@@ -1219,12 +1088,7 @@ func (suite *PaginationTestSuite) TestEnumFilterWithInvalidValues() {
 			EnumValues: []string{"admin", "moderator", "user"},
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Greater(len(users), 0)
 	for _, u := range users {
 		suite.Contains([]string{"admin", "user"}, u.Role)
@@ -1285,12 +1149,7 @@ func (suite *PaginationTestSuite) TestComplexFilterCombinations() {
 		AddSort("age", pagination.SortConfig{Field: "age", Allowed: true}).
 		AddSort("name", pagination.SortConfig{Field: "name", Allowed: true})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.LessOrEqual(len(users), 3) // Should respect limit
 
 	for _, user := range users {
@@ -1340,12 +1199,7 @@ func (suite *PaginationTestSuite) TestNonExistentFilter() {
 			Type:  pagination.FilterTypeString,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Equal(10, len(users)) // Should return all users (non-existent filter ignored)
 }
 
@@ -1357,12 +1211,7 @@ func (suite *PaginationTestSuite) TestFilterWithEmptyConfig() {
 	filterDef := pagination.NewFilterDefinition()
 	// Don't add any filter config
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Equal(10, len(users)) // Should return all users (no filter config)
 }
 
@@ -1395,12 +1244,7 @@ func (suite *PaginationTestSuite) TestBooleanFilterInvalidOperator() {
 			Type:  pagination.FilterTypeBool,
 		})
 
-	options := pagination.PaginationOptions{}
-	pg := pagination.NewPagination(conditions, filterDef, options)
-
-	var users []User
-	err := pg.Apply(suite.db).Find(&users).Error
-	suite.NoError(err)
+	users := suite.queryUsers(conditions, filterDef)
 	suite.Equal(10, len(users)) // Should return all users (invalid operator ignored)
 }
 
@@ -1858,6 +1702,10 @@ func (suite *PaginationTestSuite) TestInvalidFieldIdentifierIsRejected() {
 // TestFilterValueCountCap — a pathological IN list must be rejected wholesale
 // rather than allocated and validated one-by-one. The exact cap is an
 // implementation detail; we assert "much larger than any real request".
+//
+// Crucially the over-cap filter fails *closed* (zero rows), not open. Dropping
+// the filter would return every row — widening the result beyond what the user
+// asked for, which the package explicitly promises never to do.
 func (suite *PaginationTestSuite) TestFilterValueCountCap() {
 	filterDef := pagination.NewFilterDefinition().
 		AddFilter("age", pagination.FilterConfig{Field: "age", Type: pagination.FilterTypeNumber})
@@ -1873,8 +1721,8 @@ func (suite *PaginationTestSuite) TestFilterValueCountCap() {
 	)
 	var users []User
 	suite.NoError(pg.Apply(suite.db).Find(&users).Error)
-	// Cap exceeded → filter is dropped, so every seeded row comes back.
-	suite.Equal(10, len(users))
+	// Cap exceeded → filter fails closed (WHERE 1 = 0), so no rows come back.
+	suite.Equal(0, len(users))
 }
 
 // TestSortPartsCap — similar bound on ?sort=.

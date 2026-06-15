@@ -231,6 +231,17 @@ func (fc FilterConfig) GetAllowedOperators() []FilterOperator {
 	return slices.Clone(operatorsByType[fc.Type])
 }
 
+// allowsOperator reports whether op is permitted for this filter. It reads the
+// operator list directly instead of cloning it (as GetAllowedOperators must
+// for external callers) — this is the per-request hot path and the lookup is
+// read-only.
+func (fc FilterConfig) allowsOperator(op FilterOperator) bool {
+	if len(fc.Operators) > 0 {
+		return slices.Contains(fc.Operators, op)
+	}
+	return slices.Contains(operatorsByType[fc.Type], op)
+}
+
 // GetFields returns the fully-resolved (optionally table-prefixed) field
 // list. When called via a registered FilterDefinition this is a cache hit;
 // direct callers (typically in tests) still get the computed result.
@@ -255,11 +266,12 @@ func (fc FilterConfig) computeFields() []string {
 
 	prefixed := make([]string, len(fields))
 	for i, field := range fields {
-		if strings.Contains(field, ".") {
-			prefixed[i] = field
-		} else {
-			prefixed[i] = fc.TableName + "." + field
+		// Fields that already carry a table qualifier (e.g. a subquery alias)
+		// are left as-is; only bare column names get the table prefix.
+		if !strings.Contains(field, ".") {
+			field = fc.TableName + "." + field
 		}
+		prefixed[i] = field
 	}
 	return prefixed
 }
@@ -357,6 +369,7 @@ func (fd *FilterDefinition) AddSort(name string, config SortConfig) *FilterDefin
 type PaginationOptions struct {
 	DefaultLimit int
 	MaxLimit     int
+	MaxOffset    int
 	DefaultOrder string
 	Timezone     *time.Location
 }
@@ -366,6 +379,21 @@ type PaginationOptions struct {
 // FilterDefinition sort registry here — DefaultOrder often references a
 // primary key the caller doesn't bother to register as a user-visible sort.
 const safeDefaultOrder = "id desc"
+
+// defaultMaxOffset bounds deep-offset scans for callers using
+// DefaultPaginationOptions. At the default limit of 20 this is page 50,000 —
+// far past any real UI paging, while still stopping ?offset=2_000_000_000 from
+// forcing the database to walk billions of rows. Callers who genuinely page
+// deeper can raise (or zero out) MaxOffset explicitly.
+const defaultMaxOffset = 1_000_000
+
+// isValidDirection reports whether s is a sort direction ("asc"/"desc",
+// case-insensitive). Shared by isValidOrderLiteral and parseOrder, which apply
+// the same rule to developer config and user ?sort= respectively.
+func isValidDirection(s string) bool {
+	d := strings.ToLower(s)
+	return d == "asc" || d == "desc"
+}
 
 // isValidOrderLiteral checks that s is a syntactically safe ORDER BY clause:
 // "[table.]field [asc|desc]" parts, comma-separated, with identifiers that
@@ -392,11 +420,8 @@ func isValidOrderLiteral(s string) bool {
 		if !isQualifiedIdent(tokens[0]) {
 			return false
 		}
-		if len(tokens) == 2 {
-			d := strings.ToLower(tokens[1])
-			if d != "asc" && d != "desc" {
-				return false
-			}
+		if len(tokens) == 2 && !isValidDirection(tokens[1]) {
+			return false
 		}
 	}
 	return true
@@ -417,6 +442,7 @@ func DefaultPaginationOptions() PaginationOptions {
 	return PaginationOptions{
 		DefaultLimit: 20,
 		MaxLimit:     100,
+		MaxOffset:    defaultMaxOffset,
 		DefaultOrder: "id desc",
 		Timezone:     defaultTimezone(),
 	}
@@ -455,6 +481,12 @@ func NewPagination(conditions map[string][]string, filterDef *FilterDefinition, 
 	if options.DefaultLimit > options.MaxLimit {
 		options.DefaultLimit = options.MaxLimit
 	}
+	// A negative MaxOffset is meaningless; normalise it to 0 (no cap) so it
+	// behaves the same as an unset field rather than clamping every request to
+	// a negative offset.
+	if options.MaxOffset < 0 {
+		options.MaxOffset = 0
+	}
 	if !isValidOrderLiteral(options.DefaultOrder) {
 		options.DefaultOrder = safeDefaultOrder
 	}
@@ -469,7 +501,7 @@ func NewPagination(conditions map[string][]string, filterDef *FilterDefinition, 
 		filterDef:  filterDef,
 		options:    options,
 		Limit:      parseLimit(internal, options.DefaultLimit, options.MaxLimit),
-		Offset:     parseOffset(internal),
+		Offset:     parseOffset(internal, options.MaxOffset),
 		Order:      parseOrder(internal, options.DefaultOrder, filterDef),
 		scopes:     make([]func(*gorm.DB) *gorm.DB, 0),
 	}
@@ -573,6 +605,12 @@ func (p *Pagination) GetTotalPages(total int64) int {
 type FilterOperation struct {
 	Operator FilterOperator
 	Values   []string
+
+	// overflow marks a value list that exceeded maxFilterValues. The operator
+	// is preserved so buildFilterScope can fail closed (WHERE 1 = 0) when the
+	// operator is otherwise valid, rather than dropping the filter and leaking
+	// every row. Kept unexported — it's an internal parse signal, not API.
+	overflow bool
 }
 
 // parseFilterOperation parses "operator:value" format. The "operator:" prefix
@@ -592,11 +630,12 @@ func parseFilterOperation(value string) FilterOperation {
 				return FilterOperation{Operator: op}
 			}
 			// Cap the value list to bound parse/allocation cost. A request
-			// over the limit becomes a nil-operator FilterOperation which
-			// fails isValidOperation and is silently dropped.
+			// over the limit is flagged overflow so buildFilterScope can fail
+			// closed instead of dropping the filter (which would widen the
+			// result set to every row — the opposite of fail-closed).
 			values := strings.Split(rest, ",")
 			if len(values) > maxFilterValues {
-				return FilterOperation{}
+				return FilterOperation{Operator: op, overflow: true}
 			}
 			return FilterOperation{Operator: op, Values: values}
 		}
@@ -614,6 +653,17 @@ func parseFilterOperation(value string) FilterOperation {
 // re-check every field here, the registry is trusted. This is the hot path.
 func (p *Pagination) buildFilterScope(config FilterConfig, value string) func(*gorm.DB) *gorm.DB {
 	op := parseFilterOperation(value)
+
+	// An over-cap value list fails closed: if the operator is valid for this
+	// filter, emit a no-match predicate so the response is empty rather than
+	// unfiltered. If the operator isn't even allowed here, drop it as usual —
+	// no spurious 1 = 0 for input that would have been rejected anyway.
+	if op.overflow {
+		if config.allowsOperator(op.Operator) {
+			return func(db *gorm.DB) *gorm.DB { return db.Where("1 = 0") }
+		}
+		return nil
+	}
 
 	if !p.isValidOperation(op, config) {
 		return nil
@@ -646,7 +696,7 @@ func (p *Pagination) buildFilterScope(config FilterConfig, value string) func(*g
 
 // isValidOperation validates filter operation
 func (p *Pagination) isValidOperation(op FilterOperation, config FilterConfig) bool {
-	if !slices.Contains(config.GetAllowedOperators(), op.Operator) {
+	if !config.allowsOperator(op.Operator) {
 		return false
 	}
 
@@ -660,6 +710,29 @@ func (p *Pagination) isValidOperation(op FilterOperation, config FilterConfig) b
 	default:
 		return len(op.Values) == 1
 	}
+}
+
+// nullScope emits the type-agnostic IS NULL / IS NOT NULL predicate shared by
+// every single-field scope builder. (Multi-field search builds its own null
+// fragment per column with the OR/AND joiner, so it does not use this.)
+func nullScope(field string, op FilterOperator) func(*gorm.DB) *gorm.DB {
+	if op == OperatorIsNull {
+		return func(db *gorm.DB) *gorm.DB { return db.Where(field + " IS NULL") }
+	}
+	return func(db *gorm.DB) *gorm.DB { return db.Where(field + " IS NOT NULL") }
+}
+
+// parseEach applies parse to each raw value, keeping only the ones that parse.
+// Shared by the IN / NOT IN branches of buildOrderedScope, which differ only in
+// what they do when nothing survives.
+func parseEach(values []string, parse func(string) (any, bool)) []any {
+	out := make([]any, 0, len(values))
+	for _, raw := range values {
+		if v, ok := parse(raw); ok {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // parseNumber parses a numeric literal as int64 when possible and falls back
@@ -712,12 +785,7 @@ func (p *Pagination) buildOrderedScope(
 		}
 		return func(db *gorm.DB) *gorm.DB { return db.Where(field+" != ?", v) }
 	case OperatorIn:
-		vals := make([]any, 0, len(op.Values))
-		for _, raw := range op.Values {
-			if v, ok := parse(raw); ok {
-				vals = append(vals, v)
-			}
-		}
+		vals := parseEach(op.Values, parse)
 		// All values unparseable: the user asked for "rows matching this
 		// set" and the set is empty, so the answer is zero rows. Dropping
 		// the filter here would silently leak every row (matching
@@ -727,12 +795,7 @@ func (p *Pagination) buildOrderedScope(
 		}
 		return func(db *gorm.DB) *gorm.DB { return db.Where(field+" IN ?", vals) }
 	case OperatorNotIn:
-		vals := make([]any, 0, len(op.Values))
-		for _, raw := range op.Values {
-			if v, ok := parse(raw); ok {
-				vals = append(vals, v)
-			}
-		}
+		vals := parseEach(op.Values, parse)
 		// Symmetric to OperatorIn: "exclude this set"; if the set is empty
 		// (all unparseable), nothing is excluded — the filter is a no-op,
 		// which is what returning nil effectively does.
@@ -773,10 +836,8 @@ func (p *Pagination) buildOrderedScope(
 			return nil
 		}
 		return func(db *gorm.DB) *gorm.DB { return db.Where(field+" <= ?", v) }
-	case OperatorIsNull:
-		return func(db *gorm.DB) *gorm.DB { return db.Where(field + " IS NULL") }
-	case OperatorIsNotNull:
-		return func(db *gorm.DB) *gorm.DB { return db.Where(field + " IS NOT NULL") }
+	case OperatorIsNull, OperatorIsNotNull:
+		return nullScope(field, op.Operator)
 	}
 	return nil
 }
@@ -805,10 +866,8 @@ func (p *Pagination) buildSingleStringScope(field string, op FilterOperation) fu
 		return func(db *gorm.DB) *gorm.DB { return db.Where(field+" IN ?", op.Values) }
 	case OperatorNotIn:
 		return func(db *gorm.DB) *gorm.DB { return db.Where(field+" NOT IN ?", op.Values) }
-	case OperatorIsNull:
-		return func(db *gorm.DB) *gorm.DB { return db.Where(field + " IS NULL") }
-	case OperatorIsNotNull:
-		return func(db *gorm.DB) *gorm.DB { return db.Where(field + " IS NOT NULL") }
+	case OperatorIsNull, OperatorIsNotNull:
+		return nullScope(field, op.Operator)
 	}
 	return nil
 }
@@ -896,12 +955,20 @@ func (p *Pagination) buildBoolScope(field string, op FilterOperation) func(*gorm
 			return nil
 		}
 		return func(db *gorm.DB) *gorm.DB { return db.Where(field+" = ?", value) }
-	case OperatorIsNull:
-		return func(db *gorm.DB) *gorm.DB { return db.Where(field + " IS NULL") }
-	case OperatorIsNotNull:
-		return func(db *gorm.DB) *gorm.DB { return db.Where(field + " IS NOT NULL") }
+	case OperatorIsNull, OperatorIsNotNull:
+		return nullScope(field, op.Operator)
 	}
 	return nil
+}
+
+// parseDate parses a YYYY-MM-DD date in the configured timezone.
+func (p *Pagination) parseDate(s string) (time.Time, error) {
+	return time.ParseInLocation("2006-01-02", s, p.options.Timezone)
+}
+
+// parseDateTime parses a YYYY-MM-DD HH:MM:SS timestamp in the configured timezone.
+func (p *Pagination) parseDateTime(s string) (time.Time, error) {
+	return time.ParseInLocation("2006-01-02 15:04:05", s, p.options.Timezone)
 }
 
 // buildDateScope builds date filter scope.
@@ -916,7 +983,7 @@ func (p *Pagination) buildBoolScope(field string, op FilterOperation) func(*gorm
 func (p *Pagination) buildDateScope(field string, op FilterOperation) func(*gorm.DB) *gorm.DB {
 	switch op.Operator {
 	case OperatorEquals:
-		t, err := time.ParseInLocation("2006-01-02", op.Values[0], p.options.Timezone)
+		t, err := p.parseDate(op.Values[0])
 		if err != nil {
 			return nil
 		}
@@ -926,11 +993,11 @@ func (p *Pagination) buildDateScope(field string, op FilterOperation) func(*gorm
 		}
 
 	case OperatorBetween:
-		start, err := time.ParseInLocation("2006-01-02", op.Values[0], p.options.Timezone)
+		start, err := p.parseDate(op.Values[0])
 		if err != nil {
 			return nil
 		}
-		end, err := time.ParseInLocation("2006-01-02", op.Values[1], p.options.Timezone)
+		end, err := p.parseDate(op.Values[1])
 		if err != nil {
 			return nil
 		}
@@ -940,7 +1007,7 @@ func (p *Pagination) buildDateScope(field string, op FilterOperation) func(*gorm
 		}
 
 	case OperatorGte:
-		t, err := time.ParseInLocation("2006-01-02", op.Values[0], p.options.Timezone)
+		t, err := p.parseDate(op.Values[0])
 		if err != nil {
 			return nil
 		}
@@ -949,7 +1016,7 @@ func (p *Pagination) buildDateScope(field string, op FilterOperation) func(*gorm
 		}
 
 	case OperatorLte:
-		t, err := time.ParseInLocation("2006-01-02", op.Values[0], p.options.Timezone)
+		t, err := p.parseDate(op.Values[0])
 		if err != nil {
 			return nil
 		}
@@ -957,10 +1024,8 @@ func (p *Pagination) buildDateScope(field string, op FilterOperation) func(*gorm
 		return func(db *gorm.DB) *gorm.DB {
 			return db.Where(field+" < ?", nextDay)
 		}
-	case OperatorIsNull:
-		return func(db *gorm.DB) *gorm.DB { return db.Where(field + " IS NULL") }
-	case OperatorIsNotNull:
-		return func(db *gorm.DB) *gorm.DB { return db.Where(field + " IS NOT NULL") }
+	case OperatorIsNull, OperatorIsNotNull:
+		return nullScope(field, op.Operator)
 	}
 	return nil
 }
@@ -977,13 +1042,9 @@ func (p *Pagination) buildDateScope(field string, op FilterOperation) func(*gorm
 // every second boundary here, so the same fix applies: half-open
 // [t, t + 1s). This works identically on Postgres, MySQL, and SQLite.
 func (p *Pagination) buildDateTimeScope(field string, op FilterOperation) func(*gorm.DB) *gorm.DB {
-	parseDateTime := func(s string) (time.Time, error) {
-		return time.ParseInLocation("2006-01-02 15:04:05", s, p.options.Timezone)
-	}
-
 	switch op.Operator {
 	case OperatorEquals:
-		t, err := parseDateTime(op.Values[0])
+		t, err := p.parseDateTime(op.Values[0])
 		if err != nil {
 			return nil
 		}
@@ -993,11 +1054,11 @@ func (p *Pagination) buildDateTimeScope(field string, op FilterOperation) func(*
 		}
 
 	case OperatorBetween:
-		start, err := parseDateTime(op.Values[0])
+		start, err := p.parseDateTime(op.Values[0])
 		if err != nil {
 			return nil
 		}
-		end, err := parseDateTime(op.Values[1])
+		end, err := p.parseDateTime(op.Values[1])
 		if err != nil {
 			return nil
 		}
@@ -1007,14 +1068,14 @@ func (p *Pagination) buildDateTimeScope(field string, op FilterOperation) func(*
 		}
 
 	case OperatorGte:
-		t, err := parseDateTime(op.Values[0])
+		t, err := p.parseDateTime(op.Values[0])
 		if err != nil {
 			return nil
 		}
 		return func(db *gorm.DB) *gorm.DB { return db.Where(field+" >= ?", t) }
 
 	case OperatorLte:
-		t, err := parseDateTime(op.Values[0])
+		t, err := p.parseDateTime(op.Values[0])
 		if err != nil {
 			return nil
 		}
@@ -1022,10 +1083,8 @@ func (p *Pagination) buildDateTimeScope(field string, op FilterOperation) func(*
 		return func(db *gorm.DB) *gorm.DB {
 			return db.Where(field+" < ?", endExclusive)
 		}
-	case OperatorIsNull:
-		return func(db *gorm.DB) *gorm.DB { return db.Where(field + " IS NULL") }
-	case OperatorIsNotNull:
-		return func(db *gorm.DB) *gorm.DB { return db.Where(field + " IS NOT NULL") }
+	case OperatorIsNull, OperatorIsNotNull:
+		return nullScope(field, op.Operator)
 	}
 	return nil
 }
@@ -1040,10 +1099,8 @@ func (p *Pagination) buildDateTimeScope(field string, op FilterOperation) func(*
 // no-match scope so the response is empty rather than unfiltered.
 func (p *Pagination) buildEnumScope(field string, op FilterOperation, allowedValues []string) func(*gorm.DB) *gorm.DB {
 	switch op.Operator {
-	case OperatorIsNull:
-		return func(db *gorm.DB) *gorm.DB { return db.Where(field + " IS NULL") }
-	case OperatorIsNotNull:
-		return func(db *gorm.DB) *gorm.DB { return db.Where(field + " IS NOT NULL") }
+	case OperatorIsNull, OperatorIsNotNull:
+		return nullScope(field, op.Operator)
 	}
 
 	valid := make([]string, 0, len(op.Values))
@@ -1083,9 +1140,15 @@ func parseLimit(conditions map[string][]string, defaultLimit, maxLimit int) int 
 	return defaultLimit
 }
 
-func parseOffset(conditions map[string][]string) int {
+// parseOffset reads ?offset=, clamping to maxOffset when maxOffset > 0. A
+// maxOffset of 0 means "no cap" — deep-offset protection is opt-in so callers
+// constructing PaginationOptions literally keep their prior behaviour.
+func parseOffset(conditions map[string][]string, maxOffset int) int {
 	if offsetStr, exists := conditions[QueryKeyOffset]; exists && len(offsetStr) > 0 {
 		if offset, err := strconv.Atoi(offsetStr[0]); err == nil && offset >= 0 {
+			if maxOffset > 0 && offset > maxOffset {
+				return maxOffset
+			}
 			return offset
 		}
 	}
@@ -1128,21 +1191,17 @@ func parseOrder(conditions map[string][]string, defaultOrder string, filterDef *
 		fieldRaw := tokens[0]
 		direction := "asc"
 		if len(tokens) == 2 {
-			switch strings.ToLower(tokens[1]) {
-			case "asc":
-				direction = "asc"
-			case "desc":
-				direction = "desc"
-			default:
+			if !isValidDirection(tokens[1]) {
 				return defaultOrder
 			}
+			direction = strings.ToLower(tokens[1])
 		}
 
 		tableName := ""
 		fieldName := fieldRaw
-		if idx := strings.IndexByte(fieldRaw, '.'); idx >= 0 {
-			tableName = fieldRaw[:idx]
-			fieldName = fieldRaw[idx+1:]
+		if tbl, fld, found := strings.Cut(fieldRaw, "."); found {
+			tableName = tbl
+			fieldName = fld
 		}
 
 		if !isIdent(fieldName) {

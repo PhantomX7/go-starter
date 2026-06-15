@@ -1,6 +1,7 @@
 package pagination_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -241,4 +242,77 @@ func TestDefaultLimit_BelowMaxLimit_Preserved(t *testing.T) {
 	)
 
 	assert.Equal(t, 25, pg.Limit)
+}
+
+// ---- A1: over-cap IN list fails closed instead of widening -------------------
+
+func TestInList_OverCap_FailsClosed(t *testing.T) {
+	// An `in:` list longer than maxFilterValues (256) must NOT silently drop
+	// the filter — dropping it returns every row, violating the package's
+	// "malformed input never widens the result set" invariant. It must fail
+	// closed (WHERE 1 = 0), mirroring the all-unparseable IN handling.
+	filterDef := pagination.NewFilterDefinition().
+		AddFilter("id", pagination.FilterConfig{Field: "id", Type: pagination.FilterTypeID})
+
+	vals := make([]string, 257) // one over the 256 cap
+	for i := range vals {
+		vals[i] = strconv.Itoa(i + 1)
+	}
+
+	pg := pagination.NewPagination(
+		map[string][]string{"id": {"in:" + strings.Join(vals, ",")}},
+		filterDef, pagination.DefaultPaginationOptions(),
+	)
+
+	sql := dryRunSQL(t, pg)
+	assert.Contains(t, sql, "1 = 0",
+		"an over-cap IN list must fail closed, not drop the filter and return all rows")
+}
+
+func TestInList_OverCap_DisallowedOperator_Dropped(t *testing.T) {
+	// When the over-cap operator isn't even valid for the type, the filter is
+	// dropped just as a small invalid filter would be — no spurious 1 = 0.
+	filterDef := pagination.NewFilterDefinition().
+		AddFilter("name", pagination.FilterConfig{Field: "name", Type: pagination.FilterTypeString})
+
+	vals := make([]string, 257)
+	for i := range vals {
+		vals[i] = strconv.Itoa(i + 1)
+	}
+
+	// `between` is not a valid String operator, so this must be dropped, not 1=0.
+	pg := pagination.NewPagination(
+		map[string][]string{"name": {"between:" + strings.Join(vals, ",")}},
+		filterDef, pagination.DefaultPaginationOptions(),
+	)
+
+	sql := dryRunSQL(t, pg)
+	assert.NotContains(t, sql, "1 = 0",
+		"an over-cap list on a disallowed operator is dropped, not failed closed")
+}
+
+// ---- A2: offset is clamped to MaxOffset -------------------------------------
+
+func TestOffset_ClampedToMaxOffset(t *testing.T) {
+	// Symmetric to limit clamping: a request offset beyond MaxOffset is capped
+	// rather than handed to the DB verbatim (deep-offset scan protection).
+	pg := pagination.NewPagination(
+		map[string][]string{"offset": {"999999999"}},
+		nil,
+		pagination.PaginationOptions{DefaultLimit: 20, MaxLimit: 100, MaxOffset: 10000},
+	)
+
+	assert.Equal(t, 10000, pg.Offset, "offset beyond MaxOffset must be clamped")
+}
+
+func TestOffset_Unlimited_WhenMaxOffsetZero(t *testing.T) {
+	// MaxOffset == 0 means "no cap" so existing callers that construct
+	// PaginationOptions literally keep their current behaviour.
+	pg := pagination.NewPagination(
+		map[string][]string{"offset": {"999999999"}},
+		nil,
+		pagination.PaginationOptions{DefaultLimit: 20, MaxLimit: 100, MaxOffset: 0},
+	)
+
+	assert.Equal(t, 999999999, pg.Offset, "MaxOffset=0 means no cap (backward compatible)")
 }
