@@ -209,7 +209,7 @@ func (m *mockTxManager) ExecuteInTransaction(ctx context.Context, fn func(contex
 
 var _ transaction_manager.TransactionManager = (*mockTxManager)(nil)
 
-func setupConfig(t *testing.T) {
+func setupConfig(t *testing.T) *config.Config {
 	t.Helper()
 
 	t.Setenv("JWT_SECRET", "test-secret-of-at-least-32-characters")
@@ -219,8 +219,9 @@ func setupConfig(t *testing.T) {
 	t.Setenv("APP_NAME", "Athleton Test")
 	t.Setenv("APP_ENVIRONMENT", "development")
 
-	_, err := config.Load()
+	cfg, err := config.Load()
 	require.NoError(t, err)
+	return cfg
 }
 
 func setupLogger(t *testing.T) {
@@ -235,10 +236,10 @@ func setupLogger(t *testing.T) {
 
 func newAuthJWT(t *testing.T, userRepo userrepository.UserRepository, refreshRepo refreshtokenrepository.RefreshTokenRepository, logRepo logrepository.LogRepository) *authjwt.AuthJWT {
 	t.Helper()
-	setupConfig(t)
+	cfg := setupConfig(t)
 	setupLogger(t)
 
-	auth, err := authjwt.NewAuthJWT(userRepo, refreshRepo, logRepo)
+	auth, err := authjwt.NewAuthJWT(cfg, userRepo, refreshRepo, logRepo)
 	require.NoError(t, err)
 	return auth
 }

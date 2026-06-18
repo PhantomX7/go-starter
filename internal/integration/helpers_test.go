@@ -137,8 +137,7 @@ func newTestApp(t *testing.T) *testApp {
 
 	gin.SetMode(gin.TestMode)
 	logger.Log = zap.NewNop()
-	restore := config.SetForTesting(testConfig())
-	t.Cleanup(restore)
+	cfg := testConfig()
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
@@ -167,14 +166,14 @@ func newTestApp(t *testing.T) *testApp {
 	logRepo := logrepository.NewLogRepository(db)
 	postRepo := postrepository.NewPostRepository(db)
 
-	authJWT, err := authjwt.NewAuthJWT(userRepo, refreshTokenRepo, logRepo)
+	authJWT, err := authjwt.NewAuthJWT(cfg, userRepo, refreshTokenRepo, logRepo)
 	require.NoError(t, err)
 
 	casbinClient, err := casbin.New(db)
 	require.NoError(t, err)
 
 	mw := middlewares.NewMiddleware(authJWT, casbinClient)
-	engine := bootstrap.SetupServer(mw, pkgvalidator.New(db), db)
+	engine := bootstrap.SetupServer(cfg, mw, pkgvalidator.New(db), db)
 
 	txManager := transaction_manager.NewTransactionManager(db)
 	authService := authservice.NewAuthService(userRepo, logRepo, authJWT, casbinClient, txManager)

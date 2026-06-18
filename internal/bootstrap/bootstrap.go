@@ -35,8 +35,7 @@ import (
 
 // SetUpLogger initializes the logger before fx starts.
 // This should be called in main() before fx.New().
-func SetUpLogger() error {
-	cfg := config.Get()
+func SetUpLogger(cfg *config.Config) error {
 	logConfig := cfg.GetLoggerConfig()
 
 	// Initialize logger
@@ -74,9 +73,7 @@ func RegisterLoggerLifecycle(lc fx.Lifecycle) {
 }
 
 // SetupServer configures and returns the Gin engine.
-func SetupServer(m *middlewares.Middleware, cv cvalidator.CustomValidator, db *gorm.DB) *gin.Engine {
-	cfg := config.Get()
-
+func SetupServer(cfg *config.Config, m *middlewares.Middleware, cv cvalidator.CustomValidator, db *gorm.DB) *gin.Engine {
 	logger.Info("Setting up HTTP server")
 
 	// gin.New() (not gin.Default()) so the only request logger in play is our
@@ -183,9 +180,7 @@ func registerHealthRoutes(server *gin.Engine, db *gorm.DB) {
 }
 
 // StartServer starts the HTTP server using the provided Gin engine and configuration.
-func StartServer(lc fx.Lifecycle, server *gin.Engine) {
-	cfg := config.Get()
-
+func StartServer(lc fx.Lifecycle, cfg *config.Config, server *gin.Engine) {
 	// Print application information
 	myFigure := figure.NewColorFigure(cfg.App.Name, "", "green", true)
 	myFigure.Print()
@@ -257,28 +252,18 @@ func StartCron(lc fx.Lifecycle, cron gocron.Scheduler) {
 	})
 }
 
-// SetUpConfig loads the application configuration and sets the Gin mode based on the environment.
-func SetUpConfig() error {
-	// Load configuration
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-
-	// Set Gin mode based on environment
+// ConfigureGinMode sets the Gin mode based on the environment. Called in main()
+// after config.Load() and before fx starts.
+func ConfigureGinMode(cfg *config.Config) {
 	if cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
 	} else if cfg.IsDevelopment() {
 		gin.SetMode(gin.DebugMode)
 	}
-
-	return nil
 }
 
 // SetUpDatabase opens the shared GORM database connection and registers lifecycle hooks.
-func SetUpDatabase(lc fx.Lifecycle) (*gorm.DB, error) {
-	cfg := config.Get()
-
+func SetUpDatabase(lc fx.Lifecycle, cfg *config.Config) (*gorm.DB, error) {
 	logger.Info("Setting up database connection",
 		zap.String("driver", cfg.Database.Driver),
 		zap.String("host", cfg.Database.Host),

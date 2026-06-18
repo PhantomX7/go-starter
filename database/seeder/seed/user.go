@@ -13,7 +13,7 @@ import (
 // SeedUsers inserts the default root and admin users when they do not already exist.
 //
 //nolint:revive // SeedUsers is kept for consistency with the seeder entrypoint naming.
-func SeedUsers(db *gorm.DB) error {
+func SeedUsers(db *gorm.DB, cfg *config.Config) error {
 	users := []models.User{
 		{
 			Username: "root",
@@ -32,7 +32,7 @@ func SeedUsers(db *gorm.DB) error {
 	}
 
 	var password []byte
-	password, err := bcrypt.GenerateFromPassword([]byte(config.Get().Admin.DefaultPassword), bcrypt.DefaultCost)
+	password, err := bcrypt.GenerateFromPassword([]byte(cfg.Admin.DefaultPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}

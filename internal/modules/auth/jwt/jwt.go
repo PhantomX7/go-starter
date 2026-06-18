@@ -79,6 +79,7 @@ type authSubject struct {
 // AuthJWT bundles the gin-jwt middleware with the repositories it depends on.
 type AuthJWT struct {
 	Middleware       *ginjwt.GinJWTMiddleware
+	cfg              *config.Config
 	userRepo         userrepo.UserRepository
 	refreshTokenRepo rtokenrepo.RefreshTokenRepository
 	logRepository    logRepository.LogRepository
@@ -86,17 +87,17 @@ type AuthJWT struct {
 
 // NewAuthJWT constructs the JWT authentication middleware and its helpers.
 func NewAuthJWT(
+	cfg *config.Config,
 	userRepo userrepo.UserRepository,
 	refreshTokenRepo rtokenrepo.RefreshTokenRepository,
 	logRepository logRepository.LogRepository,
 ) (*AuthJWT, error) {
-	cfg := config.Get()
-
 	// Force dummy-hash generation now so a bcrypt failure surfaces as a boot
 	// error instead of a panic on the first login attempt.
 	_ = dummyHash()
 
 	a := &AuthJWT{
+		cfg:              cfg,
 		userRepo:         userRepo,
 		refreshTokenRepo: refreshTokenRepo,
 		logRepository:    logRepository,
@@ -152,7 +153,7 @@ func (a *AuthJWT) payloadFunc(data any) jwt.MapClaims {
 		RoleKey:      user.Role.ToString(),
 		SessionIDKey: subj.SessionID.String(),
 		"sub":        user.ID,
-		"iss":        config.Get().JWT.Issuer,
+		"iss":        a.cfg.JWT.Issuer,
 	}
 
 	if user.AdminRoleID != nil {
@@ -411,7 +412,7 @@ func (a *AuthJWT) createRefreshToken(ctx context.Context, userID uint) (string, 
 		ID:        sessionID,
 		UserID:    userID,
 		Token:     token,
-		ExpiresAt: time.Now().Add(config.Get().JWT.RefreshExpiration),
+		ExpiresAt: time.Now().Add(a.cfg.JWT.RefreshExpiration),
 	})
 	if err != nil {
 		return "", uuid.Nil, err

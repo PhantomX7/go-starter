@@ -27,17 +27,17 @@ import (
 	"github.com/PhantomX7/athleton/pkg/logger"
 )
 
+// testS3Config is the S3 configuration every test client is built with.
+func testS3Config() config.S3Config {
+	return config.S3Config{
+		Bucket:   "test-bucket",
+		Region:   "us-east-1",
+		Endpoint: "http://storage.local",
+	}
+}
+
 func setTestEnv(t *testing.T) {
 	t.Helper()
-
-	restore := config.SetForTesting(&config.Config{
-		S3: config.S3Config{
-			Bucket:   "test-bucket",
-			Region:   "us-east-1",
-			Endpoint: "http://storage.local",
-		},
-	})
-	t.Cleanup(restore)
 
 	prev := logger.Log
 	logger.Log = zap.NewNop()
@@ -65,6 +65,7 @@ func newTestClient(t *testing.T, handler http.Handler) *s3Client {
 		client:       client,
 		uploader:     transfermanager.New(client),
 		clientConfig: awsCfg,
+		s3Cfg:        testS3Config(),
 	}
 }
 

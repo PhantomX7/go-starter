@@ -105,9 +105,9 @@ type LogConfig struct {
 	Console    bool   `mapstructure:"LOG_CONSOLE"`
 }
 
-var cfg *Config
-
-// Load initializes and loads the configuration from various sources.
+// Load initializes and loads the configuration from various sources. The
+// returned *Config is the single instance the application wires through its
+// fx container (fx.Supply); there is no process-global accessor by design.
 func Load() (*Config, error) {
 	v := viper.New()
 
@@ -133,7 +133,7 @@ func Load() (*Config, error) {
 	}
 
 	// Unmarshal and validate
-	cfg = &Config{}
+	cfg := &Config{}
 	if err := v.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
@@ -148,7 +148,7 @@ func Load() (*Config, error) {
 
 // setDefaults sets default configuration values
 func setDefaults(v *viper.Viper) {
-	defaults := map[string]interface{}{
+	defaults := map[string]any{
 		// Server
 		"SERVER_HOST":            "localhost",
 		"SERVER_PORT":            8080,
@@ -320,23 +320,6 @@ func (c *Config) validateLog() error {
 	}
 
 	return nil
-}
-
-// Get returns the current configuration instance
-func Get() *Config {
-	if cfg == nil {
-		log.Fatal("Configuration not loaded. Call config.Load() first.")
-	}
-	return cfg
-}
-
-// SetForTesting replaces the process-global configuration and returns a
-// function that restores the previous value. Intended for tests only — it
-// bypasses Load's validation.
-func SetForTesting(c *Config) (restore func()) {
-	prev := cfg
-	cfg = c
-	return func() { cfg = prev }
 }
 
 // GetDatabaseURL constructs and returns the database connection URL

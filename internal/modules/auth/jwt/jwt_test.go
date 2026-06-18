@@ -179,7 +179,7 @@ func (m *mockLogRepository) Count(context.Context, *pagination.Pagination) (int6
 
 var _ logrepository.LogRepository = (*mockLogRepository)(nil)
 
-func setupConfig(t *testing.T) {
+func setupConfig(t *testing.T) *config.Config {
 	t.Helper()
 
 	t.Setenv("JWT_SECRET", "test-secret-of-at-least-32-characters")
@@ -189,8 +189,9 @@ func setupConfig(t *testing.T) {
 	t.Setenv("APP_NAME", "Athleton Test")
 	t.Setenv("APP_ENVIRONMENT", "development")
 
-	_, err := config.Load()
+	cfg, err := config.Load()
 	require.NoError(t, err)
+	return cfg
 }
 
 func setupLogger(t *testing.T) {
@@ -205,20 +206,20 @@ func setupLogger(t *testing.T) {
 
 func newAuthJWT(t *testing.T, userRepo userrepository.UserRepository, refreshRepo refreshtokenrepository.RefreshTokenRepository, logRepo logrepository.LogRepository) *AuthJWT {
 	t.Helper()
-	setupConfig(t)
+	cfg := setupConfig(t)
 	setupLogger(t)
 
-	auth, err := NewAuthJWT(userRepo, refreshRepo, logRepo)
+	auth, err := NewAuthJWT(cfg, userRepo, refreshRepo, logRepo)
 	require.NoError(t, err)
 	return auth
 }
 
 func TestPayloadFuncIncludesIdentityRoleSessionAndAdminRoleID(t *testing.T) {
-	setupConfig(t)
+	cfg := setupConfig(t)
 
 	adminRoleID := uint(9)
 	sessionID := uuid.New()
-	a := &AuthJWT{}
+	a := &AuthJWT{cfg: cfg}
 	claims := a.payloadFunc(&authSubject{
 		User: &models.User{
 			ID:          5,
@@ -232,7 +233,7 @@ func TestPayloadFuncIncludesIdentityRoleSessionAndAdminRoleID(t *testing.T) {
 	require.Equal(t, models.UserRoleAdmin.ToString(), claims[RoleKey])
 	require.Equal(t, adminRoleID, claims[AdminRoleIDKey])
 	require.Equal(t, sessionID.String(), claims[SessionIDKey])
-	require.Equal(t, config.Get().JWT.Issuer, claims["iss"])
+	require.Equal(t, cfg.JWT.Issuer, claims["iss"])
 }
 
 func TestPayloadFuncReturnsEmptyForUnknownData(t *testing.T) {

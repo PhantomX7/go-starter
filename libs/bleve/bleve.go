@@ -152,18 +152,18 @@ type client struct {
 }
 
 // NewBleveClient creates a new Bleve client
-func NewBleveClient() (Client, error) {
-	cfg := config.Get().Bleve
+func NewBleveClient(cfg *config.Config) (Client, error) {
+	bleveCfg := cfg.Bleve
 
-	if err := os.MkdirAll(cfg.IndexPath, 0750); err != nil {
+	if err := os.MkdirAll(bleveCfg.IndexPath, 0750); err != nil {
 		return nil, fmt.Errorf("create index directory: %w", err)
 	}
 
-	logger.Info("Bleve client initialized", zap.String("path", cfg.IndexPath))
+	logger.Info("Bleve client initialized", zap.String("path", bleveCfg.IndexPath))
 
 	return &client{
 		indices:   make(map[string]bleve.Index),
-		indexPath: cfg.IndexPath,
+		indexPath: bleveCfg.IndexPath,
 	}, nil
 }
 

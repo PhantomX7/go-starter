@@ -44,6 +44,7 @@ type s3Client struct {
 	client       *s3.Client
 	uploader     *transfermanager.Client
 	clientConfig aws.Config
+	s3Cfg        config.S3Config
 }
 
 // S3UploadResult contains the metadata returned after a successful upload.
@@ -60,15 +61,17 @@ type S3UploadResult struct {
 }
 
 // NewS3Client constructs the shared S3 client and uploader.
-func NewS3Client() (Client, error) {
+func NewS3Client(cfg *config.Config) (Client, error) {
+	s3Cfg := cfg.S3
+
 	awsConfig, err := s3config.LoadDefaultConfig(context.TODO(),
-		s3config.WithRegion(config.Get().S3.Region),
+		s3config.WithRegion(s3Cfg.Region),
 		s3config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			config.Get().S3.AccessKeyID,
-			config.Get().S3.SecretAccessKey,
+			s3Cfg.AccessKeyID,
+			s3Cfg.SecretAccessKey,
 			"",
 		)),
-		s3config.WithBaseEndpoint(config.Get().S3.Endpoint),
+		s3config.WithBaseEndpoint(s3Cfg.Endpoint),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
@@ -78,15 +81,27 @@ func NewS3Client() (Client, error) {
 	uploader := transfermanager.New(client)
 
 	logger.Info("S3 client initialized successfully",
-		zap.String("region", config.Get().S3.Region),
-		zap.String("bucket", config.Get().S3.Bucket),
+		zap.String("region", s3Cfg.Region),
+		zap.String("bucket", s3Cfg.Bucket),
 	)
 
 	return &s3Client{
 		client:       client,
 		uploader:     uploader,
 		clientConfig: awsConfig,
+		s3Cfg:        s3Cfg,
 	}, nil
+}
+
+// publicURL builds the public URL for an object stored in S3-compatible storage.
+func (s3c *s3Client) publicURL(key string) string {
+	if s3c.s3Cfg.CdnURL != "" {
+		return fmt.Sprintf("%s/%s", s3c.s3Cfg.CdnURL, key)
+	}
+	if s3c.s3Cfg.Endpoint != "" {
+		return fmt.Sprintf("%s/%s/%s", s3c.s3Cfg.Endpoint, s3c.s3Cfg.Bucket, key)
+	}
+	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s3c.s3Cfg.Bucket, s3c.s3Cfg.Region, key)
 }
 
 // UploadImage uploads and compresses images intelligently
@@ -173,7 +188,7 @@ func (s3c *s3Client) UploadImage(ctx context.Context, file *multipart.FileHeader
 
 	// Upload to S3
 	result, err := s3c.uploader.UploadObject(ctx, &transfermanager.UploadObjectInput{
-		Bucket:      aws.String(config.Get().S3.Bucket),
+		Bucket:      aws.String(s3c.s3Cfg.Bucket),
 		Key:         aws.String(key),
 		Body:        uploadBody,
 		ContentType: aws.String(contentType),
@@ -198,9 +213,9 @@ func (s3c *s3Client) UploadImage(ctx context.Context, file *multipart.FileHeader
 
 	uploadResult := &S3UploadResult{
 		Key:      key,
-		URL:      utils.GenerateS3PublicURL(key),
+		URL:      s3c.publicURL(key),
 		Location: aws.ToString(result.Location),
-		Bucket:   config.Get().S3.Bucket,
+		Bucket:   s3c.s3Cfg.Bucket,
 		ETag:     aws.ToString(result.ETag),
 		Size:     fileSize,
 		Format:   outputFormat,
@@ -313,7 +328,7 @@ func (s3c *s3Client) DeleteImage(ctx context.Context, key string) error {
 	requestID := utils.GetRequestIDFromContext(ctx)
 
 	_, err := s3c.client.DeleteObject(ctx, &s3.DeleteObjectInput{
-		Bucket: aws.String(config.Get().S3.Bucket),
+		Bucket: aws.String(s3c.s3Cfg.Bucket),
 		Key:    aws.String(key),
 	})
 
@@ -471,7 +486,7 @@ func (s3c *s3Client) DeleteImages(ctx context.Context, keys []string) error {
 
 	// Delete objects
 	output, err := s3c.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
-		Bucket: aws.String(config.Get().S3.Bucket),
+		Bucket: aws.String(s3c.s3Cfg.Bucket),
 		Delete: &types.Delete{
 			Objects: objects,
 			Quiet:   aws.Bool(false),

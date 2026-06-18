@@ -211,26 +211,6 @@ func TestValidateWrapsSectionName(t *testing.T) {
 	require.ErrorContains(t, c.validate(), "log validation failed")
 }
 
-// Not parallel: SetForTesting and Get share the package-global cfg.
-func TestSetForTestingAndGet(t *testing.T) {
-	first := validConfig()
-	restoreFirst := SetForTesting(first)
-	defer restoreFirst()
-
-	require.Same(t, first, Get())
-
-	second := validConfig()
-	second.App.Name = "Second"
-	restoreSecond := SetForTesting(second)
-
-	require.Same(t, second, Get())
-	require.Equal(t, "Second", Get().App.Name)
-
-	// Restoring must bring back the previously set config.
-	restoreSecond()
-	require.Same(t, first, Get())
-}
-
 func TestGetDatabaseURL(t *testing.T) {
 	t.Parallel()
 

@@ -24,16 +24,15 @@ type doc struct {
 func newTestClient(t *testing.T) bleve.Client {
 	t.Helper()
 
-	restore := config.SetForTesting(&config.Config{
+	cfg := &config.Config{
 		Bleve: config.BleveConfig{IndexPath: t.TempDir()},
-	})
-	t.Cleanup(restore)
+	}
 
 	prev := logger.Log
 	logger.Log = zap.NewNop()
 	t.Cleanup(func() { logger.Log = prev })
 
-	c, err := bleve.NewBleveClient()
+	c, err := bleve.NewBleveClient(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, c.Close()) })
 
@@ -313,23 +312,22 @@ func TestCanceledContextIsRejected(t *testing.T) {
 func TestIndexPersistsOnDiskAcrossClients(t *testing.T) {
 	dir := t.TempDir()
 
-	restore := config.SetForTesting(&config.Config{
+	cfg := &config.Config{
 		Bleve: config.BleveConfig{IndexPath: dir},
-	})
-	t.Cleanup(restore)
+	}
 
 	prev := logger.Log
 	logger.Log = zap.NewNop()
 	t.Cleanup(func() { logger.Log = prev })
 
-	first, err := bleve.NewBleveClient()
+	first, err := bleve.NewBleveClient(cfg)
 	require.NoError(t, err)
 	require.NoError(t, first.GetOrCreateIndex("persist", nil))
 	require.NoError(t, first.IndexDocument(context.Background(), "persist", "1", doc{Name: "durable"}))
 	require.NoError(t, first.Close())
 
 	// A new client over the same path opens the index lazily from disk.
-	second, err := bleve.NewBleveClient()
+	second, err := bleve.NewBleveClient(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, second.Close()) })
 
