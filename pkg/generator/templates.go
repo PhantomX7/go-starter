@@ -206,18 +206,12 @@ package service
 
 import (
 	"context"
-	"errors"
 
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/{{.SnakeCase}}/repository"
-	cerrors "github.com/PhantomX7/athleton/pkg/errors"
-	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
-
-	"github.com/jinzhu/copier"
-	"go.uber.org/zap"
 )
 
 // {{.PascalCase}}Service defines the business operations for {{.KebabCase}} resources.
@@ -242,18 +236,13 @@ func New{{.PascalCase}}Service({{.CamelCase}}Repository repository.{{.PascalCase
 
 // Index returns a paginated collection of {{.LowerCase}} resources.
 func (s *{{.CamelCase}}Service) Index(ctx context.Context, pg *pagination.Pagination) ([]*models.{{.PascalCase}}, response.Meta, error) {
-	log := logger.Ctx(ctx)
-	log.Info("Fetching {{.LowerCase}}s", zap.Int("page", pg.GetPage()), zap.Int("limit", pg.Limit), zap.Int("offset", pg.Offset))
-
 	{{.LowerCase}}s, err := s.{{.CamelCase}}Repository.FindAll(ctx, pg)
 	if err != nil {
-		log.Error("Failed to fetch {{.LowerCase}}s", zap.Error(err))
 		return nil, response.Meta{}, err
 	}
 
 	count, err := s.{{.CamelCase}}Repository.Count(ctx, pg)
 	if err != nil {
-		log.Error("Failed to count {{.LowerCase}}s", zap.Error(err))
 		return nil, response.Meta{}, err
 	}
 
@@ -266,39 +255,29 @@ func (s *{{.CamelCase}}Service) Index(ctx context.Context, pg *pagination.Pagina
 
 // Create persists a new {{.LowerCase}} resource.
 func (s *{{.CamelCase}}Service) Create(ctx context.Context, req *dto.{{.PascalCase}}CreateRequest) (*models.{{.PascalCase}}, error) {
-	log := logger.Ctx(ctx)
-	entity := &models.{{.PascalCase}}{}
-
-	if err := copier.Copy(entity, req); err != nil {
-		log.Error("Failed to copy {{.LowerCase}} payload", zap.Error(err))
-		return nil, err
+	entity := &models.{{.PascalCase}}{
+		// TODO: map fields from req explicitly, e.g. Name: req.Name
 	}
 
 	if err := s.{{.CamelCase}}Repository.Create(ctx, entity); err != nil {
-		log.Error("Failed to create {{.LowerCase}}", zap.Error(err))
 		return nil, err
 	}
 
 	return entity, nil
 }
 
-// Update changes an existing {{.LowerCase}} resource.
+// Update changes an existing {{.LowerCase}} resource. Request fields are pointers,
+// so an omitted field (nil) keeps its current value — PATCH semantics.
 func (s *{{.CamelCase}}Service) Update(ctx context.Context, {{.CamelCase}}ID uint, req *dto.{{.PascalCase}}UpdateRequest) (*models.{{.PascalCase}}, error) {
-	log := logger.Ctx(ctx, zap.Uint("{{.LowerCase}}_id", {{.CamelCase}}ID))
-
 	entity, err := s.{{.CamelCase}}Repository.FindByID(ctx, {{.CamelCase}}ID)
 	if err != nil {
-		log.Error("Failed to find {{.LowerCase}} for update", zap.Error(err))
 		return nil, err
 	}
 
-	if err := copier.Copy(entity, req); err != nil {
-		log.Error("Failed to copy {{.LowerCase}} payload", zap.Error(err))
-		return nil, err
-	}
+	// TODO: apply req fields onto entity explicitly, e.g.:
+	//   if req.Name != nil { entity.Name = *req.Name }
 
 	if err := s.{{.CamelCase}}Repository.Update(ctx, entity); err != nil {
-		log.Error("Failed to update {{.LowerCase}}", zap.Error(err))
 		return nil, err
 	}
 
@@ -307,31 +286,18 @@ func (s *{{.CamelCase}}Service) Update(ctx context.Context, {{.CamelCase}}ID uin
 
 // Delete removes an existing {{.LowerCase}} resource.
 func (s *{{.CamelCase}}Service) Delete(ctx context.Context, {{.CamelCase}}ID uint) error {
-	log := logger.Ctx(ctx, zap.Uint("{{.LowerCase}}_id", {{.CamelCase}}ID))
-
 	entity, err := s.{{.CamelCase}}Repository.FindByID(ctx, {{.CamelCase}}ID)
 	if err != nil {
-		log.Error("Failed to find {{.LowerCase}} for deletion", zap.Error(err))
 		return err
 	}
 
-	if err := s.{{.CamelCase}}Repository.Delete(ctx, entity); err != nil {
-		log.Error("Failed to delete {{.LowerCase}}", zap.Error(err))
-		return err
-	}
-
-	return nil
+	return s.{{.CamelCase}}Repository.Delete(ctx, entity)
 }
 
 // FindByID returns one {{.LowerCase}} resource by ID.
 func (s *{{.CamelCase}}Service) FindByID(ctx context.Context, {{.CamelCase}}ID uint) (*models.{{.PascalCase}}, error) {
-	log := logger.Ctx(ctx, zap.Uint("{{.LowerCase}}_id", {{.CamelCase}}ID))
-
 	entity, err := s.{{.CamelCase}}Repository.FindByID(ctx, {{.CamelCase}}ID)
 	if err != nil {
-		if !errors.Is(err, cerrors.ErrNotFound) {
-			log.Error("Failed to find {{.LowerCase}}", zap.Error(err))
-		}
 		return nil, err
 	}
 

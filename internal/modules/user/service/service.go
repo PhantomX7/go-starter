@@ -3,7 +3,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -21,9 +20,7 @@ import (
 	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
-	"github.com/PhantomX7/athleton/pkg/utils"
 
-	"github.com/jinzhu/copier"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -69,15 +66,6 @@ func NewUserService(
 
 // Index implements UserService.
 func (s *userService) Index(ctx context.Context, pg *pagination.Pagination) ([]*models.User, response.Meta, error) {
-	requestID := utils.GetRequestIDFromContext(ctx)
-
-	logger.Info("Fetching users with pagination",
-		zap.String("request_id", requestID),
-		zap.Int("page", pg.GetPage()),
-		zap.Int("limit", pg.Limit),
-		zap.Int("offset", pg.Offset),
-	)
-
 	// Add preloads
 	pg.AddCustomScope(func(db *gorm.DB) *gorm.DB {
 		return db.Preload("AdminRole")
@@ -85,28 +73,13 @@ func (s *userService) Index(ctx context.Context, pg *pagination.Pagination) ([]*
 
 	users, err := s.userRepository.FindAll(ctx, pg)
 	if err != nil {
-		logger.Error("Failed to fetch users",
-			zap.String("request_id", requestID),
-			zap.Int("page", pg.GetPage()),
-			zap.Error(err),
-		)
 		return users, response.Meta{}, err
 	}
 
 	count, err := s.userRepository.Count(ctx, pg)
 	if err != nil {
-		logger.Error("Failed to count users",
-			zap.String("request_id", requestID),
-			zap.Error(err),
-		)
 		return users, response.Meta{}, err
 	}
-
-	logger.Info("Users fetched successfully",
-		zap.String("request_id", requestID),
-		zap.Int("returned_count", len(users)),
-		zap.Int64("total_count", count),
-	)
 
 	return users, response.Meta{
 		Total:  count,
@@ -117,47 +90,22 @@ func (s *userService) Index(ctx context.Context, pg *pagination.Pagination) ([]*
 
 // Update implements UserService.
 func (s *userService) Update(ctx context.Context, userID uint, req *dto.UserUpdateRequest) (*models.User, error) {
-	requestID := utils.GetRequestIDFromContext(ctx)
-
-	logger.Info("Updating user",
-		zap.String("request_id", requestID),
-		zap.Uint("user_id", userID),
-	)
-
 	user, err := s.userRepository.FindByID(ctx, userID)
 	if err != nil {
-		logger.Error("Failed to find user for update",
-			zap.String("request_id", requestID),
-			zap.Uint("user_id", userID),
-			zap.Error(err),
-		)
 		return user, err
 	}
 
-	err = copier.Copy(&user, &req)
-	if err != nil {
-		logger.Error("Failed to copy user data",
-			zap.String("request_id", requestID),
-			zap.Uint("user_id", userID),
-			zap.Error(err),
-		)
-		return user, err
+	// Pointer fields: an omitted field (nil) keeps its current value — PATCH semantics.
+	if req.Name != nil {
+		user.Name = *req.Name
+	}
+	if req.Role != nil {
+		user.Role = models.UserRole(*req.Role)
 	}
 
-	err = s.userRepository.Update(ctx, user)
-	if err != nil {
-		logger.Error("Failed to update user",
-			zap.String("request_id", requestID),
-			zap.Uint("user_id", userID),
-			zap.Error(err),
-		)
+	if err := s.userRepository.Update(ctx, user); err != nil {
 		return user, err
 	}
-
-	logger.Info("User updated successfully",
-		zap.String("request_id", requestID),
-		zap.Uint("user_id", userID),
-	)
 
 	// Create audit log
 	s.createLog(ctx, models.LogActionUpdate, user.ID, user.Name)
@@ -167,22 +115,8 @@ func (s *userService) Update(ctx context.Context, userID uint, req *dto.UserUpda
 
 // FindByID implements UserService.
 func (s *userService) FindByID(ctx context.Context, userID uint) (*models.User, error) {
-	requestID := utils.GetRequestIDFromContext(ctx)
-
-	logger.Debug("Finding user by ID",
-		zap.String("request_id", requestID),
-		zap.Uint("user_id", userID),
-	)
-
 	user, err := s.userRepository.FindByID(ctx, userID, generated.User.AdminRole)
 	if err != nil {
-		if !errors.Is(err, cerrors.ErrNotFound) {
-			logger.Error("Failed to find user by ID",
-				zap.String("request_id", requestID),
-				zap.Uint("user_id", userID),
-				zap.Error(err),
-			)
-		}
 		return user, err
 	}
 
@@ -190,24 +124,11 @@ func (s *userService) FindByID(ctx context.Context, userID uint) (*models.User, 
 		user.AdminRole.Permissions = s.casbinClient.GetRolePermissions(user.AdminRole.ID)
 	}
 
-	logger.Debug("Found user by ID successfully",
-		zap.String("request_id", requestID),
-		zap.Uint("user_id", userID),
-	)
-
 	return user, nil
 }
 
 // AssignAdminRole assigns an admin role to a user
 func (s *userService) AssignAdminRole(ctx context.Context, userID uint, req *dto.UserAssignAdminRoleRequest) (*models.User, error) {
-	requestID := utils.GetRequestIDFromContext(ctx)
-
-	logger.Info("Assigning admin role to user",
-		zap.String("request_id", requestID),
-		zap.Uint("user_id", userID),
-		zap.Uint("admin_role_id", req.AdminRoleID),
-	)
-
 	// Run the find→check→assign→update sequence inside a single transaction so
 	// a failure at any step rolls everything back and concurrent writers cannot
 	// interleave between the read and the role assignment.
@@ -217,45 +138,23 @@ func (s *userService) AssignAdminRole(ctx context.Context, userID uint, req *dto
 		var err error
 		user, err = s.userRepository.FindByID(txCtx, userID)
 		if err != nil {
-			logger.Error("Failed to find user",
-				zap.String("request_id", requestID),
-				zap.Uint("user_id", userID),
-				zap.Error(err),
-			)
 			return err
 		}
 
 		// Prevent modifying root users
 		if user.Role == models.UserRoleRoot {
-			logger.Warn("Attempted to modify root user",
-				zap.String("request_id", requestID),
-				zap.Uint("user_id", userID),
-			)
+			logger.Ctx(ctx, zap.Uint("user_id", userID)).Warn("Attempted to modify root user")
 			return cerrors.NewForbiddenError("cannot modify root user")
 		}
 
 		// Assign admin role and set role to admin
 		user.AdminRoleID = &req.AdminRoleID
 
-		if err := s.userRepository.Update(txCtx, user); err != nil {
-			logger.Error("Failed to assign admin role",
-				zap.String("request_id", requestID),
-				zap.Uint("user_id", userID),
-				zap.Error(err),
-			)
-			return err
-		}
-		return nil
+		return s.userRepository.Update(txCtx, user)
 	})
 	if err != nil {
 		return nil, err
 	}
-
-	logger.Info("Admin role assigned successfully",
-		zap.String("request_id", requestID),
-		zap.Uint("user_id", userID),
-		zap.Uint("admin_role_id", req.AdminRoleID),
-	)
 
 	// Create audit log
 	s.createLog(ctx, models.LogActionUpdate, user.ID, user.Name)
@@ -265,20 +164,8 @@ func (s *userService) AssignAdminRole(ctx context.Context, userID uint, req *dto
 
 // ChangePassword allows root to change another admin's password
 func (s *userService) ChangePassword(ctx context.Context, userID uint, req *dto.ChangeAdminPasswordRequest) error {
-	requestID := utils.GetRequestIDFromContext(ctx)
-
-	logger.Info("Root changing admin password",
-		zap.String("request_id", requestID),
-		zap.Uint("target_user_id", userID),
-	)
-
 	user, err := s.userRepository.FindByID(ctx, userID)
 	if err != nil {
-		logger.Error("Failed to find target user",
-			zap.String("request_id", requestID),
-			zap.Uint("target_user_id", userID),
-			zap.Error(err),
-		)
 		return err
 	}
 
@@ -295,11 +182,6 @@ func (s *userService) ChangePassword(ctx context.Context, userID uint, req *dto.
 	// Hash new password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), 12)
 	if err != nil {
-		logger.Error("Failed to hash password",
-			zap.String("request_id", requestID),
-			zap.Uint("target_user_id", userID),
-			zap.Error(err),
-		)
 		return cerrors.NewInternalServerError("failed to process new password", err)
 	}
 
@@ -312,33 +194,15 @@ func (s *userService) ChangePassword(ctx context.Context, userID uint, req *dto.
 	user.PasswordChangedAt = &now
 	err = s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
 		if err := s.userRepository.Update(txCtx, user); err != nil {
-			logger.Error("Failed to update password",
-				zap.String("request_id", requestID),
-				zap.Uint("target_user_id", userID),
-				zap.Error(err),
-			)
 			return err
 		}
 
 		// Revoke all refresh tokens for the target user
-		if err := s.refreshTokenRepo.RevokeAllByUserID(txCtx, userID); err != nil {
-			logger.Error("Failed to revoke tokens after password change",
-				zap.String("request_id", requestID),
-				zap.Uint("target_user_id", userID),
-				zap.Error(err),
-			)
-			return err
-		}
-		return nil
+		return s.refreshTokenRepo.RevokeAllByUserID(txCtx, userID)
 	})
 	if err != nil {
 		return err
 	}
-
-	logger.Info("Admin password changed by root",
-		zap.String("request_id", requestID),
-		zap.Uint("target_user_id", userID),
-	)
 
 	s.createLog(ctx, models.LogActionChangePassword, user.ID, user.Name)
 

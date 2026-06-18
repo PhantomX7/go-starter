@@ -20,7 +20,6 @@ import (
 	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/utils"
 
-	"github.com/jinzhu/copier"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -66,21 +65,18 @@ func NewAuthService(
 
 // GetMe retrieves the authenticated user's profile
 func (s *authService) GetMe(ctx context.Context) (*dto.MeResponse, error) {
-	requestID := utils.GetRequestIDFromContext(ctx)
 	values, err := utils.ValuesFromContext(ctx)
 	if err != nil {
-		logger.Error("Failed to get user from context", zap.String("request_id", requestID), zap.Error(err))
 		return nil, err
 	}
 
 	user, err := s.userRepo.FindByID(ctx, values.UserID, generated.User.AdminRole)
 	if err != nil {
-		logger.Error("Failed to find user", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID), zap.Error(err))
 		return nil, err
 	}
 
 	if !user.IsActive {
-		logger.Warn("Inactive user access attempt", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID))
+		logger.Ctx(ctx, zap.Uint("user_id", values.UserID)).Warn("Inactive user access attempt")
 		return nil, cerrors.NewForbiddenError("user account is inactive")
 	}
 
@@ -95,24 +91,25 @@ func (s *authService) GetMe(ctx context.Context) (*dto.MeResponse, error) {
 
 // Register creates a new user account
 func (s *authService) Register(ctx context.Context, req *dto.RegisterRequest) (*dto.AuthResponse, error) {
-	requestID := utils.GetRequestIDFromContext(ctx)
-	logger.Info("User registration initiated", zap.String("request_id", requestID))
-
 	// Normalize inputs
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	req.Phone = strings.TrimSpace(req.Phone)
 
-	// Create user model
-	user := &models.User{Role: models.UserRoleUser, IsActive: true, Username: req.Email}
-	if err := copier.Copy(&user, &req); err != nil {
-		logger.Error("Failed to copy user data", zap.String("request_id", requestID), zap.Error(err))
-		return nil, cerrors.NewInternalServerError("failed to process user data", err)
+	// Create user model. Username mirrors the (already normalized) email; the
+	// password is set from the hash below, never from the raw request.
+	user := &models.User{
+		Username:     req.Email,
+		Name:         req.Name,
+		BusinessName: req.BusinessName,
+		Email:        req.Email,
+		Phone:        req.Phone,
+		Role:         models.UserRoleUser,
+		IsActive:     true,
 	}
 
 	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), BcryptCost)
 	if err != nil {
-		logger.Error("Failed to hash password", zap.String("request_id", requestID), zap.Error(err))
 		return nil, cerrors.NewInternalServerError("failed to process password", err)
 	}
 	user.Password = string(hashedPassword)
@@ -133,62 +130,44 @@ func (s *authService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 		return err
 	})
 	if err != nil {
-		logger.Error("Failed to register user", zap.String("request_id", requestID), zap.Error(err))
 		return nil, err
 	}
 
-	logger.Info("User registered successfully", zap.String("request_id", requestID), zap.Uint("user_id", user.ID))
+	logger.Ctx(ctx, zap.Uint("user_id", user.ID)).Info("User registered successfully")
 	return authResponse, nil
 }
 
 // Refresh validates a refresh token and issues new tokens
 func (s *authService) Refresh(ctx context.Context, req *dto.RefreshRequest) (*dto.AuthResponse, error) {
-	requestID := utils.GetRequestIDFromContext(ctx)
-	logger.Info("Token refresh initiated", zap.String("request_id", requestID))
-
-	authResponse, err := s.authJWT.ValidateAndRotateRefreshToken(ctx, req.RefreshToken)
-	if err != nil {
-		logger.Warn("Token refresh failed", zap.String("request_id", requestID), zap.Error(err))
-		return nil, err
-	}
-
-	logger.Info("Token refresh successful", zap.String("request_id", requestID))
-	return authResponse, nil
+	return s.authJWT.ValidateAndRotateRefreshToken(ctx, req.RefreshToken)
 }
 
 // ChangePassword updates the user's password
 func (s *authService) ChangePassword(ctx context.Context, req *dto.ChangePasswordRequest) error {
-	requestID := utils.GetRequestIDFromContext(ctx)
 	values, err := utils.ValuesFromContext(ctx)
 	if err != nil {
-		logger.Error("Failed to get user from context", zap.String("request_id", requestID), zap.Error(err))
 		return err
 	}
 
-	logger.Info("Password change initiated", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID))
-
 	user, err := s.userRepo.FindByID(ctx, values.UserID)
 	if err != nil {
-		logger.Error("Failed to find user", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID), zap.Error(err))
 		return err
 	}
 
 	// Verify old password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.OldPassword)); err != nil {
-		logger.Warn("Password change failed - incorrect password", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID))
+		logger.Ctx(ctx, zap.Uint("user_id", values.UserID)).Warn("Password change failed - incorrect current password")
 		return cerrors.NewBadRequestError("current password is incorrect")
 	}
 
 	// Ensure new password is different
 	if req.OldPassword == req.NewPassword {
-		logger.Warn("Password change failed - same password", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID))
 		return cerrors.NewBadRequestError("new password must be different from current password")
 	}
 
 	// Hash new password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), BcryptCost)
 	if err != nil {
-		logger.Error("Failed to hash password", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID), zap.Error(err))
 		return cerrors.NewInternalServerError("failed to process new password", err)
 	}
 
@@ -204,11 +183,8 @@ func (s *authService) ChangePassword(ctx context.Context, req *dto.ChangePasswor
 		return s.authJWT.RevokeAllUserTokensExcept(txCtx, user.ID, req.ExceptToken)
 	})
 	if err != nil {
-		logger.Error("Failed to change password", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID), zap.Error(err))
 		return err
 	}
-
-	logger.Info("Password changed successfully", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID))
 
 	// Create audit log for admin users only
 	if user.Role == models.UserRoleAdmin {
@@ -220,23 +196,12 @@ func (s *authService) ChangePassword(ctx context.Context, req *dto.ChangePasswor
 
 // Logout revokes a specific refresh token
 func (s *authService) Logout(ctx context.Context, req *dto.LogoutRequest) error {
-	requestID := utils.GetRequestIDFromContext(ctx)
 	values, err := utils.ValuesFromContext(ctx)
 	if err != nil {
-		logger.Error("Failed to get user from context", zap.String("request_id", requestID), zap.Error(err))
 		return err
 	}
 
-	logger.Info("Logout initiated", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID))
-
-	err = s.authJWT.RevokeRefreshToken(ctx, req.RefreshToken, values.UserID)
-	if err != nil {
-		logger.Error("Failed to revoke token", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID), zap.Error(err))
-		return err
-	}
-
-	logger.Info("Logout successful", zap.String("request_id", requestID), zap.Uint("user_id", values.UserID))
-	return nil
+	return s.authJWT.RevokeRefreshToken(ctx, req.RefreshToken, values.UserID)
 }
 
 // createLog creates an audit log entry for auth operations (admin only)

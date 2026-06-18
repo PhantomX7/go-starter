@@ -11,8 +11,9 @@ type PostCreateRequest struct {
 }
 
 // PostUpdateRequest defines the structure for updating a post.
-// Fields are pointers so PATCH can tell "omitted" apart from "set to zero value";
-// copier skips nil pointers, so omitted fields keep their current value.
+// Fields are pointers so PATCH can tell "omitted" apart from "set to zero value":
+// the service applies a field only when its pointer is non-nil, so omitted
+// fields keep their current value.
 type PostUpdateRequest struct {
 	Name        *string `json:"name" form:"name"`
 	Description *string `json:"description" form:"description"`

@@ -3,8 +3,8 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/PhantomX7/athleton/internal/audit"
 	"github.com/PhantomX7/athleton/internal/dto"
@@ -18,9 +18,7 @@ import (
 	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
-	"github.com/PhantomX7/athleton/pkg/utils"
 
-	"github.com/jinzhu/copier"
 	"go.uber.org/zap"
 )
 
@@ -58,43 +56,19 @@ func NewAdminRoleService(
 
 // Index implements AdminRoleService.
 func (s *adminRoleService) Index(ctx context.Context, pg *pagination.Pagination) ([]*models.AdminRole, response.Meta, error) {
-	requestID := utils.GetRequestIDFromContext(ctx)
-
-	logger.Info("Fetching admin roles with pagination",
-		zap.String("request_id", requestID),
-		zap.Int("page", pg.GetPage()),
-		zap.Int("limit", pg.Limit),
-		zap.Int("offset", pg.Offset),
-	)
-
 	roles, err := s.adminRoleRepo.FindAll(ctx, pg)
 	if err != nil {
-		logger.Error("Failed to fetch admin roles",
-			zap.String("request_id", requestID),
-			zap.Int("page", pg.GetPage()),
-			zap.Error(err),
-		)
 		return nil, response.Meta{}, err
 	}
 
 	count, err := s.adminRoleRepo.Count(ctx, pg)
 	if err != nil {
-		logger.Error("Failed to count admin roles",
-			zap.String("request_id", requestID),
-			zap.Error(err),
-		)
 		return nil, response.Meta{}, err
 	}
 
 	for _, role := range roles {
 		role.Permissions = s.casbinClient.GetRolePermissions(role.ID)
 	}
-
-	logger.Info("Admin roles fetched successfully",
-		zap.String("request_id", requestID),
-		zap.Int("returned_count", len(roles)),
-		zap.Int64("total_count", count),
-	)
 
 	return roles, response.Meta{
 		Total:  count,
@@ -105,43 +79,23 @@ func (s *adminRoleService) Index(ctx context.Context, pg *pagination.Pagination)
 
 // Create implements AdminRoleService.
 func (s *adminRoleService) Create(ctx context.Context, req *dto.CreateAdminRoleRequest) (*models.AdminRole, error) {
-	requestID := utils.GetRequestIDFromContext(ctx)
-
-	logger.Info("Creating admin role",
-		zap.String("request_id", requestID),
-		zap.String("name", req.Name),
-		zap.Int("permissions_count", len(req.Permissions)),
-	)
-
 	// Validate permissions
 	invalidPerms := s.validatePermissions(req.Permissions)
 	if len(invalidPerms) > 0 {
-		logger.Warn("Invalid permissions provided",
-			zap.String("request_id", requestID),
-			zap.Strings("invalid_permissions", invalidPerms),
-		)
-		return nil, cerrors.NewBadRequestError("invalid permissions: " + joinStrings(invalidPerms))
+		return nil, cerrors.NewBadRequestError("invalid permissions: " + strings.Join(invalidPerms, ", "))
 	}
 
-	// Create admin role model
+	// Create admin role model. Permissions are not persisted on the row
+	// (gorm:"-"); they are owned by Casbin and synced below.
 	adminRole := &models.AdminRole{
-		IsActive: true,
-	}
-	if err := copier.Copy(adminRole, req); err != nil {
-		logger.Error("Failed to copy admin role data",
-			zap.String("request_id", requestID),
-			zap.Error(err),
-		)
-		return nil, cerrors.NewInternalServerError("failed to process admin role data", err)
+		Name:        req.Name,
+		Description: req.Description,
+		IsActive:    true,
 	}
 
 	// Save to database. This is the only DB write in Create, so it is atomic on
 	// its own and needs no explicit transaction.
 	if err := s.adminRoleRepo.Create(ctx, adminRole); err != nil {
-		logger.Error("Failed to create admin role",
-			zap.String("request_id", requestID),
-			zap.Error(err),
-		)
 		return nil, err
 	}
 
@@ -154,27 +108,15 @@ func (s *adminRoleService) Create(ctx context.Context, req *dto.CreateAdminRoleR
 	// delete also fails, a role without permissions is left behind and must be
 	// repaired manually (it grants no access, so it fails closed).
 	if err := s.casbinClient.AddRolePermissions(adminRole.ID, req.Permissions); err != nil {
-		logger.Error("Failed to add permissions to casbin",
-			zap.String("request_id", requestID),
-			zap.Uint("role_id", adminRole.ID),
-			zap.Error(err),
-		)
 		// Compensating action: delete the created role
 		if delErr := s.adminRoleRepo.Delete(ctx, adminRole); delErr != nil {
-			logger.Error("CRITICAL: failed to roll back admin role after casbin sync failure; role exists without permissions",
-				zap.String("request_id", requestID),
-				zap.Uint("role_id", adminRole.ID),
+			logger.Ctx(ctx, zap.Uint("role_id", adminRole.ID)).Error(
+				"CRITICAL: failed to roll back admin role after casbin sync failure; role exists without permissions",
 				zap.Error(delErr),
 			)
 		}
 		return nil, cerrors.NewInternalServerError("failed to set role permissions", err)
 	}
-
-	logger.Info("Admin role created successfully",
-		zap.String("request_id", requestID),
-		zap.Uint("role_id", adminRole.ID),
-		zap.String("name", adminRole.Name),
-	)
 
 	// Get permissions for response
 	rolePermissions := s.casbinClient.GetRolePermissions(adminRole.ID)
@@ -189,13 +131,6 @@ func (s *adminRoleService) Create(ctx context.Context, req *dto.CreateAdminRoleR
 
 // Update implements AdminRoleService.
 func (s *adminRoleService) Update(ctx context.Context, roleID uint, req *dto.UpdateAdminRoleRequest) (*models.AdminRole, error) {
-	requestID := utils.GetRequestIDFromContext(ctx)
-
-	logger.Info("Updating admin role",
-		zap.String("request_id", requestID),
-		zap.Uint("role_id", roleID),
-	)
-
 	// Run the find→modify→update sequence inside a single transaction so a
 	// failure at any step rolls the role row back and concurrent writers cannot
 	// interleave between the read and the write.
@@ -205,11 +140,6 @@ func (s *adminRoleService) Update(ctx context.Context, roleID uint, req *dto.Upd
 		var err error
 		adminRole, err = s.adminRoleRepo.FindByID(txCtx, roleID)
 		if err != nil {
-			logger.Error("Failed to find admin role for update",
-				zap.String("request_id", requestID),
-				zap.Uint("role_id", roleID),
-				zap.Error(err),
-			)
 			return err
 		}
 
@@ -217,11 +147,7 @@ func (s *adminRoleService) Update(ctx context.Context, roleID uint, req *dto.Upd
 		if req.Permissions != nil {
 			invalidPerms := s.validatePermissions(req.Permissions)
 			if len(invalidPerms) > 0 {
-				logger.Warn("Invalid permissions provided",
-					zap.String("request_id", requestID),
-					zap.Strings("invalid_permissions", invalidPerms),
-				)
-				return cerrors.NewBadRequestError("invalid permissions: " + joinStrings(invalidPerms))
+				return cerrors.NewBadRequestError("invalid permissions: " + strings.Join(invalidPerms, ", "))
 			}
 		}
 
@@ -234,15 +160,7 @@ func (s *adminRoleService) Update(ctx context.Context, roleID uint, req *dto.Upd
 		}
 
 		// Save to database
-		if err := s.adminRoleRepo.Update(txCtx, adminRole); err != nil {
-			logger.Error("Failed to update admin role",
-				zap.String("request_id", requestID),
-				zap.Uint("role_id", roleID),
-				zap.Error(err),
-			)
-			return err
-		}
-		return nil
+		return s.adminRoleRepo.Update(txCtx, adminRole)
 	})
 	if err != nil {
 		return nil, err
@@ -258,20 +176,14 @@ func (s *adminRoleService) Update(ctx context.Context, roleID uint, req *dto.Upd
 	// error so the caller can retry the permission sync.
 	if req.Permissions != nil {
 		if err := s.casbinClient.SetRolePermissions(adminRole.ID, req.Permissions); err != nil {
-			logger.Error("CRITICAL: admin role updated in DB but casbin permission sync failed; permissions are stale",
-				zap.String("request_id", requestID),
-				zap.Uint("role_id", roleID),
+			logger.Ctx(ctx, zap.Uint("role_id", roleID)).Error(
+				"CRITICAL: admin role updated in DB but casbin permission sync failed; permissions are stale",
 				zap.Strings("requested_permissions", req.Permissions),
 				zap.Error(err),
 			)
 			return nil, cerrors.NewInternalServerError("failed to update role permissions", err)
 		}
 	}
-
-	logger.Info("Admin role updated successfully",
-		zap.String("request_id", requestID),
-		zap.Uint("role_id", roleID),
-	)
 
 	// Get permissions for response
 	rolePermissions := s.casbinClient.GetRolePermissions(adminRole.ID)
@@ -286,13 +198,6 @@ func (s *adminRoleService) Update(ctx context.Context, roleID uint, req *dto.Upd
 
 // Delete implements AdminRoleService.
 func (s *adminRoleService) Delete(ctx context.Context, roleID uint) error {
-	requestID := utils.GetRequestIDFromContext(ctx)
-
-	logger.Info("Deleting admin role",
-		zap.String("request_id", requestID),
-		zap.Uint("role_id", roleID),
-	)
-
 	// Run the find→guard→delete sequence inside a single transaction so a
 	// failure at any step rolls everything back and the assigned-users check
 	// cannot race with the delete.
@@ -302,22 +207,12 @@ func (s *adminRoleService) Delete(ctx context.Context, roleID uint) error {
 		var err error
 		adminRole, err = s.adminRoleRepo.FindByID(txCtx, roleID)
 		if err != nil {
-			logger.Error("Failed to find admin role for deletion",
-				zap.String("request_id", requestID),
-				zap.Uint("role_id", roleID),
-				zap.Error(err),
-			)
 			return err
 		}
 
 		// Check if any users have this role
 		userCount, err := s.adminRoleRepo.CountUsersWithRole(txCtx, roleID)
 		if err != nil {
-			logger.Error("Failed to count users with role",
-				zap.String("request_id", requestID),
-				zap.Uint("role_id", roleID),
-				zap.Error(err),
-			)
 			return err
 		}
 		if userCount > 0 {
@@ -325,15 +220,7 @@ func (s *adminRoleService) Delete(ctx context.Context, roleID uint) error {
 		}
 
 		// Delete from database
-		if err := s.adminRoleRepo.Delete(txCtx, adminRole); err != nil {
-			logger.Error("Failed to delete admin role",
-				zap.String("request_id", requestID),
-				zap.Uint("role_id", roleID),
-				zap.Error(err),
-			)
-			return err
-		}
-		return nil
+		return s.adminRoleRepo.Delete(txCtx, adminRole)
 	})
 	if err != nil {
 		return err
@@ -351,17 +238,11 @@ func (s *adminRoleService) Delete(ctx context.Context, roleID uint) error {
 	// guard ran inside the transaction), so we log loudly and still report
 	// success rather than fail an operation whose primary effect is committed.
 	if err := s.casbinClient.DeleteRole(roleID); err != nil {
-		logger.Error("CRITICAL: admin role deleted from DB but casbin policy cleanup failed; orphaned policies remain",
-			zap.String("request_id", requestID),
-			zap.Uint("role_id", roleID),
+		logger.Ctx(ctx, zap.Uint("role_id", roleID)).Error(
+			"CRITICAL: admin role deleted from DB but casbin policy cleanup failed; orphaned policies remain",
 			zap.Error(err),
 		)
 	}
-
-	logger.Info("Admin role deleted successfully",
-		zap.String("request_id", requestID),
-		zap.Uint("role_id", roleID),
-	)
 
 	// Create audit log
 	s.createLog(ctx, models.LogActionDelete, roleID, adminRole.Name)
@@ -371,22 +252,8 @@ func (s *adminRoleService) Delete(ctx context.Context, roleID uint) error {
 
 // FindByID implements AdminRoleService.
 func (s *adminRoleService) FindByID(ctx context.Context, roleID uint) (*models.AdminRole, error) {
-	requestID := utils.GetRequestIDFromContext(ctx)
-
-	logger.Debug("Finding admin role by ID",
-		zap.String("request_id", requestID),
-		zap.Uint("role_id", roleID),
-	)
-
 	adminRole, err := s.adminRoleRepo.FindByID(ctx, roleID)
 	if err != nil {
-		if !errors.Is(err, cerrors.ErrNotFound) {
-			logger.Error("Failed to find admin role by ID",
-				zap.String("request_id", requestID),
-				zap.Uint("role_id", roleID),
-				zap.Error(err),
-			)
-		}
 		return nil, err
 	}
 
@@ -395,22 +262,11 @@ func (s *adminRoleService) FindByID(ctx context.Context, roleID uint) (*models.A
 
 	adminRole.Permissions = rolePermissions
 
-	logger.Debug("Found admin role by ID successfully",
-		zap.String("request_id", requestID),
-		zap.Uint("role_id", roleID),
-	)
-
 	return adminRole, nil
 }
 
 // GetAllPermissions returns all available permissions for frontend
-func (s *adminRoleService) GetAllPermissions(ctx context.Context) map[string][]map[string]string {
-	requestID := utils.GetRequestIDFromContext(ctx)
-
-	logger.Debug("Getting all available permissions",
-		zap.String("request_id", requestID),
-	)
-
+func (s *adminRoleService) GetAllPermissions(_ context.Context) map[string][]map[string]string {
 	return permissions.GetPermissionsForFrontend()
 }
 
@@ -423,18 +279,6 @@ func (s *adminRoleService) validatePermissions(perms []string) []string {
 		}
 	}
 	return invalidPerms
-}
-
-// joinStrings joins string slice with comma
-func joinStrings(strs []string) string {
-	result := ""
-	for i, s := range strs {
-		if i > 0 {
-			result += ", "
-		}
-		result += s
-	}
-	return result
 }
 
 // createLog creates an audit log entry for admin role operations
