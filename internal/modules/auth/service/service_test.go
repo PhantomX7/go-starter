@@ -239,7 +239,11 @@ func newAuthJWT(t *testing.T, userRepo userrepository.UserRepository, refreshRep
 	cfg := setupConfig(t)
 	setupLogger(t)
 
-	auth, err := authjwt.NewAuthJWT(cfg, userRepo, refreshRepo, logRepo)
+	auth, err := authjwt.NewAuthJWT(cfg, userRepo, refreshRepo, logRepo, &mockTxManager{
+		executeFn: func(ctx context.Context, fn func(context.Context) error) error {
+			return fn(ctx)
+		},
+	})
 	require.NoError(t, err)
 	return auth
 }

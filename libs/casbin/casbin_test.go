@@ -1,6 +1,8 @@
 package casbin_test
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -216,6 +218,70 @@ func TestPoliciesPersistAcrossClients(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, allowed)
 	require.Equal(t, []string{"post:create"}, second.GetRolePermissions(11))
+}
+
+// TestConcurrentReadsAndWritesAreSafe drives policy reads (Enforce /
+// GetFilteredPolicy via CheckPermission/GetRolePermissions) concurrently with
+// policy writes (Add/Set/DeleteRole) against the single shared enforcer — the
+// exact access pattern the production fx singleton sees when an admin edits a
+// role while the API serves authorized traffic. Against a bare casbin.Enforcer
+// this races on the policy maps and triggers a fatal "concurrent map read and
+// map write" (and is reported by `go test -race`); the SyncedEnforcer's RWMutex
+// makes it safe. Run with -race to catch regressions.
+func TestConcurrentReadsAndWritesAreSafe(t *testing.T) {
+	// Pin the pool to a single connection so the in-memory SQLite database isn't
+	// re-created per pooled connection under concurrent writes (a test-harness
+	// artifact of `:memory:`). Policy reads (Enforce) hit the enforcer's in-memory
+	// model, not the DB, so the map read/write hazard this test targets stays
+	// fully exposed regardless of the connection count.
+	db := setupDB(t)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+
+	c, err := libcasbin.New(db)
+	require.NoError(t, err)
+
+	const (
+		readers       = 8
+		writers       = 4
+		opsPerWorker  = 300
+		concurrentIDs = 5 // overlap readers and writers on the same role IDs
+	)
+
+	var wg sync.WaitGroup
+
+	for r := range readers {
+		wg.Add(1)
+		go func(base int) {
+			defer wg.Done()
+			for i := range opsPerWorker {
+				roleID := uint((base+i)%concurrentIDs + 1)
+				if _, err := c.CheckPermission(roleID, "post:create"); err != nil {
+					t.Errorf("CheckPermission: %v", err)
+					return
+				}
+				_ = c.GetRolePermissions(roleID)
+			}
+		}(r)
+	}
+
+	for w := range writers {
+		wg.Add(1)
+		go func(base int) {
+			defer wg.Done()
+			for i := range opsPerWorker {
+				roleID := uint((base+i)%concurrentIDs + 1)
+				perm := fmt.Sprintf("post:action%d", i%4)
+				if err := c.SetRolePermissions(roleID, []string{"post:create", perm}); err != nil {
+					t.Errorf("SetRolePermissions: %v", err)
+					return
+				}
+			}
+		}(w)
+	}
+
+	wg.Wait()
 }
 
 func TestParseRoleIDFromSubject(t *testing.T) {

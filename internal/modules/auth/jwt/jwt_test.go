@@ -204,12 +204,32 @@ func setupLogger(t *testing.T) {
 	})
 }
 
+// passthroughTxManager runs the closure directly without a real transaction —
+// adequate for unit tests whose repositories are mocks (there is nothing to
+// commit or roll back).
+type passthroughTxManager struct{}
+
+func (passthroughTxManager) ExecuteInTransaction(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+
+// recordingTxManager reports whether the rotation wrapped its work in a
+// transaction, while still executing the closure.
+type recordingTxManager struct {
+	called bool
+}
+
+func (r *recordingTxManager) ExecuteInTransaction(ctx context.Context, fn func(context.Context) error) error {
+	r.called = true
+	return fn(ctx)
+}
+
 func newAuthJWT(t *testing.T, userRepo userrepository.UserRepository, refreshRepo refreshtokenrepository.RefreshTokenRepository, logRepo logrepository.LogRepository) *AuthJWT {
 	t.Helper()
 	cfg := setupConfig(t)
 	setupLogger(t)
 
-	auth, err := NewAuthJWT(cfg, userRepo, refreshRepo, logRepo)
+	auth, err := NewAuthJWT(cfg, userRepo, refreshRepo, logRepo, passthroughTxManager{})
 	require.NoError(t, err)
 	return auth
 }
@@ -623,6 +643,42 @@ func TestValidateAndRotateRefreshTokenDetectsReuse(t *testing.T) {
 	require.Nil(t, res)
 	require.False(t, createCalled, "must not mint a replacement token on reuse")
 	require.Equal(t, uint(11), revokeAllUser, "must revoke all sessions for the user on reuse")
+}
+
+// Rotation must wrap the revoke-old + mint-new pair in a single transaction so
+// the two commit or roll back together. This asserts (a) the work goes through
+// the transaction manager and (b) a mint failure surfaces as an error rather
+// than a half-rotated session (old token dead, no replacement).
+func TestValidateAndRotateRefreshTokenIsTransactional(t *testing.T) {
+	cfg := setupConfig(t)
+	setupLogger(t)
+
+	userRepo := &mockUserRepository{
+		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
+			return &models.User{ID: 11, Role: models.UserRoleUser, IsActive: true}, nil
+		},
+	}
+	refreshRepo := &mockRefreshTokenRepository{
+		findByTokenFn: func(ctx context.Context, token string) (*models.RefreshToken, error) {
+			return &models.RefreshToken{UserID: 11, Token: token}, nil
+		},
+		revokeByTokenIfActiveFn: func(ctx context.Context, token string) (bool, error) {
+			return true, nil
+		},
+		createFn: func(ctx context.Context, entity *models.RefreshToken) error {
+			return errors.New("mint failed") // forces the transaction to unwind
+		},
+	}
+
+	tx := &recordingTxManager{}
+	a, err := NewAuthJWT(cfg, userRepo, refreshRepo, &mockLogRepository{}, tx)
+	require.NoError(t, err)
+
+	res, err := a.ValidateAndRotateRefreshToken(context.Background(), "old-token")
+
+	require.Error(t, err)
+	require.Nil(t, res)
+	require.True(t, tx.called, "revoke + mint must run inside a transaction")
 }
 
 func TestRevokeRefreshTokenIsIdempotentWhenTokenMissing(t *testing.T) {

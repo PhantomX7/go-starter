@@ -166,7 +166,9 @@ func newTestApp(t *testing.T) *testApp {
 	logRepo := logrepository.NewLogRepository(db)
 	postRepo := postrepository.NewPostRepository(db)
 
-	authJWT, err := authjwt.NewAuthJWT(cfg, userRepo, refreshTokenRepo, logRepo)
+	txManager := transaction_manager.NewTransactionManager(db)
+
+	authJWT, err := authjwt.NewAuthJWT(cfg, userRepo, refreshTokenRepo, logRepo, txManager)
 	require.NoError(t, err)
 
 	casbinClient, err := casbin.New(db)
@@ -175,7 +177,6 @@ func newTestApp(t *testing.T) *testApp {
 	mw := middlewares.NewMiddleware(authJWT, casbinClient)
 	engine := bootstrap.SetupServer(cfg, mw, pkgvalidator.New(db), db)
 
-	txManager := transaction_manager.NewTransactionManager(db)
 	authService := authservice.NewAuthService(userRepo, logRepo, authJWT, casbinClient, txManager)
 	postService := postservice.NewPostService(postRepo)
 	logService := logservice.NewLogService(logRepo)

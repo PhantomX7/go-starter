@@ -37,7 +37,14 @@ type Client interface {
 }
 
 type client struct {
-	enforcer *casbin.Enforcer
+	// enforcer is a SyncedEnforcer, not a bare Enforcer: this client is a
+	// process-wide fx singleton whose policies are READ on every authorized
+	// request (Enforce/GetFilteredPolicy) and WRITTEN whenever an admin edits a
+	// role (Add/Remove/Set/DeleteRole). The base casbin.Enforcer guards its
+	// policy store with plain maps and no locking, so a concurrent read+write
+	// would trigger a fatal "concurrent map read and map write" and crash the
+	// whole process. SyncedEnforcer wraps every method below with an RWMutex.
+	enforcer *casbin.SyncedEnforcer
 }
 
 // New creates a new Casbin client instance
@@ -57,8 +64,9 @@ func New(db *gorm.DB) (Client, error) {
 	m.AddDef("e", "e", "some(where (p.eft == allow))")                                         // Effect: allow if any policy matches
 	m.AddDef("m", "m", "r.sub == p.sub && keyMatch2(r.obj, p.obj) && keyMatch2(r.act, p.act)") // Matcher
 
-	// Create enforcer with model and adapter
-	enforcer, err := casbin.NewEnforcer(m, adapter)
+	// Create a synced (mutex-guarded) enforcer with model and adapter. See the
+	// client.enforcer field comment for why the synced variant is required.
+	enforcer, err := casbin.NewSyncedEnforcer(m, adapter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create casbin enforcer: %w", err)
 	}
@@ -74,7 +82,10 @@ func New(db *gorm.DB) (Client, error) {
 }
 
 func (c *client) GetEnforcer() *casbin.Enforcer {
-	return c.enforcer
+	// Return the embedded base enforcer to keep the interface signature stable.
+	// Callers must not use it for concurrent policy mutation — go through the
+	// client's locked methods instead.
+	return c.enforcer.Enforcer
 }
 
 // roleSubject converts role ID to Casbin subject format

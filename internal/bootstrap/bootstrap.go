@@ -107,7 +107,7 @@ func SetupServer(cfg *config.Config, m *middlewares.Middleware, cv cvalidator.Cu
 		m.BodySizeLimit(cfg.Server.MaxBodyBytes), // 3. Reject oversized payloads
 		m.TimeoutMiddleware(cfg.Server.RequestTimeout), // 4. Request deadline via context
 		m.Logger(),       // 5. Request logging (outer, so it sees recovered panics)
-		gin.Recovery(),   // 6. Panic recovery (inner, so Logger still logs the 500)
+		m.Recovery(),     // 6. Panic recovery → JSON envelope (inner, so Logger still logs the 500)
 		m.ErrorHandler(), // 7. Error handling (MUST be last)
 	)
 

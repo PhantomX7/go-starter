@@ -16,6 +16,7 @@ import (
 	logRepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
 	rtokenrepo "github.com/PhantomX7/athleton/internal/modules/refresh_token/repository"
 	userrepo "github.com/PhantomX7/athleton/internal/modules/user/repository"
+	"github.com/PhantomX7/athleton/libs/transaction_manager"
 	"github.com/PhantomX7/athleton/pkg/config"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/logger"
@@ -76,6 +77,12 @@ type authSubject struct {
 	SessionID uuid.UUID
 }
 
+// errRefreshTokenReuse is an internal sentinel used to unwind the rotation
+// transaction when a reused (already-revoked) token is detected. It never
+// escapes ValidateAndRotateRefreshToken — the caller sees a generic bad-request
+// error instead.
+var errRefreshTokenReuse = errors.New("refresh token reuse detected")
+
 // AuthJWT bundles the gin-jwt middleware with the repositories it depends on.
 type AuthJWT struct {
 	Middleware       *ginjwt.GinJWTMiddleware
@@ -83,6 +90,7 @@ type AuthJWT struct {
 	userRepo         userrepo.UserRepository
 	refreshTokenRepo rtokenrepo.RefreshTokenRepository
 	logRepository    logRepository.LogRepository
+	txManager        transaction_manager.TransactionManager
 }
 
 // NewAuthJWT constructs the JWT authentication middleware and its helpers.
@@ -91,6 +99,7 @@ func NewAuthJWT(
 	userRepo userrepo.UserRepository,
 	refreshTokenRepo rtokenrepo.RefreshTokenRepository,
 	logRepository logRepository.LogRepository,
+	txManager transaction_manager.TransactionManager,
 ) (*AuthJWT, error) {
 	// Force dummy-hash generation now so a bcrypt failure surfaces as a boot
 	// error instead of a panic on the first login attempt.
@@ -101,6 +110,7 @@ func NewAuthJWT(
 		userRepo:         userRepo,
 		refreshTokenRepo: refreshTokenRepo,
 		logRepository:    logRepository,
+		txManager:        txManager,
 	}
 
 	middleware, err := ginjwt.New(&ginjwt.GinJWTMiddleware{
@@ -319,23 +329,44 @@ func (a *AuthJWT) ValidateAndRotateRefreshToken(ctx context.Context, oldToken st
 		return nil, cerrors.NewBadRequestError("user account is inactive")
 	}
 
-	// Revoke old token before issuing the new one. If revocation fails we
-	// must NOT mint a replacement: the old token would remain reusable and
-	// rotation would silently degrade to "issue extra tokens", letting an
-	// attacker who captured a refresh token replay it indefinitely while the
-	// store is unhealthy.
-	revoked, err := a.refreshTokenRepo.RevokeByTokenIfActive(ctx, oldToken)
-	if err != nil {
-		logger.Error("Failed to revoke refresh token during rotation",
-			zap.Uint("user_id", user.ID), zap.Error(err))
-		return nil, cerrors.NewInternalServerError("failed to rotate refresh token", err)
-	}
+	// Rotate atomically: revoking the old token and minting its replacement must
+	// either both commit or both roll back. Outside a transaction, a failure to
+	// mint after a successful revoke would leave the user with a dead old token
+	// and no replacement — a silent logout that forces re-authentication.
+	var resp *dto.AuthResponse
+	reuseDetected := false
+	err = a.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
+		// Revoke old token before issuing the new one. If revocation fails we
+		// must NOT mint a replacement: the old token would remain reusable and
+		// rotation would silently degrade to "issue extra tokens", letting an
+		// attacker who captured a refresh token replay it indefinitely while the
+		// store is unhealthy.
+		revoked, err := a.refreshTokenRepo.RevokeByTokenIfActive(txCtx, oldToken)
+		if err != nil {
+			logger.Error("Failed to revoke refresh token during rotation",
+				zap.Uint("user_id", user.ID), zap.Error(err))
+			return cerrors.NewInternalServerError("failed to rotate refresh token", err)
+		}
 
-	// The token was active at FindByToken but no longer active by the time we
-	// revoked it: another request already rotated it, i.e. this token is being
-	// reused. Treat it as a breach — revoke every session for the user so a
-	// stolen-then-replayed token cannot outlive detection — and refuse.
-	if !revoked {
+		// The token was active at FindByToken but no longer active by the time we
+		// revoked it: another request already rotated it, i.e. this token is being
+		// reused. Flag it and unwind the transaction — the session-wide revocation
+		// below MUST commit, so it cannot run inside this rolled-back tx. (The
+		// revoke above was a no-op since the row was already inactive, so there is
+		// nothing of value to roll back here.)
+		if !revoked {
+			reuseDetected = true
+			return errRefreshTokenReuse
+		}
+
+		resp, err = a.GenerateTokensForUser(txCtx, user)
+		return err
+	})
+
+	// Reuse is a breach: revoke every session for the user so a stolen-then-
+	// replayed token cannot outlive detection, then refuse. Run outside the
+	// (rolled-back) transaction so the revocation persists.
+	if reuseDetected {
 		logger.Warn("Refresh-token reuse detected during rotation; revoking all sessions",
 			zap.Uint("user_id", user.ID))
 		if err := a.refreshTokenRepo.RevokeAllByUserID(ctx, user.ID); err != nil {
@@ -345,7 +376,11 @@ func (a *AuthJWT) ValidateAndRotateRefreshToken(ctx context.Context, oldToken st
 		return nil, cerrors.NewBadRequestError("invalid or expired refresh token")
 	}
 
-	return a.GenerateTokensForUser(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 // RevokeRefreshToken revokes token when it belongs to userID.
