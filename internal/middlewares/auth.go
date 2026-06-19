@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/pkg/constants/permissions"
 	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/response"
@@ -40,138 +39,60 @@ func (m *Middleware) RequireRole(allowedRoles ...string) gin.HandlerFunc {
 	}
 }
 
-// RequirePermission validates if the user has the required permission
-// - Root users bypass all permission checks
-// - Admin users are checked against their admin_role permissions via Casbin
-// - Other roles are denied access
+// RequirePermission validates that the authenticated user holds permission.
+// The authorization rule itself — root bypasses, non-admin is denied, admin is
+// checked against its admin_role via Casbin — lives in
+// casbin.CheckPermissionWithRoot so every guard (here and the Any/All variants)
+// shares one decision instead of re-deriving it. Denials return a generic 403
+// rather than naming the reason, to avoid leaking authorization internals.
 func (m *Middleware) RequirePermission(permission permissions.Permission) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		requestID := utils.GetRequestIDFromContext(c.Request.Context())
+		ctx := c.Request.Context()
 
-		values, err := utils.ValuesFromContext(c.Request.Context())
+		values, err := utils.ValuesFromContext(ctx)
 		if err != nil {
-			logger.Warn("Failed to get context values in RequirePermission",
-				zap.String("request_id", requestID),
-				zap.Error(err),
-			)
 			c.JSON(http.StatusUnauthorized, response.BuildResponseFailed("unauthorized"))
 			c.Abort()
 			return
 		}
 
-		// Root bypasses all permission checks
-		if values.Role == models.UserRoleRoot.ToString() {
-			logger.Debug("Root user - permission check bypassed",
-				zap.String("request_id", requestID),
-				zap.Uint("user_id", values.UserID),
-				zap.String("permission", permission.String()),
-			)
-			c.Next()
-			return
-		}
-
-		// Only admin role can have granular permissions
-		if values.Role != models.UserRoleAdmin.ToString() {
-			logger.Warn("Access denied - not an admin user",
-				zap.String("request_id", requestID),
-				zap.Uint("user_id", values.UserID),
-				zap.String("user_role", values.Role),
-				zap.String("permission", permission.String()),
-			)
-			c.JSON(http.StatusForbidden, response.BuildResponseFailed("insufficient permissions"))
-			c.Abort()
-			return
-		}
-
-		// Admin must have an admin_role assigned
-		if values.AdminRoleID == nil {
-			logger.Warn("Access denied - admin user has no role assigned",
-				zap.String("request_id", requestID),
-				zap.Uint("user_id", values.UserID),
-				zap.String("permission", permission.String()),
-			)
-			c.JSON(http.StatusForbidden, response.BuildResponseFailed("no admin role assigned"))
-			c.Abort()
-			return
-		}
-
-		// Check permission via Casbin
-		allowed, err := m.casbinClient.CheckPermission(*values.AdminRoleID, permission.String())
+		allowed, err := m.casbinClient.CheckPermissionWithRoot(values.Role, values.AdminRoleID, permission.String())
 		if err != nil {
-			logger.Error("Failed to check permission",
-				zap.String("request_id", requestID),
-				zap.Uint("user_id", values.UserID),
-				zap.Uint("admin_role_id", *values.AdminRoleID),
-				zap.String("permission", permission.String()),
-				zap.Error(err),
-			)
+			logger.Ctx(ctx).Error("Failed to verify permission",
+				zap.String("permission", permission.String()), zap.Error(err))
 			c.JSON(http.StatusInternalServerError, response.BuildResponseFailed("failed to verify permissions"))
 			c.Abort()
 			return
 		}
-
 		if !allowed {
-			logger.Warn("Access denied - permission not granted",
-				zap.String("request_id", requestID),
-				zap.Uint("user_id", values.UserID),
-				zap.Uint("admin_role_id", *values.AdminRoleID),
-				zap.String("permission", permission.String()),
-			)
+			logger.Ctx(ctx).Warn("Access denied",
+				zap.String("permission", permission.String()), zap.String("role", values.Role))
 			c.JSON(http.StatusForbidden, response.BuildResponseFailed("insufficient permissions"))
 			c.Abort()
 			return
 		}
-
-		logger.Debug("Permission check passed",
-			zap.String("request_id", requestID),
-			zap.Uint("user_id", values.UserID),
-			zap.Uint("admin_role_id", *values.AdminRoleID),
-			zap.String("permission", permission.String()),
-		)
 
 		c.Next()
 	}
 }
 
-// RequireAnyPermission validates if the user has at least one of the required permissions
+// RequireAnyPermission allows the request when the user holds at least one of perms.
 func (m *Middleware) RequireAnyPermission(perms ...permissions.Permission) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		requestID := utils.GetRequestIDFromContext(c.Request.Context())
+		ctx := c.Request.Context()
 
-		values, err := utils.ValuesFromContext(c.Request.Context())
+		values, err := utils.ValuesFromContext(ctx)
 		if err != nil {
-			logger.Warn("Failed to get context values in RequireAnyPermission",
-				zap.String("request_id", requestID),
-				zap.Error(err),
-			)
 			c.JSON(http.StatusUnauthorized, response.BuildResponseFailed("unauthorized"))
 			c.Abort()
 			return
 		}
 
-		// Root bypasses all permission checks
-		if values.Role == models.UserRoleRoot.ToString() {
-			c.Next()
-			return
-		}
-
-		// Only admin role can have granular permissions
-		if values.Role != models.UserRoleAdmin.ToString() || values.AdminRoleID == nil {
-			c.JSON(http.StatusForbidden, response.BuildResponseFailed("insufficient permissions"))
-			c.Abort()
-			return
-		}
-
-		// Check if user has any of the required permissions
 		for _, perm := range perms {
-			allowed, err := m.casbinClient.CheckPermission(*values.AdminRoleID, perm.String())
+			allowed, err := m.casbinClient.CheckPermissionWithRoot(values.Role, values.AdminRoleID, perm.String())
 			if err != nil {
-				logger.Error("Failed to check permission",
-					zap.String("request_id", requestID),
-					zap.Uint("user_id", values.UserID),
-					zap.String("permission", perm.String()),
-					zap.Error(err),
-				)
+				logger.Ctx(ctx).Error("Failed to verify permission",
+					zap.String("permission", perm.String()), zap.Error(err))
 				continue
 			}
 			if allowed {
@@ -180,73 +101,35 @@ func (m *Middleware) RequireAnyPermission(perms ...permissions.Permission) gin.H
 			}
 		}
 
-		permStrings := make([]string, len(perms))
-		for i, p := range perms {
-			permStrings[i] = p.String()
-		}
-
-		logger.Warn("Access denied - none of the required permissions granted",
-			zap.String("request_id", requestID),
-			zap.Uint("user_id", values.UserID),
-			zap.Uint("admin_role_id", *values.AdminRoleID),
-			zap.Strings("required_permissions", permStrings),
-		)
-
+		logger.Ctx(ctx).Warn("Access denied", zap.String("role", values.Role))
 		c.JSON(http.StatusForbidden, response.BuildResponseFailed("insufficient permissions"))
 		c.Abort()
 	}
 }
 
-// RequireAllPermissions validates if the user has all of the required permissions
+// RequireAllPermissions allows the request only when the user holds every perm.
 func (m *Middleware) RequireAllPermissions(perms ...permissions.Permission) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		requestID := utils.GetRequestIDFromContext(c.Request.Context())
+		ctx := c.Request.Context()
 
-		values, err := utils.ValuesFromContext(c.Request.Context())
+		values, err := utils.ValuesFromContext(ctx)
 		if err != nil {
-			logger.Warn("Failed to get context values in RequireAllPermissions",
-				zap.String("request_id", requestID),
-				zap.Error(err),
-			)
 			c.JSON(http.StatusUnauthorized, response.BuildResponseFailed("unauthorized"))
 			c.Abort()
 			return
 		}
 
-		// Root bypasses all permission checks
-		if values.Role == models.UserRoleRoot.ToString() {
-			c.Next()
-			return
-		}
-
-		// Only admin role can have granular permissions
-		if values.Role != models.UserRoleAdmin.ToString() || values.AdminRoleID == nil {
-			c.JSON(http.StatusForbidden, response.BuildResponseFailed("insufficient permissions"))
-			c.Abort()
-			return
-		}
-
-		// Check if user has all required permissions
 		for _, perm := range perms {
-			allowed, err := m.casbinClient.CheckPermission(*values.AdminRoleID, perm.String())
+			allowed, err := m.casbinClient.CheckPermissionWithRoot(values.Role, values.AdminRoleID, perm.String())
 			if err != nil {
-				logger.Error("Failed to check permission",
-					zap.String("request_id", requestID),
-					zap.Uint("user_id", values.UserID),
-					zap.String("permission", perm.String()),
-					zap.Error(err),
-				)
+				logger.Ctx(ctx).Error("Failed to verify permission",
+					zap.String("permission", perm.String()), zap.Error(err))
 				c.JSON(http.StatusInternalServerError, response.BuildResponseFailed("failed to verify permissions"))
 				c.Abort()
 				return
 			}
 			if !allowed {
-				logger.Warn("Access denied - missing required permission",
-					zap.String("request_id", requestID),
-					zap.Uint("user_id", values.UserID),
-					zap.Uint("admin_role_id", *values.AdminRoleID),
-					zap.String("missing_permission", perm.String()),
-				)
+				logger.Ctx(ctx).Warn("Access denied", zap.String("missing_permission", perm.String()))
 				c.JSON(http.StatusForbidden, response.BuildResponseFailed("insufficient permissions"))
 				c.Abort()
 				return

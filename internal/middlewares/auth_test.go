@@ -112,7 +112,6 @@ func TestRequirePermissionRejectsAdminWithoutAssignedRole(t *testing.T) {
 	rec := serve(newAuthRouter(nil, identity, m.RequirePermission(permissions.UserRead)))
 
 	require.Equal(t, http.StatusForbidden, rec.Code)
-	require.Contains(t, rec.Body.String(), "no admin role assigned")
 }
 
 func TestRequirePermissionAllowsGrantedPermission(t *testing.T) {

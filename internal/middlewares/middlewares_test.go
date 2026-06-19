@@ -52,8 +52,17 @@ func (m *mockCasbinClient) CheckPermission(roleID uint, permission string) (bool
 	return m.checkPermissionFn(roleID, permission)
 }
 
-func (m *mockCasbinClient) CheckPermissionWithRoot(string, *uint, string) (bool, error) {
-	panic("unexpected CheckPermissionWithRoot call")
+// CheckPermissionWithRoot mirrors the real client's decision so the guards
+// exercise the production authorization rule: root bypasses, non-admin (or an
+// admin with no role) is denied, and admins fall through to checkPermissionFn.
+func (m *mockCasbinClient) CheckPermissionWithRoot(userRole string, adminRoleID *uint, permission string) (bool, error) {
+	if userRole == "root" {
+		return true, nil
+	}
+	if userRole != "admin" || adminRoleID == nil {
+		return false, nil
+	}
+	return m.CheckPermission(*adminRoleID, permission)
 }
 
 func (m *mockCasbinClient) DeleteRole(uint) error {
