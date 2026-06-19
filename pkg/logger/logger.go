@@ -175,7 +175,16 @@ func With(fields ...zap.Field) *zap.Logger {
 // adjusted so file:line points at the .Info/.Error call, matching what the
 // global helpers report.
 func Ctx(ctx context.Context, fields ...zap.Field) *zap.Logger {
-	if Log == nil {
+	return CtxWith(ctx, Log, fields...)
+}
+
+// CtxWith is Ctx against an explicitly supplied base logger instead of the
+// package global. Use it from components that receive their *zap.Logger via
+// dependency injection so they depend on the injected logger rather than the
+// mutable global — while still getting the same request-scoped field
+// enrichment and caller-skip behaviour as Ctx.
+func CtxWith(ctx context.Context, base *zap.Logger, fields ...zap.Field) *zap.Logger {
+	if base == nil {
 		return zap.NewNop()
 	}
 	if id := utils.GetRequestIDFromContext(ctx); id != "" {
@@ -187,5 +196,5 @@ func Ctx(ctx context.Context, fields ...zap.Field) *zap.Logger {
 	if role, ok := utils.GetRoleFromContext(ctx); ok && role != "" {
 		fields = append(fields, zap.String("role", role))
 	}
-	return Log.WithOptions(zap.AddCallerSkip(-1)).With(fields...)
+	return base.WithOptions(zap.AddCallerSkip(-1)).With(fields...)
 }

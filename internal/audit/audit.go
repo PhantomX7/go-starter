@@ -10,12 +10,20 @@ import (
 	"sync"
 
 	"github.com/PhantomX7/athleton/internal/models"
-	"github.com/PhantomX7/athleton/internal/modules/log/repository"
 	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/utils"
 
 	"go.uber.org/zap"
 )
+
+// LogWriter is the narrow persistence dependency audit.Record needs: the
+// ability to append a single log row. Declared here — at the consumer — so
+// callers hand audit a one-method contract instead of the full log-module
+// repository, and so this package does not import another module's repository.
+// The log module's LogRepository satisfies it structurally.
+type LogWriter interface {
+	Create(ctx context.Context, log *models.Log) error
+}
 
 // pending tracks in-flight background writes so graceful shutdown can wait
 // for them (via Drain) before the database connection is closed.
@@ -67,7 +75,7 @@ func UserName(ctx context.Context) string {
 // ctx. Cancellation is detached (context.WithoutCancel) so the write can
 // complete after the originating request returns, but request-scoped logging
 // fields are preserved so a failed write stays correlated to its request.
-func Record(ctx context.Context, repo repository.LogRepository, entry Entry) {
+func Record(ctx context.Context, repo LogWriter, entry Entry) {
 	var userID *uint
 	if id, ok := utils.GetUserIDFromContext(ctx); ok {
 		userID = &id

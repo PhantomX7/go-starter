@@ -10,8 +10,7 @@ import (
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/models"
-	adminrolerepo "github.com/PhantomX7/athleton/internal/modules/admin_role/repository"
-	logRepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
+	logrepo "github.com/PhantomX7/athleton/internal/modules/log/repository"
 	rtokenrepo "github.com/PhantomX7/athleton/internal/modules/refresh_token/repository"
 	"github.com/PhantomX7/athleton/internal/modules/user/repository"
 	"github.com/PhantomX7/athleton/libs/casbin"
@@ -37,30 +36,30 @@ type UserService interface {
 
 // userService implements the UserService interface
 type userService struct {
-	userRepository      repository.UserRepository
-	adminRoleRepository adminrolerepo.AdminRoleRepository
-	refreshTokenRepo    rtokenrepo.RefreshTokenRepository
-	logRepository       logRepository.LogRepository
-	casbinClient        casbin.Client
-	txManager           transaction_manager.TransactionManager
+	userRepository   repository.UserRepository
+	refreshTokenRepo rtokenrepo.RefreshTokenRepository
+	logRepository    logrepo.LogRepository
+	casbinClient     casbin.Client
+	txManager        transaction_manager.TransactionManager
+	log              *zap.Logger
 }
 
 // NewUserService creates a new instance of UserService
 func NewUserService(
 	userRepository repository.UserRepository,
-	adminRoleRepository adminrolerepo.AdminRoleRepository,
 	refreshTokenRepo rtokenrepo.RefreshTokenRepository,
-	logRepository logRepository.LogRepository,
+	logRepository logrepo.LogRepository,
 	casbinClient casbin.Client,
 	txManager transaction_manager.TransactionManager,
+	log *zap.Logger,
 ) UserService {
 	return &userService{
-		userRepository:      userRepository,
-		adminRoleRepository: adminRoleRepository,
-		refreshTokenRepo:    refreshTokenRepo,
-		logRepository:       logRepository,
-		casbinClient:        casbinClient,
-		txManager:           txManager,
+		userRepository:   userRepository,
+		refreshTokenRepo: refreshTokenRepo,
+		logRepository:    logRepository,
+		casbinClient:     casbinClient,
+		txManager:        txManager,
+		log:              log,
 	}
 }
 
@@ -143,7 +142,7 @@ func (s *userService) AssignAdminRole(ctx context.Context, userID uint, req *dto
 
 		// Prevent modifying root users
 		if user.Role == models.UserRoleRoot {
-			logger.Ctx(ctx, zap.Uint("user_id", userID)).Warn("Attempted to modify root user")
+			logger.CtxWith(ctx, s.log, zap.Uint("user_id", userID)).Warn("Attempted to modify root user")
 			return cerrors.NewForbiddenError("cannot modify root user")
 		}
 

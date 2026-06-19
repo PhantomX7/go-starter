@@ -15,34 +15,41 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// NewUserPagination creates a new pagination instance for users
-func NewUserPagination(conditions map[string][]string) *pagination.Pagination {
-	filterDefinition := pagination.NewFilterDefinition().
-		AddFilter("username", pagination.FilterConfig{
-			Column: generated.User.Username,
-			Type:   pagination.FilterTypeString,
-		}).
-		AddFilter("email", pagination.FilterConfig{
-			Column: generated.User.Email,
-			Type:   pagination.FilterTypeString,
-		}).
-		AddFilter("role", pagination.FilterConfig{
-			Field: "role", // enum column is models.UserRole, not a scalar field helper — stay on the string path
-			Type:  pagination.FilterTypeEnum,
-			EnumValues: []string{
-				models.UserRoleAdmin.ToString(),
-				models.UserRoleUser.ToString(),
-			},
-		}).
-		AddFilter("created_at", pagination.FilterConfig{
-			Column: generated.Timestamp.CreatedAt,
-			Type:   pagination.FilterTypeDate,
-		}).
-		AddSort("id", pagination.SortConfig{Column: generated.User.ID, Allowed: true}).
-		AddSort("username", pagination.SortConfig{Column: generated.User.Username, Allowed: true}).
-		AddSort("created_at", pagination.SortConfig{Column: generated.Timestamp.CreatedAt, Allowed: true})
+// userFilterDefinition is the static filter/sort schema for the user list
+// endpoint. It is built once at package init rather than per request: only the
+// query-string conditions change between requests, while the definition itself
+// is immutable after construction. NewPagination treats it as read-only (it
+// only reads the filters/sorts maps), so a single shared instance is safe to
+// use concurrently across request goroutines.
+var userFilterDefinition = pagination.NewFilterDefinition().
+	AddFilter("username", pagination.FilterConfig{
+		Column: generated.User.Username,
+		Type:   pagination.FilterTypeString,
+	}).
+	AddFilter("email", pagination.FilterConfig{
+		Column: generated.User.Email,
+		Type:   pagination.FilterTypeString,
+	}).
+	AddFilter("role", pagination.FilterConfig{
+		Field: "role", // enum column is models.UserRole, not a scalar field helper — stay on the string path
+		Type:  pagination.FilterTypeEnum,
+		EnumValues: []string{
+			models.UserRoleAdmin.ToString(),
+			models.UserRoleUser.ToString(),
+		},
+	}).
+	AddFilter("created_at", pagination.FilterConfig{
+		Column: generated.Timestamp.CreatedAt,
+		Type:   pagination.FilterTypeDate,
+	}).
+	AddSort("id", pagination.SortConfig{Column: generated.User.ID, Allowed: true}).
+	AddSort("username", pagination.SortConfig{Column: generated.User.Username, Allowed: true}).
+	AddSort("created_at", pagination.SortConfig{Column: generated.Timestamp.CreatedAt, Allowed: true})
 
-	return pagination.NewPagination(conditions, filterDefinition, pagination.PaginationOptions{
+// NewUserPagination binds the per-request query conditions to the shared,
+// pre-built user filter definition.
+func NewUserPagination(conditions map[string][]string) *pagination.Pagination {
+	return pagination.NewPagination(conditions, userFilterDefinition, pagination.PaginationOptions{
 		DefaultLimit: 20,
 		MaxLimit:     300,
 		DefaultOrder: "id asc",

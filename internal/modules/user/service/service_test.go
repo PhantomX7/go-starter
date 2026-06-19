@@ -14,7 +14,6 @@ import (
 
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/models"
-	adminrolerepository "github.com/PhantomX7/athleton/internal/modules/admin_role/repository"
 	logrepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
 	refreshtokenrepository "github.com/PhantomX7/athleton/internal/modules/refresh_token/repository"
 	userrepository "github.com/PhantomX7/athleton/internal/modules/user/repository"
@@ -23,7 +22,6 @@ import (
 	"github.com/PhantomX7/athleton/libs/transaction_manager"
 	"github.com/PhantomX7/athleton/pkg/constants/permissions"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
-	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/repository"
 	"github.com/PhantomX7/athleton/pkg/response"
@@ -90,35 +88,6 @@ func (m *mockUserRepository) FindByEmail(ctx context.Context, email string) (*mo
 }
 
 var _ userrepository.UserRepository = (*mockUserRepository)(nil)
-
-type mockAdminRoleRepository struct{}
-
-func (m *mockAdminRoleRepository) Create(context.Context, *models.AdminRole) error {
-	panic("unexpected Create call")
-}
-func (m *mockAdminRoleRepository) Update(context.Context, *models.AdminRole) error {
-	panic("unexpected Update call")
-}
-func (m *mockAdminRoleRepository) Delete(context.Context, *models.AdminRole) error {
-	panic("unexpected Delete call")
-}
-func (m *mockAdminRoleRepository) FindByID(context.Context, uint, ...repository.Association) (*models.AdminRole, error) {
-	panic("unexpected FindByID call")
-}
-func (m *mockAdminRoleRepository) FindAll(context.Context, *pagination.Pagination) ([]*models.AdminRole, error) {
-	panic("unexpected FindAll call")
-}
-func (m *mockAdminRoleRepository) Count(context.Context, *pagination.Pagination) (int64, error) {
-	panic("unexpected Count call")
-}
-func (m *mockAdminRoleRepository) FindByName(context.Context, string) (*models.AdminRole, error) {
-	panic("unexpected FindByName call")
-}
-func (m *mockAdminRoleRepository) CountUsersWithRole(context.Context, uint) (int64, error) {
-	panic("unexpected CountUsersWithRole call")
-}
-
-var _ adminrolerepository.AdminRoleRepository = (*mockAdminRoleRepository)(nil)
 
 type mockRefreshTokenRepository struct {
 	revokeAllByUserIDFn func(context.Context, uint) error
@@ -253,19 +222,7 @@ func passthroughTxManager() *mockTxManager {
 	}
 }
 
-func setupLogger(t *testing.T) {
-	t.Helper()
-
-	prev := logger.Log
-	logger.Log = zap.NewNop()
-	t.Cleanup(func() {
-		logger.Log = prev
-	})
-}
-
 func TestUserServiceIndexReturnsUsersAndMeta(t *testing.T) {
-	setupLogger(t)
-
 	pg := pagination.NewPagination(map[string][]string{"limit": {"2"}}, nil, pagination.PaginationOptions{})
 	repo := &mockUserRepository{
 		findAllFn: func(ctx context.Context, gotPg *pagination.Pagination) ([]*models.User, error) {
@@ -283,7 +240,7 @@ func TestUserServiceIndexReturnsUsersAndMeta(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, &mockTxManager{})
+	svc := service.NewUserService(repo, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, &mockTxManager{}, zap.NewNop())
 	ctx := utils.SetRequestIDToContext(context.Background(), "req-1")
 
 	users, meta, err := svc.Index(ctx, pg)
@@ -294,8 +251,6 @@ func TestUserServiceIndexReturnsUsersAndMeta(t *testing.T) {
 }
 
 func TestUserServiceFindByIDHydratesAdminRolePermissions(t *testing.T) {
-	setupLogger(t)
-
 	roleID := uint(9)
 	repo := &mockUserRepository{
 		findByIDFn: func(ctx context.Context, id uint, preloads ...repository.Association) (*models.User, error) {
@@ -320,7 +275,7 @@ func TestUserServiceFindByIDHydratesAdminRolePermissions(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, casbinClient, &mockTxManager{})
+	svc := service.NewUserService(repo, &mockRefreshTokenRepository{}, &mockLogRepository{}, casbinClient, &mockTxManager{}, zap.NewNop())
 	ctx := utils.SetRequestIDToContext(context.Background(), "req-2")
 
 	user, err := svc.FindByID(ctx, 7)
@@ -331,15 +286,13 @@ func TestUserServiceFindByIDHydratesAdminRolePermissions(t *testing.T) {
 }
 
 func TestUserServiceAssignAdminRoleRejectsRootUser(t *testing.T) {
-	setupLogger(t)
-
 	repo := &mockUserRepository{
 		findByIDFn: func(context.Context, uint, ...repository.Association) (*models.User, error) {
 			return &models.User{ID: 3, Role: models.UserRoleRoot, Name: "Root"}, nil
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, passthroughTxManager())
+	svc := service.NewUserService(repo, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, passthroughTxManager(), zap.NewNop())
 
 	user, err := svc.AssignAdminRole(context.Background(), 3, &dto.UserAssignAdminRoleRequest{AdminRoleID: 5})
 
@@ -349,8 +302,6 @@ func TestUserServiceAssignAdminRoleRejectsRootUser(t *testing.T) {
 }
 
 func TestUserServiceAssignAdminRoleUpdatesUserInTransaction(t *testing.T) {
-	setupLogger(t)
-
 	logCh := make(chan *models.Log, 1)
 	current := &models.User{ID: 6, Name: "Admin User", Role: models.UserRoleAdmin}
 	repo := &mockUserRepository{
@@ -379,7 +330,7 @@ func TestUserServiceAssignAdminRoleUpdatesUserInTransaction(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, logRepo, &mockCasbinClient{}, txManager)
+	svc := service.NewUserService(repo, &mockRefreshTokenRepository{}, logRepo, &mockCasbinClient{}, txManager, zap.NewNop())
 	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{UserID: 1, UserName: "Root"})
 
 	user, err := svc.AssignAdminRole(ctx, 6, &dto.UserAssignAdminRoleRequest{AdminRoleID: 5})
@@ -397,8 +348,6 @@ func TestUserServiceAssignAdminRoleUpdatesUserInTransaction(t *testing.T) {
 }
 
 func TestUserServiceAssignAdminRolePropagatesUpdateErrorFromTransaction(t *testing.T) {
-	setupLogger(t)
-
 	expectedErr := errors.New("update failed")
 	repo := &mockUserRepository{
 		findByIDFn: func(context.Context, uint, ...repository.Association) (*models.User, error) {
@@ -409,7 +358,7 @@ func TestUserServiceAssignAdminRolePropagatesUpdateErrorFromTransaction(t *testi
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, passthroughTxManager())
+	svc := service.NewUserService(repo, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, passthroughTxManager(), zap.NewNop())
 
 	user, err := svc.AssignAdminRole(context.Background(), 6, &dto.UserAssignAdminRoleRequest{AdminRoleID: 5})
 
@@ -418,8 +367,6 @@ func TestUserServiceAssignAdminRolePropagatesUpdateErrorFromTransaction(t *testi
 }
 
 func TestUserServiceChangePasswordFailsWhenTokenRevocationFails(t *testing.T) {
-	setupLogger(t)
-
 	expectedErr := errors.New("revoke failed")
 	repo := &mockUserRepository{
 		findByIDFn: func(context.Context, uint, ...repository.Association) (*models.User, error) {
@@ -436,7 +383,7 @@ func TestUserServiceChangePasswordFailsWhenTokenRevocationFails(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, refreshRepo, &mockLogRepository{}, &mockCasbinClient{}, passthroughTxManager())
+	svc := service.NewUserService(repo, refreshRepo, &mockLogRepository{}, &mockCasbinClient{}, passthroughTxManager(), zap.NewNop())
 
 	err := svc.ChangePassword(context.Background(), 10, &dto.ChangeAdminPasswordRequest{NewPassword: "new-password"})
 
@@ -444,8 +391,6 @@ func TestUserServiceChangePasswordFailsWhenTokenRevocationFails(t *testing.T) {
 }
 
 func TestUserServiceChangePasswordUpdatesHashRevokesTokensAndLogs(t *testing.T) {
-	setupLogger(t)
-
 	logCh := make(chan *models.Log, 1)
 	current := &models.User{
 		ID:       10,
@@ -483,7 +428,7 @@ func TestUserServiceChangePasswordUpdatesHashRevokesTokensAndLogs(t *testing.T) 
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, refreshRepo, logRepo, &mockCasbinClient{}, passthroughTxManager())
+	svc := service.NewUserService(repo, refreshRepo, logRepo, &mockCasbinClient{}, passthroughTxManager(), zap.NewNop())
 	ctx := utils.SetRequestIDToContext(context.Background(), "req-3")
 	ctx = utils.NewContextWithValues(ctx, utils.ContextValues{UserID: 1, UserName: "Root"})
 
@@ -502,15 +447,13 @@ func TestUserServiceChangePasswordUpdatesHashRevokesTokensAndLogs(t *testing.T) 
 }
 
 func TestUserServiceChangePasswordRejectsNonAdmin(t *testing.T) {
-	setupLogger(t)
-
 	repo := &mockUserRepository{
 		findByIDFn: func(context.Context, uint, ...repository.Association) (*models.User, error) {
 			return &models.User{ID: 4, Role: models.UserRoleUser}, nil
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, &mockTxManager{})
+	svc := service.NewUserService(repo, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, &mockTxManager{}, zap.NewNop())
 
 	err := svc.ChangePassword(context.Background(), 4, &dto.ChangeAdminPasswordRequest{NewPassword: "new-password"})
 
@@ -519,8 +462,6 @@ func TestUserServiceChangePasswordRejectsNonAdmin(t *testing.T) {
 }
 
 func TestUserServiceIndexReturnsRepositoryError(t *testing.T) {
-	setupLogger(t)
-
 	expectedErr := errors.New("find all failed")
 	repo := &mockUserRepository{
 		findAllFn: func(context.Context, *pagination.Pagination) ([]*models.User, error) {
@@ -532,7 +473,7 @@ func TestUserServiceIndexReturnsRepositoryError(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, &mockTxManager{})
+	svc := service.NewUserService(repo, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, &mockTxManager{}, zap.NewNop())
 
 	users, meta, err := svc.Index(context.Background(), pagination.NewPagination(nil, nil, pagination.PaginationOptions{}))
 
