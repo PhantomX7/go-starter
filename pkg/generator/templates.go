@@ -33,6 +33,7 @@ package {{.SnakeCase}}
 import (
 	"github.com/PhantomX7/athleton/internal/modules/{{.SnakeCase}}/controller"
 	"github.com/PhantomX7/athleton/internal/routes"
+	"github.com/PhantomX7/athleton/pkg/constants/permissions"
 )
 
 type routeRegistrar struct {
@@ -47,11 +48,11 @@ func NewRoutes(controller controller.{{.PascalCase}}Controller) routes.Registrar
 // RegisterRoutes mounts the {{.KebabCase}} endpoints.
 func (r *routeRegistrar) RegisterRoutes(ctx *routes.Context) {
 	{{.CamelCase}}Route := ctx.Admin.Group("/{{.KebabCase}}")
-	{{.CamelCase}}Route.GET("", r.controller.Index)
-	{{.CamelCase}}Route.GET("/:id", r.controller.FindByID)
-	{{.CamelCase}}Route.POST("", r.controller.Create)
-	{{.CamelCase}}Route.PATCH("/:id", r.controller.Update)
-	{{.CamelCase}}Route.DELETE("/:id", r.controller.Delete)
+	{{.CamelCase}}Route.GET("", ctx.MW.RequirePermission(permissions.{{.PascalCase}}Read), r.controller.Index)
+	{{.CamelCase}}Route.GET("/:id", ctx.MW.RequirePermission(permissions.{{.PascalCase}}Read), r.controller.FindByID)
+	{{.CamelCase}}Route.POST("", ctx.MW.RequirePermission(permissions.{{.PascalCase}}Create), r.controller.Create)
+	{{.CamelCase}}Route.PATCH("/:id", ctx.MW.RequirePermission(permissions.{{.PascalCase}}Update), r.controller.Update)
+	{{.CamelCase}}Route.DELETE("/:id", ctx.MW.RequirePermission(permissions.{{.PascalCase}}Delete), r.controller.Delete)
 }
 `
 

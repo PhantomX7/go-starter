@@ -51,8 +51,10 @@ func (c *CaseConverter) normalizeInput(input string) string {
 	spaceRegex := regexp.MustCompile(`\s+`)
 	input = spaceRegex.ReplaceAllString(input, " ")
 
-	// Replace spaces with underscores for processing
+	// Replace spaces and hyphens with underscores so kebab-case input flows
+	// through the same snake_case pipeline as every other format.
 	input = strings.ReplaceAll(input, " ", "_")
+	input = strings.ReplaceAll(input, "-", "_")
 
 	// Remove multiple underscores
 	underscoreRegex := regexp.MustCompile(`_+`)

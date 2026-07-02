@@ -16,12 +16,13 @@ name    		  ?= new_migration
 module_name       ?=
 model             ?= 1
 dto               ?= 1
+permissions       ?= 1
 force             ?= 0
 
 # Construct database URL for Atlas
 DATABASE_URL := "$(DATABASE_DRIVER)://$(DATABASE_USERNAME):$(DATABASE_PASSWORD)@$(DATABASE_HOST):$(DATABASE_PORT)/$(DATABASE_DATABASE)?sslmode=$(DATABASE_SSLMODE)"
-# The generator defaults -model/-dto to true, so only opt-outs and -force are passed through.
-GENERATOR_FLAGS := $(if $(filter 0 false no,$(model)),-model=false,) $(if $(filter 0 false no,$(dto)),-dto=false,) $(if $(filter 1 true yes,$(force)),-force,)
+# The generator defaults -model/-dto/-permissions to true, so only opt-outs and -force are passed through.
+GENERATOR_FLAGS := $(if $(filter 0 false no,$(model)),-model=false,) $(if $(filter 0 false no,$(dto)),-dto=false,) $(if $(filter 0 false no,$(permissions)),-permissions=false,) $(if $(filter 1 true yes,$(force)),-force,)
 
 .PHONY: dep vendor dev run migrate-create migrate-up migrate-down migrate-status migrate-hash \
 	debug swag swag-format lint lint-fix fmt lint-install hooks-install hooks-uninstall \
@@ -107,9 +108,9 @@ test-html:
 	go test $$(go list ./... | grep -v /mock/) -coverprofile cp.out
 	go tool cover -html=cp.out
 
-# Usage: make generate-module module_name=inventory_item [model=0] [dto=0] [force=1]
+# Usage: make generate-module module_name=inventory_item [model=0] [dto=0] [permissions=0] [force=1]
 generate-module:
-	$(if $(strip $(module_name)),,$(error Usage: make generate-module module_name=<feature_name> [model=0] [dto=0] [force=1]))
+	$(if $(strip $(module_name)),,$(error Usage: make generate-module module_name=<feature_name> [model=0] [dto=0] [permissions=0] [force=1]))
 	@echo "Generating module '$(module_name)' with flags: $(GENERATOR_FLAGS)"
 	go run ./cmd/generate/main.go -name $(module_name) $(GENERATOR_FLAGS)
 

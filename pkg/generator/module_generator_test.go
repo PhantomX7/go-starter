@@ -98,6 +98,28 @@ func TestGenerateModuleFreshDirectory(t *testing.T) {
 	require.Equal(t, 1, strings.Count(string(registry), "inventory_item.Module,"))
 }
 
+func TestGeneratedRoutesArePermissionGuarded(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	writeTestRegistry(t, tempDir)
+
+	gen := NewModuleGenerator(tempDir, false)
+	require.NoError(t, gen.GenerateModule("blog_post"))
+
+	raw, err := os.ReadFile(filepath.Join(tempDir, "blog_post", "routes.go"))
+	require.NoError(t, err)
+	content := string(raw)
+
+	// Every generated admin endpoint must carry a permission guard, matching
+	// how the hand-written modules (user, admin_role, log) wire their routes.
+	require.Contains(t, content, `"github.com/PhantomX7/athleton/pkg/constants/permissions"`)
+	require.Contains(t, content, "ctx.MW.RequirePermission(permissions.BlogPostRead)")
+	require.Contains(t, content, "ctx.MW.RequirePermission(permissions.BlogPostCreate)")
+	require.Contains(t, content, "ctx.MW.RequirePermission(permissions.BlogPostUpdate)")
+	require.Contains(t, content, "ctx.MW.RequirePermission(permissions.BlogPostDelete)")
+}
+
 // requireGeneratedModuleFiles asserts the full generated file layout exists
 // and that every file is non-empty.
 func requireGeneratedModuleFiles(t *testing.T, moduleDir string) {

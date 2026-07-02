@@ -13,6 +13,7 @@ The Module Generator is a powerful tool that automatically creates complete Go m
 - **Typed Pagination**: Filter/sort registrations use the typed `internal/generated` field helpers and the GORM-derived plural table name
 - **GORM Helper Refresh**: Automatically runs `go generate ./internal/models/...` after creating a model so `internal/generated` stays in sync
 - **Registry Wiring**: Adds the new module to `internal/modules/modules.go` automatically (idempotent)
+- **Permission Registration**: Registers `<resource>:create/read/update/delete` permissions in `pkg/constants/permissions/permissions.go` and guards every generated admin route with `RequirePermission` (disable with `-permissions=false`; idempotent)
 - **Overwrite Protection**: Refuses to overwrite an existing module/model/DTO unless `-force` is passed
 - **Formatted Output**: All generated files are run through gofmt before being written
 - **Validation**: Validates module names against Go naming conventions and reserved keywords
@@ -60,12 +61,14 @@ go run cmd/generate/main.go -help
 | `-name string` | Name of the module to generate (required) |
 | `-model` | Also generate the corresponding model file (default `true`) |
 | `-dto` | Also generate the corresponding DTO file (default `true`) |
+| `-permissions` | Also register CRUD permissions for the module (default `true`) |
 | `-force` | Overwrite existing module/model/DTO files |
 | `-help` | Show help message |
 
-> A module generated without its model and DTO does not compile (the controller
-> references `dto.<X>CreateRequest` and the service references `models.<X>`), so
-> only disable them when those files already exist.
+> A module generated without its model, DTO, and permissions does not compile
+> (the controller references `dto.<X>CreateRequest`, the service references
+> `models.<X>`, and the route registrar references `permissions.<X>Read`), so
+> only disable them when those declarations already exist.
 
 ## Case Conversions
 
@@ -166,7 +169,8 @@ internal/generated/
 └── {snake_case_name}.go   (refreshed via go generate)
 ```
 
-The module is also registered automatically in `internal/modules/modules.go`.
+The module is also registered automatically in `internal/modules/modules.go`,
+and its CRUD permissions are added to `pkg/constants/permissions/permissions.go`.
 
 ## Generated Files
 
@@ -227,15 +231,16 @@ The generator validates module names to ensure:
 After generating a module:
 
 1. **Fill in the business logic** — the generated service/repository/controller are a working CRUD skeleton.
-2. **Adjust the route registrar** (`routes.go`) if the feature is not standard admin CRUD. Module registration in `internal/modules/modules.go` and route mounting happen automatically.
-3. **Run database migrations** for the new model:
+2. **Adjust the route registrar** (`routes.go`) if the feature is not standard admin CRUD. Module registration in `internal/modules/modules.go`, route mounting, and permission registration happen automatically.
+3. **Assign the new permissions to admin roles** — the generated routes are guarded with `RequirePermission`, so non-root admins need the `<resource>:*` grants before they can use the endpoints (the root role bypasses permission checks).
+4. **Run database migrations** for the new model:
 
    ```bash
    make migrate-create name=create_{snake_case_name}_table
    make migrate-up
    ```
 
-4. **Replace the placeholder tests** (`*_test.go` files are generated as skipped TODOs).
+5. **Extend the generated tests** (`*_test.go` files ship with real CRUD tests; grow them alongside your business logic).
 
 ## Best Practices
 
@@ -276,11 +281,13 @@ import "github.com/PhantomX7/athleton/pkg/generator"
 moduleGen := generator.NewModuleGenerator("internal/modules", false)
 modelGen := generator.NewModelGenerator("internal/models", false)
 dtoGen := generator.NewDTOGenerator("internal/dto", false)
+permGen := generator.NewPermissionGenerator("pkg/constants/permissions/permissions.go")
 
 // Generate files
 err := moduleGen.GenerateModule("productCategory")
 err = modelGen.GenerateModel("productCategory")
 err = dtoGen.GenerateDTO("productCategory")
+err = permGen.GeneratePermissions("productCategory")
 ```
 
 ## Contributing

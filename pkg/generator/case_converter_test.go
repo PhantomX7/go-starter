@@ -110,6 +110,18 @@ func TestConvertModuleDataKebabInput(t *testing.T) {
 	require.Equal(t, "UserProfile", got.PascalCase)
 	require.Equal(t, "user-profile", got.KebabCase)
 	require.Equal(t, "user_profiles", got.TableName)
+	// LowerCase is spliced into Go identifiers by the templates, so the hyphen
+	// must not survive normalization.
+	require.Equal(t, "userprofile", got.LowerCase)
+}
+
+func TestValidateModuleNameAcceptsKebabCase(t *testing.T) {
+	t.Parallel()
+
+	// DetectInputFormat and ConvertModuleData both support kebab-case, so
+	// validation must accept it too instead of failing on the hyphen.
+	converter := NewCaseConverter()
+	require.NoError(t, converter.ValidateModuleName("user-profile"))
 }
 
 func TestValidateModuleName(t *testing.T) {
