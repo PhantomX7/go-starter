@@ -130,6 +130,38 @@ func TestConfigControllerUpdateReturnsSuccessResponse(t *testing.T) {
 	require.Equal(t, "New Value", data["value"])
 }
 
+func TestConfigControllerUpdateRejectsEmptyValue(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := &mockConfigService{
+		updateFn: func(context.Context, uint, *dto.ConfigUpdateRequest) (*models.Config, error) {
+			t.Fatal("Update should not be called when the value is missing")
+			return nil, nil
+		},
+	}
+
+	ctrl := controller.NewConfigController(svc)
+
+	// Both an absent field and an explicit empty string must fail binding —
+	// otherwise a PUT with {} silently blanks the config value.
+	for _, payload := range []string{`{}`, `{"value":""}`} {
+		rec := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(rec)
+		ctx.Request = httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodPut,
+			"/config/5",
+			bytes.NewBufferString(payload),
+		)
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		ctx.Params = gin.Params{{Key: "id", Value: "5"}}
+
+		ctrl.Update(ctx)
+
+		require.NotEmpty(t, ctx.Errors, "payload %s must record a binding error", payload)
+	}
+}
+
 func TestConfigControllerUpdateRejectsInvalidID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -2,7 +2,7 @@ package dto
 
 // ConfigUpdateRequest defines the structure for updating a config
 type ConfigUpdateRequest struct {
-	Value string `json:"value" validate:"required"`
+	Value string `json:"value" form:"value" binding:"required"`
 }
 
 // ConfigResponse defines the structure for config response

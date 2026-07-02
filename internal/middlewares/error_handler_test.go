@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PhantomX7/athleton/internal/dto"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 )
 
@@ -38,7 +37,10 @@ func TestErrorHandlerLeavesSuccessfulRequestsUntouched(t *testing.T) {
 
 func TestErrorHandlerFormatsValidationErrors(t *testing.T) {
 	r := newErrorHandlerRouter(func(c *gin.Context) {
-		var req dto.PostCreateRequest
+		var req struct {
+			Name        string `json:"name" binding:"required"`
+			Description string `json:"description"`
+		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			_ = c.Error(err).SetType(gin.ErrorTypeBind)
 		}
@@ -93,6 +95,24 @@ func TestErrorHandlerUsesAppErrorStatusCode(t *testing.T) {
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	require.Equal(t, "invalid credentials", body["message"])
+}
+
+func TestErrorHandlerMapsMaxBytesErrorTo413(t *testing.T) {
+	// A body that overflows http.MaxBytesReader surfaces from ShouldBind as
+	// *http.MaxBytesError; the contract promised by BodySizeLimit is a 413,
+	// not the generic 400/500.
+	r := newErrorHandlerRouter(func(c *gin.Context) {
+		_ = c.Error(&http.MaxBytesError{Limit: 1024}).SetType(gin.ErrorTypeBind)
+	})
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/test", nil))
+
+	require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, false, body["status"])
 }
 
 func TestErrorHandlerHidesUnexpectedErrorDetails(t *testing.T) {

@@ -2,6 +2,7 @@ package middlewares_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -55,7 +56,13 @@ func TestTimeoutMiddlewareRespondsWithTimeoutWhenHandlerWroteNothing(t *testing.
 	r.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil))
 
 	require.Equal(t, http.StatusRequestTimeout, rec.Code)
-	require.Contains(t, rec.Body.String(), "Request Timeout")
+
+	// The timeout response must use the same {status,message} envelope as
+	// every other error path (Recovery, ErrorHandler, NoRoute).
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, false, body["status"])
+	require.Contains(t, body["message"], "timeout")
 }
 
 func TestTimeoutMiddlewareKeepsResponseWrittenBeforeDeadline(t *testing.T) {

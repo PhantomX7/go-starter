@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/PhantomX7/athleton/pkg/response"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -24,10 +26,10 @@ func (m *Middleware) TimeoutMiddleware(timeout time.Duration) gin.HandlerFunc {
 		// If the context deadline was exceeded by a slow DB call / external service,
 		// downstream code should have already noticed. We catch it here as a fallback.
 		if ctx.Err() == context.DeadlineExceeded && !c.Writer.Written() {
-			c.AbortWithStatusJSON(http.StatusRequestTimeout, gin.H{
-				"error":   "Request Timeout",
-				"message": "Request exceeded " + timeout.String(),
-			})
+			// Use the standard failure envelope so timeout responses decode
+			// like every other error path (Recovery, ErrorHandler, NoRoute).
+			c.AbortWithStatusJSON(http.StatusRequestTimeout,
+				response.BuildResponseFailed("request timeout: exceeded "+timeout.String()))
 		}
 	}
 }

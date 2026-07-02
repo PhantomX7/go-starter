@@ -37,6 +37,11 @@ func (m *Middleware) ErrorHandler() gin.HandlerFunc {
 				return
 			}
 			c.AbortWithStatusJSON(ae.Code, response.BuildResponseFailed(ae.Message))
+		case isMaxBytesError(err):
+			// The body overflowed http.MaxBytesReader (set by BodySizeLimit)
+			// during binding: report the promised 413, not a generic 400.
+			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge,
+				response.BuildResponseFailed("request body too large"))
 		case last.IsType(gin.ErrorTypeBind):
 			// Bind failures that aren't validator.ValidationErrors (malformed
 			// JSON, wrong field types, oversized body) are client errors, not
@@ -46,4 +51,11 @@ func (m *Middleware) ErrorHandler() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, response.BuildResponseFailed("An unexpected error occurred."))
 		}
 	}
+}
+
+// isMaxBytesError reports whether err stems from a request body exceeding the
+// http.MaxBytesReader cap installed by BodySizeLimit.
+func isMaxBytesError(err error) bool {
+	var mbe *http.MaxBytesError
+	return errors.As(err, &mbe)
 }

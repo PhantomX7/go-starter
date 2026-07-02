@@ -2,7 +2,10 @@
 package ginx
 
 import (
+	"fmt"
 	"strconv"
+
+	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 
 	"github.com/gin-gonic/gin"
 )
@@ -22,7 +25,10 @@ import (
 func ParseUintParam(ctx *gin.Context, name string) (uint, bool) {
 	v, err := strconv.ParseUint(ctx.Param(name), 10, 32)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		// A malformed path param is the client's mistake: record a 400
+		// AppError so the error middleware doesn't classify it as a 500.
+		_ = ctx.Error(cerrors.NewBadRequestError(fmt.Sprintf("invalid %s parameter", name))).
+			SetType(gin.ErrorTypePublic)
 		return 0, false
 	}
 	return uint(v), true

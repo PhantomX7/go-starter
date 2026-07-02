@@ -1,9 +1,12 @@
 package ginx_test
 
 import (
+	"errors"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/ginx"
 
 	"github.com/gin-gonic/gin"
@@ -38,6 +41,13 @@ func TestParseUintParamInvalid(t *testing.T) {
 	require.Equal(t, uint(0), id)
 	require.Len(t, c.Errors, 1, "a malformed param must record a gin error for the middleware")
 	require.Equal(t, gin.ErrorTypePublic, c.Errors[0].Type)
+
+	// A malformed path param is a client mistake: the recorded error must be
+	// an AppError carrying 400 so the error-handler middleware doesn't fall
+	// into its default 500 branch.
+	var ae *cerrors.AppError
+	require.True(t, errors.As(c.Errors[0].Err, &ae), "recorded error must be an AppError, got %T", c.Errors[0].Err)
+	require.Equal(t, http.StatusBadRequest, ae.Code)
 }
 
 func TestParseUintParamRejectsNegative(t *testing.T) {
