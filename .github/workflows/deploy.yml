@@ -2,7 +2,7 @@ name: Build and Deploy to VPS
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   build-and-deploy:
@@ -14,7 +14,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24.0'
+          go-version: '1.26.4'
           cache: true
 
       - name: Build project
@@ -60,7 +60,9 @@ jobs:
             
             # Apply database migrations
             # Assuming .env matches Makefile required vars
-            make migrate-hash
+            # atlas.sum is committed and must match the migration files;
+            # a checksum error here means the files were tampered with or
+            # the sum was not regenerated after editing a migration.
             make migrate-up
             ./bin/seeder
             
