@@ -13,6 +13,7 @@ import (
 	"github.com/PhantomX7/athleton/internal/models"
 	adminrolerepository "github.com/PhantomX7/athleton/internal/modules/admin_role/repository"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
+	"github.com/PhantomX7/athleton/pkg/utils"
 )
 
 func setupDB(t *testing.T) *gorm.DB {
@@ -47,6 +48,39 @@ func TestAdminRoleRepositoryFindByNameReturnsNotFound(t *testing.T) {
 	repo := adminrolerepository.NewAdminRoleRepository(db)
 
 	got, err := repo.FindByName(context.Background(), "missing")
+
+	require.Nil(t, got)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, cerrors.ErrNotFound))
+}
+
+func TestAdminRoleRepositoryFindByIDForUpdateReturnsRole(t *testing.T) {
+	db := setupDB(t)
+	repo := adminrolerepository.NewAdminRoleRepository(db)
+
+	seed := &models.AdminRole{Name: "Manager", Description: "Can manage products", IsActive: true}
+	require.NoError(t, db.Create(seed).Error)
+
+	// Exercise the locked find inside a transaction context, as production
+	// callers do (the FOR UPDATE clause is only meaningful inside one).
+	err := db.Transaction(func(tx *gorm.DB) error {
+		ctx := utils.SetTxToContext(context.Background(), tx)
+
+		got, err := repo.FindByIDForUpdate(ctx, seed.ID)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.Equal(t, seed.ID, got.ID)
+		require.Equal(t, "Manager", got.Name)
+		return nil
+	})
+	require.NoError(t, err)
+}
+
+func TestAdminRoleRepositoryFindByIDForUpdateReturnsNotFound(t *testing.T) {
+	db := setupDB(t)
+	repo := adminrolerepository.NewAdminRoleRepository(db)
+
+	got, err := repo.FindByIDForUpdate(context.Background(), 999)
 
 	require.Nil(t, got)
 	require.Error(t, err)

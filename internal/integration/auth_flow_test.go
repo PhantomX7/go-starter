@@ -13,8 +13,10 @@ import (
 // TestAuthLoginRefreshLogoutFlow walks the complete session lifecycle through
 // real HTTP requests:
 //
-//	login -> protected endpoint -> refresh rotation (old refresh and old
-//	access both die) -> logout (new access dies via jti session binding).
+//	login -> protected endpoint -> refresh rotation (refresh token swapped
+//	in place: the old refresh token dies, but access tokens minted for the
+//	session stay valid until expiry) -> logout (all access dies via jti
+//	session binding).
 func TestAuthLoginRefreshLogoutFlow(t *testing.T) {
 	app := newTestApp(t)
 
@@ -25,7 +27,10 @@ func TestAuthLoginRefreshLogoutFlow(t *testing.T) {
 	rec := app.request(t, http.MethodGet, "/api/v1/admin/post", nil, first.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
-	// Refresh rotates the token pair.
+	// Refresh swaps the refresh-token hash on the same session row. The new
+	// access token reuses the session's jti, so it can be byte-identical to
+	// the first one when minted within the same second — only the refresh
+	// token is guaranteed to change.
 	rec = app.request(t, http.MethodPost, "/api/v1/auth/refresh", map[string]string{
 		"refresh_token": first.RefreshToken,
 	}, "")
@@ -34,22 +39,21 @@ func TestAuthLoginRefreshLogoutFlow(t *testing.T) {
 	decodeData(t, decodeEnvelope(t, rec), &second)
 	require.NotEmpty(t, second.AccessToken)
 	require.NotEmpty(t, second.RefreshToken)
-	require.NotEqual(t, first.AccessToken, second.AccessToken)
 	require.NotEqual(t, first.RefreshToken, second.RefreshToken)
 
-	// The old refresh token was revoked by rotation and is rejected on reuse.
+	// The old refresh token was invalidated by rotation and is rejected on
+	// reuse.
 	rec = app.request(t, http.MethodPost, "/api/v1/auth/refresh", map[string]string{
 		"refresh_token": first.RefreshToken,
 	}, "")
 	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 	require.False(t, decodeEnvelope(t, rec).Status)
 
-	// The old access token carried the revoked session's jti, so it is dead
-	// too. gin-jwt reports an authorizer denial (valid signature, revoked
-	// session) as 403 rather than 401.
+	// Rotation keeps the session row (and its jti) alive, so access tokens
+	// minted before the refresh keep working until they expire — parallel
+	// requests no longer race the refresh.
 	rec = app.request(t, http.MethodGet, "/api/v1/admin/post", nil, first.AccessToken)
-	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
-	require.False(t, decodeEnvelope(t, rec).Status)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// The rotated access token works.
 	rec = app.request(t, http.MethodGet, "/api/v1/admin/post", nil, second.AccessToken)
@@ -61,9 +65,11 @@ func TestAuthLoginRefreshLogoutFlow(t *testing.T) {
 	}, second.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
-	// The access token minted for that session is now rejected (jti binding;
-	// 403 from the authorizer, see above).
+	// Every access token minted for that session is now rejected (jti
+	// binding; gin-jwt reports the authorizer denial as 403 rather than 401).
 	rec = app.request(t, http.MethodGet, "/api/v1/admin/post", nil, second.AccessToken)
+	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+	rec = app.request(t, http.MethodGet, "/api/v1/admin/post", nil, first.AccessToken)
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 
 	// And the logged-out refresh token cannot be used to mint new tokens.

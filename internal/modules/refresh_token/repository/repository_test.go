@@ -272,3 +272,125 @@ func TestRefreshTokenRepositoryRevokeByTokenIfActiveReportsReuse(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, revoked)
 }
+
+// Rotate-in-place: the SAME row must survive with only its token hash
+// replaced — the ID (access-token jti binding) and expires_at (absolute
+// session lifetime) stay untouched, and afterwards only the new plaintext
+// resolves the session.
+func TestRefreshTokenRepositoryUpdateTokenHashIfActiveRotatesInPlace(t *testing.T) {
+	db := setupDB(t)
+	repo := refreshtokenrepository.NewRefreshTokenRepository(db)
+	user := seedUser(t, db, "kate")
+	expiresAt := time.Now().Add(time.Hour)
+	seed := seedToken(t, db, user.ID, "before-rotation", expiresAt, nil)
+
+	updated, err := repo.UpdateTokenHashIfActive(context.Background(), "before-rotation", "after-rotation")
+	require.NoError(t, err)
+	require.True(t, updated)
+
+	var stored models.RefreshToken
+	require.NoError(t, db.First(&stored, "id = ?", seed.ID).Error)
+	require.Equal(t, refreshtokenrepository.HashRefreshToken("after-rotation"), stored.Token)
+	require.WithinDuration(t, expiresAt, stored.ExpiresAt, time.Second,
+		"rotation must NOT extend the session: expires_at is the absolute lifetime set at login")
+	require.Nil(t, stored.RevokedAt)
+
+	// The new plaintext resolves to the same session row; the old one is gone.
+	got, err := repo.FindByToken(context.Background(), "after-rotation")
+	require.NoError(t, err)
+	require.Equal(t, seed.ID, got.ID)
+
+	_, err = repo.FindByToken(context.Background(), "before-rotation")
+	require.Error(t, err)
+}
+
+func TestRefreshTokenRepositoryUpdateTokenHashIfActiveReportsReuse(t *testing.T) {
+	db := setupDB(t)
+	repo := refreshtokenrepository.NewRefreshTokenRepository(db)
+	user := seedUser(t, db, "liam")
+	now := time.Now()
+	seedToken(t, db, user.ID, "rotate-me", now.Add(time.Hour), nil)
+	seedToken(t, db, user.ID, "already-revoked", now.Add(time.Hour), &now)
+
+	// First rotation wins.
+	updated, err := repo.UpdateTokenHashIfActive(context.Background(), "rotate-me", "fresh-1")
+	require.NoError(t, err)
+	require.True(t, updated)
+
+	// Replaying the pre-rotation value matches no row: the reuse signal. The
+	// concurrent-rotation race collapses to this same case — the loser's WHERE
+	// token = old-hash no longer matches after the winner rewrote it.
+	updated, err = repo.UpdateTokenHashIfActive(context.Background(), "rotate-me", "fresh-2")
+	require.NoError(t, err)
+	require.False(t, updated)
+
+	// A revoked row must never be rotated back to life.
+	updated, err = repo.UpdateTokenHashIfActive(context.Background(), "already-revoked", "fresh-3")
+	require.NoError(t, err)
+	require.False(t, updated)
+
+	// Nonexistent tokens report false rather than erroring.
+	updated, err = repo.UpdateTokenHashIfActive(context.Background(), "never-existed", "fresh-4")
+	require.NoError(t, err)
+	require.False(t, updated)
+}
+
+// setCreatedAt backdates a seeded row so ordering by creation time is
+// deterministic regardless of insert timing.
+func setCreatedAt(t *testing.T, db *gorm.DB, id uuid.UUID, createdAt time.Time) {
+	t.Helper()
+	require.NoError(t, db.Model(&models.RefreshToken{}).Where("id = ?", id).Update("created_at", createdAt).Error)
+}
+
+func TestRefreshTokenRepositoryRevokeOldestActiveByUserIDRevokesOldestFirst(t *testing.T) {
+	db := setupDB(t)
+	repo := refreshtokenrepository.NewRefreshTokenRepository(db)
+	user := seedUser(t, db, "mona")
+	other := seedUser(t, db, "nick")
+	now := time.Now()
+
+	oldest := seedToken(t, db, user.ID, "oldest", now.Add(time.Hour), nil)
+	middle := seedToken(t, db, user.ID, "middle", now.Add(time.Hour), nil)
+	newest := seedToken(t, db, user.ID, "newest", now.Add(time.Hour), nil)
+	// Inactive rows must be invisible to the cap even when they are the oldest.
+	expired := seedToken(t, db, user.ID, "expired", now.Add(-time.Hour), nil)
+	otherActive := seedToken(t, db, other.ID, "other-user", now.Add(time.Hour), nil)
+
+	setCreatedAt(t, db, expired.ID, now.Add(-4*time.Hour))
+	setCreatedAt(t, db, oldest.ID, now.Add(-3*time.Hour))
+	setCreatedAt(t, db, middle.ID, now.Add(-2*time.Hour))
+	setCreatedAt(t, db, newest.ID, now.Add(-time.Hour))
+	setCreatedAt(t, db, otherActive.ID, now.Add(-5*time.Hour))
+
+	require.NoError(t, repo.RevokeOldestActiveByUserID(context.Background(), user.ID, 2))
+
+	var gotOldest, gotMiddle, gotNewest, gotExpired, gotOther models.RefreshToken
+	require.NoError(t, db.First(&gotOldest, "id = ?", oldest.ID).Error)
+	require.NoError(t, db.First(&gotMiddle, "id = ?", middle.ID).Error)
+	require.NoError(t, db.First(&gotNewest, "id = ?", newest.ID).Error)
+	require.NoError(t, db.First(&gotExpired, "id = ?", expired.ID).Error)
+	require.NoError(t, db.First(&gotOther, "id = ?", otherActive.ID).Error)
+
+	require.NotNil(t, gotOldest.RevokedAt, "the oldest active session must be revoked")
+	require.NotNil(t, gotMiddle.RevokedAt, "the second-oldest active session must be revoked")
+	require.Nil(t, gotNewest.RevokedAt, "newer sessions within the cap must survive")
+	require.Nil(t, gotExpired.RevokedAt, "expired rows are already dead and must not be stamped")
+	require.Nil(t, gotOther.RevokedAt, "other users' sessions must never be touched")
+}
+
+func TestRefreshTokenRepositoryRevokeOldestActiveByUserIDNoOpCases(t *testing.T) {
+	db := setupDB(t)
+	repo := refreshtokenrepository.NewRefreshTokenRepository(db)
+	user := seedUser(t, db, "olga")
+	active := seedToken(t, db, user.ID, "active", time.Now().Add(time.Hour), nil)
+
+	// Zero or negative n asks for nothing.
+	require.NoError(t, repo.RevokeOldestActiveByUserID(context.Background(), user.ID, 0))
+	require.NoError(t, repo.RevokeOldestActiveByUserID(context.Background(), user.ID, -1))
+	// A user without active tokens has nothing to revoke.
+	require.NoError(t, repo.RevokeOldestActiveByUserID(context.Background(), user.ID+1000, 3))
+
+	var got models.RefreshToken
+	require.NoError(t, db.First(&got, "id = ?", active.ID).Error)
+	require.Nil(t, got.RevokedAt)
+}

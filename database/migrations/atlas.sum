@@ -1,3 +1,5 @@
-h1:Qq+hdt6GY+5z70fgTf8VH62V5Jd621EsB3s3OsW8rgg=
+h1:NaBBqkrj2vh3epCRIlaS8HZKhH0PTEkLFajZRZaLDFU=
 20260611094511_create_default_tables.down.sql h1:IjX184ksnvMueH9heLsJXnjDsHsgFLjDcACW4S3BB4k=
 20260611094511_create_default_tables.up.sql h1:o9786YceOJhenjJQogZVMRSHl52EIhSkdKQCOdwVIgQ=
+20260702093000_add_posts_table_and_unique_indexes.down.sql h1:tdPeEPagDrxTA7O3lgqptNTh4ILW68rJD+HnjJW2/yM=
+20260702093000_add_posts_table_and_unique_indexes.up.sql h1:U605yRc1XG8Wi2EaGUVgN85PQZhpMEUdBiLtJp9O9/U=

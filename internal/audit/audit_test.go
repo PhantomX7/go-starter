@@ -6,10 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
+	"gorm.io/gorm"
 
 	"github.com/PhantomX7/athleton/internal/audit"
 	"github.com/PhantomX7/athleton/internal/models"
@@ -130,6 +132,54 @@ func TestRecordWithoutUserLeavesUserIDNil(t *testing.T) {
 	require.Equal(t, models.LogEntityTypeUser, got.EntityType)
 	require.Equal(t, uint(9), got.EntityID)
 	require.Equal(t, "user deleted", got.Message)
+}
+
+// txCapturingLogRepository records the transaction (if any) carried by the
+// context each Create call receives, so tests can prove the background audit
+// write does not inherit the caller's transaction.
+type txCapturingLogRepository struct {
+	mockLogRepository
+	txSeen chan *gorm.DB
+}
+
+func (m *txCapturingLogRepository) Create(ctx context.Context, entity *models.Log) error {
+	m.txSeen <- utils.GetTxFromContext(ctx)
+	return m.mockLogRepository.Create(ctx, entity)
+}
+
+func TestRecordDoesNotUseCallerTransaction(t *testing.T) {
+	setupLogger(t)
+
+	// Simulate a caller invoking Record from inside a transaction: the tx is
+	// set on the context exactly as libs/transaction_manager does. By the time
+	// the background goroutine runs, that tx may be committed or rolled back,
+	// so the audit write must never see it.
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	tx := db.Begin()
+	require.NoError(t, tx.Error)
+	t.Cleanup(func() { tx.Rollback() })
+
+	repo := &txCapturingLogRepository{
+		mockLogRepository: *newMockLogRepository(nil),
+		txSeen:            make(chan *gorm.DB, 1),
+	}
+	ctx := utils.SetTxToContext(context.Background(), tx)
+
+	audit.Record(ctx, repo, audit.Entry{
+		Action:     models.LogActionCreate,
+		EntityType: models.LogEntityTypeUser,
+		EntityID:   4,
+		Message:    "created inside tx",
+	})
+
+	waitForCreate(t, &repo.mockLogRepository)
+	select {
+	case seen := <-repo.txSeen:
+		require.Nil(t, seen, "background audit write must not reuse the caller's transaction")
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for tx capture")
+	}
 }
 
 func TestRecordSurvivesCanceledRequestContext(t *testing.T) {

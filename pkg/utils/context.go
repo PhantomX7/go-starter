@@ -109,3 +109,14 @@ func GetTxFromContext(ctx context.Context) *gorm.DB {
 	}
 	return nil
 }
+
+// StripTx returns a context whose transaction slot is cleared even when a
+// parent context carries one: GetTxFromContext returns nil for the result, so
+// repositories fall back to their default DB handle. Use it before handing a
+// request-scoped context to a background goroutine — context.WithoutCancel
+// preserves values, so without stripping, the goroutine would reuse a
+// transaction owned by (and possibly already committed or rolled back on) the
+// request goroutine.
+func StripTx(ctx context.Context) context.Context {
+	return context.WithValue(ctx, txKey, (*gorm.DB)(nil))
+}

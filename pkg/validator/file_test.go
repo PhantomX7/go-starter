@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"bytes"
 	"mime/multipart"
 	"net/textproto"
 	"testing"
@@ -21,6 +22,44 @@ func createMockFileHeader(filename string, size int64) *multipart.FileHeader {
 	}
 }
 
+// createContentFileHeader builds a real *multipart.FileHeader whose Open()
+// serves the given content, the same way Gin produces one from a form upload.
+// Needed for FileMimeType, which reads the file's actual bytes.
+func createContentFileHeader(t *testing.T, filename string, content []byte) *multipart.FileHeader {
+	t.Helper()
+
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	fw, err := w.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatalf("Failed to create form file: %v", err)
+	}
+	if _, err := fw.Write(content); err != nil {
+		t.Fatalf("Failed to write form file content: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Failed to close multipart writer: %v", err)
+	}
+
+	form, err := multipart.NewReader(&buf, w.Boundary()).ReadForm(int64(len(content)) + 1<<20)
+	if err != nil {
+		t.Fatalf("Failed to read multipart form: %v", err)
+	}
+	t.Cleanup(func() { _ = form.RemoveAll() })
+
+	files := form.File["file"]
+	if len(files) != 1 {
+		t.Fatalf("Expected exactly one file header, got %d", len(files))
+	}
+	return files[0]
+}
+
+// pngHeader is a minimal valid PNG signature followed by padding, enough for
+// http.DetectContentType to report image/png.
+func pngHeader() []byte {
+	return append([]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}, bytes.Repeat([]byte{0}, 32)...)
+}
+
 // setupFileValidator creates a validator instance with file validation functions registered
 // This follows the same pattern as exist_test.go for consistent test setup
 func setupFileValidator(t *testing.T) *validator.Validate {
@@ -32,6 +71,7 @@ func setupFileValidator(t *testing.T) *validator.Validate {
 	// Register file validation functions
 	v.RegisterValidation("filesize", customValidator.FileSize())
 	v.RegisterValidation("fileext", customValidator.FileExtension())
+	v.RegisterValidation("filemime", customValidator.FileMimeType())
 
 	return v
 }
@@ -176,6 +216,97 @@ func TestFileSize_ValidatorFunction(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestFileMimeType_ValidatorFunction(t *testing.T) {
+	v := setupFileValidator(t)
+
+	type ImageUpload struct {
+		File *multipart.FileHeader `validate:"filemime=image/png&image/jpeg"`
+	}
+	type TextUpload struct {
+		File *multipart.FileHeader `validate:"filemime=text/plain"`
+	}
+	type OptionalUpload struct {
+		File *multipart.FileHeader `validate:"omitempty,filemime=image/png"`
+	}
+
+	t.Run("valid png content", func(t *testing.T) {
+		input := ImageUpload{File: createContentFileHeader(t, "photo.png", pngHeader())}
+		if err := v.Struct(input); err != nil {
+			t.Errorf("expected PNG content to pass image/png validation, got: %v", err)
+		}
+	})
+
+	t.Run("spoofed extension is rejected", func(t *testing.T) {
+		// Text content renamed to .png must be caught by content sniffing.
+		input := ImageUpload{File: createContentFileHeader(t, "malware.png", []byte("#!/bin/sh\nrm -rf /"))}
+		if err := v.Struct(input); err == nil {
+			t.Error("expected text content with .png name to fail image MIME validation")
+		}
+	})
+
+	t.Run("detected type with parameters matches base type", func(t *testing.T) {
+		// http.DetectContentType returns "text/plain; charset=utf-8" for plain
+		// text — the parameter part must be ignored during comparison.
+		input := TextUpload{File: createContentFileHeader(t, "notes.txt", []byte("hello world"))}
+		if err := v.Struct(input); err != nil {
+			t.Errorf("expected plain text to match text/plain, got: %v", err)
+		}
+	})
+
+	t.Run("disallowed type is rejected", func(t *testing.T) {
+		input := TextUpload{File: createContentFileHeader(t, "photo.txt", pngHeader())}
+		if err := v.Struct(input); err == nil {
+			t.Error("expected PNG content to fail text/plain validation")
+		}
+	})
+
+	t.Run("case insensitive comparison", func(t *testing.T) {
+		type MixedCaseUpload struct {
+			File *multipart.FileHeader `validate:"filemime=IMAGE/PNG"`
+		}
+		input := MixedCaseUpload{File: createContentFileHeader(t, "photo.png", pngHeader())}
+		if err := v.Struct(input); err != nil {
+			t.Errorf("expected case-insensitive MIME match, got: %v", err)
+		}
+	})
+
+	t.Run("missing parameter fails closed", func(t *testing.T) {
+		type NoParamUpload struct {
+			File *multipart.FileHeader `validate:"filemime"`
+		}
+		input := NoParamUpload{File: createContentFileHeader(t, "photo.png", pngHeader())}
+		if err := v.Struct(input); err == nil {
+			t.Error("expected filemime without allowed types to fail closed")
+		}
+	})
+
+	t.Run("nil optional file passes", func(t *testing.T) {
+		if err := v.Struct(OptionalUpload{File: nil}); err != nil {
+			t.Errorf("expected nil optional file to pass, got: %v", err)
+		}
+	})
+
+	t.Run("unreadable file fails closed", func(t *testing.T) {
+		// A bare FileHeader (no backing content) cannot be opened.
+		input := ImageUpload{File: createMockFileHeader("photo.png", 128)}
+		if err := v.Struct(input); err == nil {
+			t.Error("expected unreadable file to fail closed")
+		}
+	})
+}
+
+func TestDetectContentType(t *testing.T) {
+	fh := createContentFileHeader(t, "photo.png", pngHeader())
+
+	contentType, err := DetectContentType(fh)
+	if err != nil {
+		t.Fatalf("DetectContentType returned error: %v", err)
+	}
+	if contentType != "image/png" {
+		t.Errorf("DetectContentType = %q, want %q", contentType, "image/png")
 	}
 }
 

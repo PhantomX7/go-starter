@@ -16,17 +16,13 @@ import (
 	userrepo "github.com/PhantomX7/athleton/internal/modules/user/repository"
 	"github.com/PhantomX7/athleton/libs/casbin"
 	"github.com/PhantomX7/athleton/libs/transaction_manager"
+	"github.com/PhantomX7/athleton/pkg/constants/security"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/utils"
 
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
-)
-
-const (
-	// BcryptCost is the cost used for password hashing.
-	BcryptCost = 12
 )
 
 // AuthService defines the interface for auth service operations
@@ -108,7 +104,7 @@ func (s *authService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 	}
 
 	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), BcryptCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), security.BcryptCost)
 	if err != nil {
 		return nil, cerrors.NewInternalServerError("failed to process password", err)
 	}
@@ -166,7 +162,7 @@ func (s *authService) ChangePassword(ctx context.Context, req *dto.ChangePasswor
 	}
 
 	// Hash new password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), BcryptCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), security.BcryptCost)
 	if err != nil {
 		return cerrors.NewInternalServerError("failed to process new password", err)
 	}

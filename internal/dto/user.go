@@ -4,9 +4,16 @@ import (
 	"time"
 )
 
-// UserUpdateRequest defines the structure for updating a user
+// UserUpdateRequest defines the structure for updating a user.
+//
+// Role deliberately accepts only "user": promotion to "admin" must go through
+// the dedicated AssignAdminRole endpoint so Role and AdminRoleID always change
+// together (Casbin ignores AdminRoleID unless Role == "admin"), and "root" is
+// never assignable through the API. The only role transition Update supports
+// is demoting an admin back to a plain user, which also clears AdminRoleID.
+// ("reseller" was removed — it is not a role this application defines.)
 type UserUpdateRequest struct {
-	Role *string `json:"role" form:"role" binding:"omitempty,oneof=user reseller"`
+	Role *string `json:"role" form:"role" binding:"omitempty,oneof=user" enums:"user"`
 	Name *string `json:"name" form:"name"`
 }
 
@@ -15,9 +22,11 @@ type UserAssignAdminRoleRequest struct {
 	AdminRoleID uint `json:"admin_role_id" form:"admin_role_id" binding:"required,exist=admin_roles.id"`
 }
 
-// ChangeAdminPasswordRequest defines the structure for root changing an admin's password
+// ChangeAdminPasswordRequest defines the structure for root changing an admin's password.
+// max=72: bcrypt rejects passwords longer than 72 bytes, so validate up front
+// instead of surfacing a 500 from the hasher.
 type ChangeAdminPasswordRequest struct {
-	NewPassword string `json:"new_password" form:"new_password" binding:"required,min=8"`
+	NewPassword string `json:"new_password" form:"new_password" binding:"required,min=8,max=72" minLength:"8" maxLength:"72"`
 }
 
 // UserResponse defines the structure for user response

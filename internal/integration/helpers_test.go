@@ -174,7 +174,7 @@ func newTestApp(t *testing.T) *testApp {
 	casbinClient, err := casbin.New(db)
 	require.NoError(t, err)
 
-	mw := middlewares.NewMiddleware(authJWT, casbinClient)
+	mw := middlewares.NewMiddleware(cfg, authJWT, casbinClient)
 	engine := bootstrap.SetupServer(cfg, mw, pkgvalidator.New(db), db)
 
 	authService := authservice.NewAuthService(userRepo, logRepo, authJWT, casbinClient, txManager)

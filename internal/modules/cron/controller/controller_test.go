@@ -38,7 +38,8 @@ func TestNewCronRegistersJobAndRunsTask(t *testing.T) {
 		},
 	}
 
-	scheduler := controller.NewCron(svc)
+	scheduler, err := controller.NewCron(svc)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = scheduler.Shutdown()
 	})

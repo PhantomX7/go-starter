@@ -2,6 +2,7 @@ package seed
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/pkg/config"
@@ -10,6 +11,9 @@ import (
 	"gorm.io/gorm"
 )
 
+// BcryptCost is the bcrypt work factor used when hashing seeded passwords.
+const BcryptCost = 12
+
 // SeedUsers inserts the default root and admin users when they do not already exist.
 //
 //nolint:revive // SeedUsers is kept for consistency with the seeder entrypoint naming.
@@ -17,7 +21,7 @@ func SeedUsers(db *gorm.DB, cfg *config.Config) error {
 	users := []models.User{
 		{
 			Username: "root",
-			Email:    "[EMAIL_ADDRESS]",
+			Email:    cfg.Admin.Email,
 			Phone:    "+6281123456789",
 			IsActive: true,
 			Role:     models.UserRoleRoot,
@@ -32,21 +36,28 @@ func SeedUsers(db *gorm.DB, cfg *config.Config) error {
 	}
 
 	var password []byte
-	password, err := bcrypt.GenerateFromPassword([]byte(cfg.Admin.DefaultPassword), bcrypt.DefaultCost)
+	password, err := bcrypt.GenerateFromPassword([]byte(cfg.Admin.DefaultPassword), BcryptCost)
 	if err != nil {
 		return err
 	}
 
 	for _, user := range users {
 		user.Password = string(password)
-		if !errors.Is(db.First(&models.User{}, models.User{
+
+		err := db.First(&models.User{}, models.User{
 			Username: user.Username,
-		}).Error, gorm.ErrRecordNotFound) {
+		}).Error
+		switch {
+		case err == nil:
+			// User already exists; nothing to seed.
 			continue
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			// User is missing; proceed with creation.
+		default:
+			return fmt.Errorf("failed to check existing user %q: %w", user.Username, err)
 		}
 
-		err := db.Create(&user).Error
-		if err != nil {
+		if err := db.Create(&user).Error; err != nil {
 			return err
 		}
 	}

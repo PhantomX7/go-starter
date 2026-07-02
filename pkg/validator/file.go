@@ -27,21 +27,51 @@
 //
 // Example Integration:
 //
-//	validator := validator.New()
-//	cv := customValidator{validator: validator, db: db}
-//	validator.RegisterValidation("filesize", cv.FileSize())
-//	validator.RegisterValidation("fileext", cv.FileExtension())
-//	validator.RegisterValidation("filemime", cv.FileMimeType())
+//	v := validator.New()
+//	cv := New(db)
+//	v.RegisterValidation("filesize", cv.FileSize())
+//	v.RegisterValidation("fileext", cv.FileExtension())
+//	v.RegisterValidation("filemime", cv.FileMimeType())
 package validator
 
 import (
+	"errors"
+	"io"
 	"mime/multipart"
+	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
 )
+
+// sniffLen is how many leading bytes http.DetectContentType inspects.
+const sniffLen = 512
+
+// DetectContentType sniffs the MIME type of an uploaded file from its content
+// (first 512 bytes) using http.DetectContentType, independently of the
+// filename or the client-supplied Content-Type header. The multipart file is
+// opened on its own handle, so the caller's readers are unaffected.
+//
+// Shared by the filemime validator and libs/s3's upload content-type detection.
+func DetectContentType(file *multipart.FileHeader) (string, error) {
+	src, err := file.Open()
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = src.Close()
+	}()
+
+	buffer := make([]byte, sniffLen)
+	n, err := src.Read(buffer)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+
+	return http.DetectContentType(buffer[:n]), nil
+}
 
 // FileSize validates the size of an uploaded file against a maximum size limit.
 //
@@ -148,6 +178,73 @@ func (cv customValidator) FileExtension() validator.Func {
 			// Trim whitespace and convert to lowercase for comparison
 			allowed = strings.ToLower(strings.TrimSpace(allowed))
 			if ext == allowed {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// FileMimeType validates the actual content of an uploaded file against a list
+// of allowed MIME types.
+//
+// Unlike FileExtension, which trusts the filename, this validator reads the
+// first 512 bytes of the file and detects the MIME type with
+// http.DetectContentType — so a renamed executable cannot masquerade as an
+// image (content-based detection prevents file spoofing).
+//
+// Parameters:
+//   - Required parameter specifying allowed MIME types separated by ampersand (&) characters
+//   - Parameter format: "image/jpeg&image/png" or "application/pdf&text/plain"
+//   - Comparison is case-insensitive and ignores media-type parameters
+//     (e.g. detected "text/plain; charset=utf-8" matches allowed "text/plain")
+//
+// Validation Rules:
+//   - The field must be of type multipart.FileHeader
+//   - The file must be openable and readable (failures fail closed)
+//   - The detected MIME type must match one of the allowed types
+//
+// Usage Examples:
+//
+//	type FileUploadRequest struct {
+//	    Avatar *multipart.FileHeader `validate:"filemime=image/jpeg&image/png&image/webp"`
+//	    Document *multipart.FileHeader `validate:"filemime=application/pdf"`
+//	}
+//
+// Security Considerations:
+//   - Combine with FileExtension so both the name and the content are checked
+//   - http.DetectContentType recognizes a fixed set of signatures; unknown
+//     content is reported as "application/octet-stream"
+//
+// Returns:
+//   - true if the detected content MIME type is in the allowed list
+//   - false if the file is invalid, unreadable, or its content type is not allowed
+func (cv customValidator) FileMimeType() validator.Func {
+	return func(fl validator.FieldLevel) bool {
+		file, ok := fl.Field().Interface().(multipart.FileHeader)
+		if !ok {
+			return false
+		}
+
+		param := strings.TrimSpace(fl.Param())
+		if param == "" {
+			// No allowed types configured is a developer error — fail closed.
+			warn("filemime validator used without allowed MIME types; failing closed")
+			return false
+		}
+
+		detected, err := DetectContentType(&file)
+		if err != nil {
+			return false
+		}
+
+		// Strip media-type parameters ("text/plain; charset=utf-8" -> "text/plain").
+		detected, _, _ = strings.Cut(detected, ";")
+		detected = strings.ToLower(strings.TrimSpace(detected))
+
+		for _, allowed := range strings.Split(param, "&") {
+			allowed = strings.ToLower(strings.TrimSpace(allowed))
+			if allowed != "" && detected == allowed {
 				return true
 			}
 		}

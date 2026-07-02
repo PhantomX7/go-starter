@@ -1,9 +1,14 @@
 package dto
 
+// Password fields are capped at max=72 everywhere: bcrypt rejects passwords
+// longer than 72 bytes, so validating up front returns a 400 instead of
+// surfacing a 500 from the hasher (and no valid stored password can exceed 72
+// bytes anyway, so the cap can never lock a user out).
+
 // LoginRequest is the payload for authenticating a user.
 type LoginRequest struct {
 	Username string `json:"username" form:"username" binding:"required"`
-	Password string `json:"password" form:"password" binding:"required,min=8"`
+	Password string `json:"password" form:"password" binding:"required,min=8,max=72" minLength:"8" maxLength:"72"`
 }
 
 // RegisterRequest is the payload for registering a new user account.
@@ -12,13 +17,13 @@ type RegisterRequest struct {
 	BusinessName string `json:"business_name" form:"business_name" binding:"required"`
 	Email        string `json:"email" form:"email" binding:"required,unique=users.email"`
 	Phone        string `json:"phone" form:"phone" binding:"required"`
-	Password     string `json:"password" form:"password" binding:"required,min=8"`
+	Password     string `json:"password" form:"password" binding:"required,min=8,max=72" minLength:"8" maxLength:"72"`
 }
 
 // ChangePasswordRequest is the payload for rotating the authenticated user's password.
 type ChangePasswordRequest struct {
-	OldPassword string `json:"old_password" form:"old_password" binding:"required"`
-	NewPassword string `json:"new_password" form:"new_password" binding:"required,min=8"`
+	OldPassword string `json:"old_password" form:"old_password" binding:"required,max=72" maxLength:"72"`
+	NewPassword string `json:"new_password" form:"new_password" binding:"required,min=8,max=72" minLength:"8" maxLength:"72"`
 	ExceptToken string `json:"except_token" form:"except_token" binding:"required"` // excepted refresh token
 }
 

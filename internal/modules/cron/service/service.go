@@ -5,8 +5,6 @@ import (
 	"context"
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/PhantomX7/athleton/internal/modules/refresh_token/repository"
 	"github.com/PhantomX7/athleton/pkg/logger"
 
@@ -20,17 +18,14 @@ type CronService interface {
 }
 
 type cronService struct {
-	db               *gorm.DB
 	refreshTokenRepo repository.RefreshTokenRepository
 }
 
 // NewCronService builds a CronService from its dependencies.
 func NewCronService(
-	db *gorm.DB,
 	refreshTokenRepo repository.RefreshTokenRepository,
 ) CronService {
 	return &cronService{
-		db:               db,
 		refreshTokenRepo: refreshTokenRepo,
 	}
 }

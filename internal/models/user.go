@@ -31,11 +31,13 @@ func (u UserRole) IsAdminType() bool {
 
 // User stores the application's user account record.
 type User struct {
-	ID           uint     `json:"id" gorm:"primaryKey"`
-	Username     string   `json:"username" gorm:"type:varchar(255);not null"`
+	ID uint `json:"id" gorm:"primaryKey"`
+	// Username and Email use partial unique indexes (WHERE deleted_at IS NULL)
+	// so soft-deleted rows do not block reuse of the value.
+	Username     string   `json:"username" gorm:"type:varchar(255);not null;uniqueIndex:idx_users_username,where:deleted_at IS NULL"`
 	Name         string   `json:"name" gorm:"type:varchar(255);null"`
 	BusinessName string   `json:"business_name" gorm:"type:varchar(255);null"`
-	Email        string   `json:"email" gorm:"type:varchar(255);not null"`
+	Email        string   `json:"email" gorm:"type:varchar(255);not null;uniqueIndex:idx_users_email,where:deleted_at IS NULL"`
 	Phone        string   `json:"phone" gorm:"type:varchar(255);not null"`
 	IsActive     bool     `json:"is_active" gorm:"not null;default:true"`
 	Role         UserRole `json:"role" gorm:"type:user_role;not null"`

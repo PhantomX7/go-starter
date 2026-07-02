@@ -5,8 +5,11 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 
 	"github.com/PhantomX7/athleton/internal/models"
 	logrepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
@@ -107,6 +110,50 @@ func TestLogServiceIndexReturnsLogsAndMeta(t *testing.T) {
 	require.Equal(t, 5, meta.Limit)
 }
 
+// TestLogServiceIndexPreloadsUser drives Index through a real sqlite-backed
+// repository to prove the custom Preload("User") scope reaches the query — a
+// mock cannot observe pagination scopes.
+func TestLogServiceIndexPreloadsUser(t *testing.T) {
+	setupLogger(t)
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&models.User{}, &models.AdminRole{}, &models.Log{}))
+
+	user := &models.User{
+		Username: "actor",
+		Name:     "Actor",
+		Email:    "actor@example.com",
+		Phone:    "0812345",
+		IsActive: true,
+		Role:     models.UserRoleAdmin,
+		Password: "hashed",
+	}
+	require.NoError(t, db.Create(user).Error)
+	require.NoError(t, db.Create(&models.Log{
+		UserID:     &user.ID,
+		Action:     models.LogActionCreate,
+		EntityType: models.LogEntityTypeUser,
+		EntityID:   user.ID,
+		Message:    "created user",
+	}).Error)
+
+	svc := service.NewLogService(logrepository.NewLogRepository(db))
+	pg := pagination.NewPagination(nil, nil,
+		pagination.PaginationOptions{DefaultLimit: 20, MaxLimit: 100, DefaultOrder: "id asc"})
+
+	logs, meta, err := svc.Index(context.Background(), pg)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(1), meta.Total)
+	require.Len(t, logs, 1)
+	require.NotNil(t, logs[0].User, "Index must preload the acting user")
+	require.Equal(t, user.ID, logs[0].User.ID)
+	require.Equal(t, "actor", logs[0].User.Username)
+}
+
 func TestLogServiceIndexReturnsRepositoryError(t *testing.T) {
 	setupLogger(t)
 
@@ -137,9 +184,11 @@ func TestLogServiceFindByIDReturnsLog(t *testing.T) {
 
 	expectedLog := &models.Log{ID: 7, Message: "found"}
 	repo := &mockLogRepository{
-		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.Log, error) {
+		findByIDFn: func(ctx context.Context, id uint, preloads ...repository.Association) (*models.Log, error) {
 			require.Equal(t, "req-456", utils.GetRequestIDFromContext(ctx))
 			require.Equal(t, uint(7), id)
+			require.Len(t, preloads, 1, "FindByID must preload the acting user")
+			require.Equal(t, "User", preloads[0].Name())
 			return expectedLog, nil
 		},
 	}

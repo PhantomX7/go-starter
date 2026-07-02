@@ -41,6 +41,8 @@ type RefreshTokenRepository interface {
 	RevokeAllByUserIDExcept(ctx context.Context, userID uint, exceptToken string) error
 	RevokeByToken(ctx context.Context, token string) error
 	RevokeByTokenIfActive(ctx context.Context, token string) (bool, error)
+	RevokeOldestActiveByUserID(ctx context.Context, userID uint, n int) error
+	UpdateTokenHashIfActive(ctx context.Context, oldToken, newToken string) (bool, error)
 }
 
 type refreshTokenRepository struct {
@@ -209,6 +211,79 @@ func (r *refreshTokenRepository) RevokeByTokenIfActive(ctx context.Context, toke
 		Update(ctx)
 	if err != nil {
 		return false, cerrors.NewInternalServerError("failed to revoke by token", err)
+	}
+	return rows > 0, nil
+}
+
+// RevokeOldestActiveByUserID revokes the user's n oldest active tokens
+// (ordered by creation time). Used to enforce the per-user session cap at
+// login: revoking the oldest sessions makes room for the new one. It selects
+// the victim IDs first and then revokes by ID rather than issuing a single
+// UPDATE ... ORDER BY ... LIMIT, which is not portable across the supported
+// databases (MySQL rejects a same-table subquery in UPDATE; SQLite only
+// accepts UPDATE ... LIMIT with a non-default compile flag). The tiny window
+// between the two statements is harmless: the revoke re-checks the active
+// predicates, so at worst a concurrently revoked row is skipped.
+func (r *refreshTokenRepository) RevokeOldestActiveByUserID(ctx context.Context, userID uint, n int) error {
+	if n <= 0 {
+		return nil
+	}
+
+	now := time.Now()
+	q := gorm.G[models.RefreshToken](r.GetDB(ctx)).
+		Where(generated.RefreshToken.UserID.Eq(userID))
+	for _, p := range activeTokenPredicates(now) {
+		q = q.Where(p)
+	}
+
+	oldest, err := q.Order(generated.RefreshToken.CreatedAt.Asc()).Limit(n).Find(ctx)
+	if err != nil {
+		return cerrors.NewInternalServerError(fmt.Sprintf("failed to find oldest refresh tokens for user id %v", userID), err)
+	}
+	if len(oldest) == 0 {
+		return nil
+	}
+
+	ids := make([]any, 0, len(oldest))
+	for _, rt := range oldest {
+		ids = append(ids, rt.ID)
+	}
+
+	uq := gorm.G[models.RefreshToken](r.GetDB(ctx)).
+		Where(clause.IN{Column: generated.RefreshToken.ID.Column(), Values: ids})
+	for _, p := range activeTokenPredicates(now) {
+		uq = uq.Where(p)
+	}
+
+	if _, err := uq.Set(generated.RefreshToken.RevokedAt.Set(now)).Update(ctx); err != nil {
+		return cerrors.NewInternalServerError(fmt.Sprintf("failed to revoke oldest refresh tokens for user id %v", userID), err)
+	}
+	return nil
+}
+
+// UpdateTokenHashIfActive atomically replaces the stored hash of the
+// not-yet-revoked token matching oldToken with newToken's hash, reporting
+// whether a row was actually rewritten. This is the rotate-in-place
+// primitive: the row (and therefore its ID, used as the access-token jti, and
+// its expires_at, the session's absolute lifetime) is preserved — only the
+// presentable secret changes.
+//
+// The not-revoked + atomic single-statement update gives the same race
+// guarantee as RevokeByTokenIfActive: two concurrent rotations of the same
+// token cannot both win, because the loser's WHERE token = old-hash no longer
+// matches after the winner rewrites it. A false return is therefore the reuse
+// signal — the presented token was already rotated away or revoked — and the
+// caller must refuse and tear down the session family.
+func (r *refreshTokenRepository) UpdateTokenHashIfActive(ctx context.Context, oldToken, newToken string) (bool, error) {
+	oldHash := HashRefreshToken(oldToken)
+	newHash := HashRefreshToken(newToken)
+	rows, err := gorm.G[models.RefreshToken](r.GetDB(ctx)).
+		Where(generated.RefreshToken.Token.Eq(oldHash)).
+		Where(generated.RefreshToken.RevokedAt.IsNull()).
+		Set(generated.RefreshToken.Token.Set(newHash)).
+		Update(ctx)
+	if err != nil {
+		return false, cerrors.NewInternalServerError("failed to rotate refresh token hash", err)
 	}
 	return rows > 0, nil
 }

@@ -15,12 +15,14 @@ import (
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // AdminRoleRepository defines the interface for admin role repository operations.
 type AdminRoleRepository interface {
 	repository.Repository[models.AdminRole]
 	FindByName(ctx context.Context, name string) (*models.AdminRole, error)
+	FindByIDForUpdate(ctx context.Context, id uint) (*models.AdminRole, error)
 	CountUsersWithRole(ctx context.Context, roleID uint) (int64, error)
 }
 
@@ -54,6 +56,32 @@ func (r *adminRoleRepository) FindByName(ctx context.Context, name string) (*mod
 	}
 
 	return &entity, nil
+}
+
+// FindByIDForUpdate loads the admin-role row under a pessimistic SELECT ...
+// FOR UPDATE lock. Check-then-act flows on the role (delete-if-unassigned,
+// assign-if-exists) lock the row first so they serialize against each other.
+// Call it only inside a transaction — the lock is held until commit/rollback.
+// On sqlite (unit tests via glebarez) the locking clause is a no-op, which is
+// fine: sqlite serializes writers at the database level anyway.
+func (r *adminRoleRepository) FindByIDForUpdate(ctx context.Context, id uint) (*models.AdminRole, error) {
+	start := time.Now()
+
+	var role models.AdminRole
+	err := r.GetDB(ctx).WithContext(ctx).
+		Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}).
+		First(&role, "id = ?", id).Error
+
+	r.LogSlowRead(ctx, "FindByIDForUpdate", time.Since(start))
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, cerrors.NewNotFoundError("admin role not found")
+		}
+		return nil, cerrors.NewInternalServerError("failed to find admin role by id", err)
+	}
+
+	return &role, nil
 }
 
 // CountUsersWithRole counts non-deleted users assigned to the given admin role.

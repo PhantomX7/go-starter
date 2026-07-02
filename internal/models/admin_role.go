@@ -7,8 +7,10 @@ import (
 
 // AdminRole represents an administrative role and its assignable permissions.
 type AdminRole struct {
-	ID          uint     `json:"id" gorm:"primaryKey"`
-	Name        string   `json:"name" gorm:"type:varchar(100);not null;uniqueIndex"`
+	ID uint `json:"id" gorm:"primaryKey"`
+	// Name uses a partial unique index (WHERE deleted_at IS NULL) so
+	// soft-deleted roles do not block reuse of the name.
+	Name        string   `json:"name" gorm:"type:varchar(100);not null;uniqueIndex:idx_admin_roles_name,where:deleted_at IS NULL"`
 	Description string   `json:"description" gorm:"type:varchar(255);null"`
 	IsActive    bool     `json:"is_active" gorm:"not null;default:true"`
 	Permissions []string `json:"permissions" gorm:"-"`

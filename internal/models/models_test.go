@@ -4,8 +4,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/models"
@@ -152,6 +154,56 @@ func TestPostToResponseMapsAllFields(t *testing.T) {
 	require.Equal(t, updatedAt, resp.UpdatedAt)
 }
 
+// TestAutoMigrateUniqueIndexes verifies the model index tags migrate cleanly
+// and that unique indexes on soft-deleting tables are partial: a soft-deleted
+// row must not block reuse of its value, while an active duplicate must fail.
+func TestAutoMigrateUniqueIndexes(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, db.AutoMigrate(
+		&models.User{},
+		&models.RefreshToken{},
+		&models.Config{},
+		&models.Log{},
+		&models.AdminRole{},
+		&models.Post{},
+	))
+
+	newUser := func(username, email string) *models.User {
+		return &models.User{
+			Username: username,
+			Email:    email,
+			Phone:    "0",
+			Role:     models.UserRoleUser,
+			Password: "hash",
+		}
+	}
+
+	// Active duplicates are rejected.
+	require.NoError(t, db.Create(newUser("dup", "dup@example.com")).Error)
+	require.Error(t, db.Create(newUser("dup", "other@example.com")).Error, "duplicate active username must fail")
+	require.Error(t, db.Create(newUser("other", "dup@example.com")).Error, "duplicate active email must fail")
+
+	// Soft-deleted rows do not block reuse.
+	require.NoError(t, db.Where("username = ?", "dup").Delete(&models.User{}).Error)
+	require.NoError(t, db.Create(newUser("dup", "dup@example.com")).Error, "soft-deleted username/email must be reusable")
+
+	// admin_roles.name behaves the same way.
+	require.NoError(t, db.Create(&models.AdminRole{Name: "editor"}).Error)
+	require.Error(t, db.Create(&models.AdminRole{Name: "editor"}).Error, "duplicate active role name must fail")
+	require.NoError(t, db.Where("name = ?", "editor").Delete(&models.AdminRole{}).Error)
+	require.NoError(t, db.Create(&models.AdminRole{Name: "editor"}).Error, "soft-deleted role name must be reusable")
+
+	// configs.key behaves the same way.
+	require.NoError(t, db.Create(&models.Config{Key: "site", Value: "a"}).Error)
+	require.Error(t, db.Create(&models.Config{Key: "site", Value: "b"}).Error, "duplicate active config key must fail")
+	require.NoError(t, db.Where("key = ?", "site").Delete(&models.Config{}).Error)
+	require.NoError(t, db.Create(&models.Config{Key: "site", Value: "c"}).Error, "soft-deleted config key must be reusable")
+}
+
 func TestConfigKeyToString(t *testing.T) {
 	require.Equal(t, "site_name", models.ConfigKey("site_name").ToString())
 }
@@ -207,9 +259,6 @@ func TestLogToResponseNilRelationships(t *testing.T) {
 
 	require.Nil(t, got.UserID)
 	require.Nil(t, got.User)
-	require.Nil(t, got.AdminRole)
-	require.Nil(t, got.Config)
-	require.Nil(t, got.TargetUser)
 }
 
 func TestLogToResponseIncludesRelationships(t *testing.T) {
@@ -220,9 +269,6 @@ func TestLogToResponseIncludesRelationships(t *testing.T) {
 		EntityType: models.LogEntityTypeUser,
 		EntityID:   8,
 		User:       &models.User{ID: 7, Username: "actor", Role: models.UserRoleAdmin},
-		AdminRole:  &models.AdminRole{ID: 9, Name: "editor"},
-		Config:     &models.Config{Model: gorm.Model{ID: 31}, Key: "k", Value: "v"},
-		TargetUser: &models.User{ID: 8, Username: "target", Role: models.UserRoleUser},
 	}
 
 	got := log.ToResponse()
@@ -230,17 +276,4 @@ func TestLogToResponseIncludesRelationships(t *testing.T) {
 	require.NotNil(t, got.User)
 	require.Equal(t, uint(7), got.User.ID)
 	require.Equal(t, "actor", got.User.Username)
-
-	require.NotNil(t, got.AdminRole)
-	require.Equal(t, uint(9), got.AdminRole.ID)
-	require.Equal(t, "editor", got.AdminRole.Name)
-
-	require.NotNil(t, got.Config)
-	require.Equal(t, uint(31), got.Config.ID)
-	require.Equal(t, "k", got.Config.Key)
-	require.Equal(t, "v", got.Config.Value)
-
-	require.NotNil(t, got.TargetUser)
-	require.Equal(t, uint(8), got.TargetUser.ID)
-	require.Equal(t, "target", got.TargetUser.Username)
 }

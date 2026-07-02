@@ -89,7 +89,12 @@ func Record(ctx context.Context, repo LogWriter, entry Entry) {
 		Message:    entry.Message,
 	}
 
-	bgCtx := context.WithoutCancel(ctx)
+	// Detach cancellation so the write can outlive the request, and strip any
+	// transaction the caller's context carries: context.WithoutCancel preserves
+	// context values, so without the strip a caller invoking Record from inside
+	// a transaction would hand the background goroutine a tx that is committed
+	// or rolled back by the time the write runs.
+	bgCtx := utils.StripTx(context.WithoutCancel(ctx))
 	Go(func() {
 		if err := repo.Create(bgCtx, log); err != nil {
 			logger.Ctx(bgCtx).Error("Failed to create audit log",

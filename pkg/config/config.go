@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -45,6 +46,10 @@ type ServerConfig struct {
 	// spoofed header cannot mint a fresh rate-limit bucket. Set this to your load
 	// balancer's address(es) when deployed behind one. Comma-separated in env.
 	TrustedProxies []string `mapstructure:"SERVER_TRUSTED_PROXIES"`
+	// CORSAllowedOrigins is the allowlist of origins echoed back in
+	// Access-Control-Allow-Origin. Empty means wildcard ("*"), which is only
+	// safe while the API is pure bearer-token (no cookies). Comma-separated.
+	CORSAllowedOrigins []string `mapstructure:"SERVER_CORS_ALLOWED_ORIGINS"`
 }
 
 // DatabaseConfig holds database-related configuration
@@ -64,6 +69,9 @@ type JWTConfig struct {
 	Expiration        time.Duration `mapstructure:"JWT_EXPIRATION"`
 	RefreshExpiration time.Duration `mapstructure:"JWT_REFRESH_EXPIRATION"`
 	Issuer            string        `mapstructure:"JWT_ISSUER"`
+	// MaxActiveSessions caps concurrent refresh-token sessions per user; the
+	// oldest session is revoked when a login would exceed it. 0 disables the cap.
+	MaxActiveSessions int `mapstructure:"JWT_MAX_ACTIVE_SESSIONS"`
 }
 
 // AppConfig holds general application configuration
@@ -82,6 +90,10 @@ type S3Config struct {
 	CdnURL          string `mapstructure:"S3_CDN_URL"`
 	AccessKeyID     string `mapstructure:"S3_ACCESS_KEY_ID"`
 	SecretAccessKey string `mapstructure:"S3_SECRET_ACCESS_KEY"`
+	// UploadACL is the canned ACL applied to uploaded objects. Keep
+	// "public-read" only for assets that are meant to be world-readable
+	// (e.g. images served via CDN); use "private" for anything else.
+	UploadACL string `mapstructure:"S3_UPLOAD_ACL"`
 }
 
 // BleveConfig holds Bleve-related configuration
@@ -92,6 +104,8 @@ type BleveConfig struct {
 // AdminConfig holds admin-related configuration
 type AdminConfig struct {
 	DefaultPassword string `mapstructure:"ADMIN_DEFAULT_PASSWORD"`
+	// Email is seeded into the root account.
+	Email string `mapstructure:"ADMIN_EMAIL"`
 }
 
 // LogConfig holds logging-related configuration
@@ -150,14 +164,15 @@ func Load() (*Config, error) {
 func setDefaults(v *viper.Viper) {
 	defaults := map[string]any{
 		// Server
-		"SERVER_HOST":            "localhost",
-		"SERVER_PORT":            8080,
-		"SERVER_READ_TIMEOUT":    "30s",
-		"SERVER_WRITE_TIMEOUT":   "30s",
-		"SERVER_IDLE_TIMEOUT":    "120s",
-		"SERVER_REQUEST_TIMEOUT": "30s",
-		"SERVER_MAX_BODY_BYTES":  10 << 20, // 10 MiB
-		"SERVER_TRUSTED_PROXIES": "",       // trust none by default; set to LB CIDR(s) in prod
+		"SERVER_HOST":                 "localhost",
+		"SERVER_PORT":                 8080,
+		"SERVER_READ_TIMEOUT":         "30s",
+		"SERVER_WRITE_TIMEOUT":        "30s",
+		"SERVER_IDLE_TIMEOUT":         "120s",
+		"SERVER_REQUEST_TIMEOUT":      "30s",
+		"SERVER_MAX_BODY_BYTES":       10 << 20, // 10 MiB
+		"SERVER_TRUSTED_PROXIES":      "",       // trust none by default; set to LB CIDR(s) in prod
+		"SERVER_CORS_ALLOWED_ORIGINS": "",       // empty = wildcard; set explicit origins in prod
 
 		// Database
 		"DATABASE_DRIVER":   "postgres",
@@ -169,10 +184,11 @@ func setDefaults(v *viper.Viper) {
 		"DATABASE_SSLMODE":  "disable",
 
 		// JWT
-		"JWT_SECRET":             "your-secret-key",
-		"JWT_EXPIRATION":         "10m",
-		"JWT_REFRESH_EXPIRATION": "72h",
-		"JWT_ISSUER":             "starter",
+		"JWT_SECRET":              "your-secret-key",
+		"JWT_EXPIRATION":          "10m",
+		"JWT_REFRESH_EXPIRATION":  "72h",
+		"JWT_ISSUER":              "starter",
+		"JWT_MAX_ACTIVE_SESSIONS": 10,
 
 		// App
 		"APP_NAME":        "Starter",
@@ -186,12 +202,15 @@ func setDefaults(v *viper.Viper) {
 		"S3_ENDPOINT":          "",
 		"S3_ACCESS_KEY_ID":     "",
 		"S3_SECRET_ACCESS_KEY": "",
+		"S3_UPLOAD_ACL":        "public-read",
 
 		// Bleve
 		"BLEVE_INDEX_PATH": "./bleve",
 
-		// Admin
-		"ADMIN_DEFAULT_PASSWORD": "q1w2e3r4",
+		// Admin — no default on purpose: a well-known seeded password is a
+		// backdoor. Must be provided via env/.env.
+		"ADMIN_DEFAULT_PASSWORD": "",
+		"ADMIN_EMAIL":            "root@localhost",
 
 		// Log
 		"LOG_LEVEL":       "info",
@@ -245,15 +264,25 @@ func (c *Config) validateServer() error {
 	return nil
 }
 
+// supportedDrivers are the drivers GetDatabaseURL can build a DSN for.
+var supportedDrivers = []string{"postgres", "mysql"}
+
 // validateDatabase validates database configuration
 func (c *Config) validateDatabase() error {
-	if c.Database.Driver == "" {
-		return fmt.Errorf("driver is required")
+	if !slices.Contains(supportedDrivers, c.Database.Driver) {
+		return fmt.Errorf("invalid driver: %q (must be one of %v)", c.Database.Driver, supportedDrivers)
 	}
 	if c.Database.Host == "" {
 		return fmt.Errorf("host is required")
 	}
 	return nil
+}
+
+// placeholderJWTSecrets are values that ship in defaults or .env.example and
+// must never reach production; they pass the length check but are public.
+var placeholderJWTSecrets = []string{
+	"your-secret-key",
+	"your-super-secret-jwt-key-change-this-in-production",
 }
 
 // validateJWT validates JWT configuration
@@ -264,11 +293,20 @@ func (c *Config) validateJWT() error {
 	if len(c.JWT.Secret) < 32 {
 		return fmt.Errorf("secret must be at least 32 characters (got %d)", len(c.JWT.Secret))
 	}
+	if slices.Contains(placeholderJWTSecrets, c.JWT.Secret) {
+		if c.IsProduction() {
+			return fmt.Errorf("secret is a known placeholder value; generate a random secret")
+		}
+		log.Println("WARNING: JWT_SECRET is a known placeholder value; this is rejected in production")
+	}
 	if c.JWT.Expiration <= 0 {
 		return fmt.Errorf("expiration must be greater than 0")
 	}
 	if c.JWT.RefreshExpiration <= 0 {
 		return fmt.Errorf("refresh expiration must be greater than 0")
+	}
+	if c.JWT.MaxActiveSessions < 0 {
+		return fmt.Errorf("max active sessions cannot be negative")
 	}
 	return nil
 }
@@ -288,10 +326,25 @@ func (c *Config) validateApp() error {
 	return nil
 }
 
+// weakAdminPasswords are well-known values (former defaults, keyboard walks)
+// that would hand out working superuser credentials if seeded.
+var weakAdminPasswords = []string{
+	"q1w2e3r4", "password", "admin", "admin123", "12345678", "changeme",
+}
+
 // validateAdmin validates admin configuration
 func (c *Config) validateAdmin() error {
 	if c.Admin.DefaultPassword == "" {
-		return fmt.Errorf("default password must be set")
+		return fmt.Errorf("default password must be set (no default is provided on purpose)")
+	}
+	if slices.Contains(weakAdminPasswords, strings.ToLower(c.Admin.DefaultPassword)) {
+		if c.IsProduction() {
+			return fmt.Errorf("default password is a well-known weak value; choose a strong password")
+		}
+		log.Println("WARNING: ADMIN_DEFAULT_PASSWORD is a well-known weak value; this is rejected in production")
+	}
+	if len(c.Admin.DefaultPassword) < 12 && c.IsProduction() {
+		return fmt.Errorf("default password must be at least 12 characters in production")
 	}
 	return nil
 }
@@ -322,18 +375,30 @@ func (c *Config) validateLog() error {
 	return nil
 }
 
-// GetDatabaseURL constructs and returns the database connection URL
+// GetDatabaseURL constructs and returns the database connection URL.
+// Credentials are URL-escaped so passwords containing @ : / % # cannot
+// corrupt the DSN (or silently redirect the host portion).
 func (c *Config) GetDatabaseURL() string {
-	urls := map[string]string{
-		"postgres": fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s&TimeZone=Asia/Jakarta",
+	switch c.Database.Driver {
+	case "postgres":
+		u := url.URL{
+			Scheme:   "postgres",
+			User:     url.UserPassword(c.Database.Username, c.Database.Password),
+			Host:     fmt.Sprintf("%s:%d", c.Database.Host, c.Database.Port),
+			Path:     c.Database.Database,
+			RawQuery: fmt.Sprintf("sslmode=%s&TimeZone=Asia/Jakarta", c.Database.SSLMode),
+		}
+		return u.String()
+	case "mysql":
+		// go-sql-driver DSN: the username must not contain ':' or '@'; the
+		// password is read up to the last '@' so it tolerates special chars.
+		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 			c.Database.Username, c.Database.Password, c.Database.Host,
-			c.Database.Port, c.Database.Database, c.Database.SSLMode),
-		"mysql": fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-			c.Database.Username, c.Database.Password, c.Database.Host,
-			c.Database.Port, c.Database.Database),
+			c.Database.Port, c.Database.Database)
+	default:
+		// unreachable: validateDatabase rejects unknown drivers at startup
+		return ""
 	}
-
-	return urls[c.Database.Driver]
 }
 
 // GetServerAddress returns the server address in host:port format

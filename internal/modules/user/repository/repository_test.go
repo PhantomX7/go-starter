@@ -13,6 +13,7 @@ import (
 	"github.com/PhantomX7/athleton/internal/models"
 	userrepository "github.com/PhantomX7/athleton/internal/modules/user/repository"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
+	"github.com/PhantomX7/athleton/pkg/utils"
 )
 
 func setupDB(t *testing.T) *gorm.DB {
@@ -55,6 +56,47 @@ func TestUserRepositoryFindByUsernameReturnsNotFound(t *testing.T) {
 	repo := userrepository.NewUserRepository(db)
 
 	got, err := repo.FindByUsername(context.Background(), "missing")
+
+	require.Nil(t, got)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, cerrors.ErrNotFound))
+}
+
+func TestUserRepositoryFindByIDForUpdateReturnsUser(t *testing.T) {
+	db := setupDB(t)
+	repo := userrepository.NewUserRepository(db)
+
+	seed := &models.User{
+		Username: "carol",
+		Name:     "Carol",
+		Email:    "carol@example.com",
+		Phone:    "08123456781",
+		IsActive: true,
+		Role:     models.UserRoleAdmin,
+		Password: "secret",
+	}
+	require.NoError(t, db.Create(seed).Error)
+
+	// Exercise the locked find inside a transaction context, as production
+	// callers do (the FOR UPDATE clause is only meaningful inside one).
+	err := db.Transaction(func(tx *gorm.DB) error {
+		ctx := utils.SetTxToContext(context.Background(), tx)
+
+		got, err := repo.FindByIDForUpdate(ctx, seed.ID)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.Equal(t, seed.ID, got.ID)
+		require.Equal(t, "carol", got.Username)
+		return nil
+	})
+	require.NoError(t, err)
+}
+
+func TestUserRepositoryFindByIDForUpdateReturnsNotFound(t *testing.T) {
+	db := setupDB(t)
+	repo := userrepository.NewUserRepository(db)
+
+	got, err := repo.FindByIDForUpdate(context.Background(), 999)
 
 	require.Nil(t, got)
 	require.Error(t, err)

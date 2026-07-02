@@ -203,9 +203,14 @@ func (s *adminRoleService) Delete(ctx context.Context, roleID uint) error {
 	// cannot race with the delete.
 	var adminRole *models.AdminRole
 	err := s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
-		// Find existing role
+		// Find and lock the role row. userService.AssignAdminRole locks the
+		// same row before inserting an assignment, so the check-then-act pair
+		// below (count users → delete) cannot race a concurrent assignment:
+		// either the assignment commits first (and the count sees it), or this
+		// delete commits first (and the assignment's locked read finds the
+		// role gone).
 		var err error
-		adminRole, err = s.adminRoleRepo.FindByID(txCtx, roleID)
+		adminRole, err = s.adminRoleRepo.FindByIDForUpdate(txCtx, roleID)
 		if err != nil {
 			return err
 		}

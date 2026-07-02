@@ -31,6 +31,7 @@ type mockAdminRoleRepository struct {
 	countFn              func(context.Context, *pagination.Pagination) (int64, error)
 	createFn             func(context.Context, *models.AdminRole) error
 	findByIDFn           func(context.Context, uint, ...repository.Association) (*models.AdminRole, error)
+	findByIDForUpdateFn  func(context.Context, uint) (*models.AdminRole, error)
 	updateFn             func(context.Context, *models.AdminRole) error
 	deleteFn             func(context.Context, *models.AdminRole) error
 	findByNameFn         func(context.Context, string) (*models.AdminRole, error)
@@ -77,6 +78,13 @@ func (m *mockAdminRoleRepository) Count(ctx context.Context, pg *pagination.Pagi
 		panic("unexpected Count call")
 	}
 	return m.countFn(ctx, pg)
+}
+
+func (m *mockAdminRoleRepository) FindByIDForUpdate(ctx context.Context, id uint) (*models.AdminRole, error) {
+	if m.findByIDForUpdateFn == nil {
+		panic("unexpected FindByIDForUpdate call")
+	}
+	return m.findByIDForUpdateFn(ctx, id)
 }
 
 func (m *mockAdminRoleRepository) FindByName(ctx context.Context, name string) (*models.AdminRole, error) {
@@ -438,7 +446,9 @@ func TestAdminRoleServiceDeleteDeletesRoleThenCasbinPolicies(t *testing.T) {
 	logCh := make(chan *models.Log, 1)
 	dbDeleted := false
 	repo := &mockAdminRoleRepository{
-		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.AdminRole, error) {
+		// Delete must use the locked find so the assigned-users check cannot
+		// race a concurrent AssignAdminRole (which locks the same row).
+		findByIDForUpdateFn: func(ctx context.Context, id uint) (*models.AdminRole, error) {
 			require.Equal(t, uint(3), id)
 			return &models.AdminRole{ID: 3, Name: "Manager"}, nil
 		},
@@ -496,7 +506,7 @@ func TestAdminRoleServiceDeleteSucceedsWhenCasbinCleanupFails(t *testing.T) {
 
 	logCh := make(chan *models.Log, 1)
 	repo := &mockAdminRoleRepository{
-		findByIDFn: func(context.Context, uint, ...repository.Association) (*models.AdminRole, error) {
+		findByIDForUpdateFn: func(context.Context, uint) (*models.AdminRole, error) {
 			return &models.AdminRole{ID: 3, Name: "Manager"}, nil
 		},
 		countUsersWithRoleFn: func(context.Context, uint) (int64, error) {
@@ -537,7 +547,7 @@ func TestAdminRoleServiceDeleteRejectsAssignedUsers(t *testing.T) {
 	setupLogger(t)
 
 	repo := &mockAdminRoleRepository{
-		findByIDFn: func(context.Context, uint, ...repository.Association) (*models.AdminRole, error) {
+		findByIDForUpdateFn: func(context.Context, uint) (*models.AdminRole, error) {
 			return &models.AdminRole{ID: 3, Name: "Manager"}, nil
 		},
 		countUsersWithRoleFn: func(context.Context, uint) (int64, error) {

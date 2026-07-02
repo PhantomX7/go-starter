@@ -4,10 +4,13 @@ package service
 import (
 	"context"
 
+	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/log/repository"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
+
+	"gorm.io/gorm"
 )
 
 // LogService exposes read-only audit-log operations.
@@ -29,6 +32,11 @@ func NewLogService(logRepository repository.LogRepository) LogService {
 
 // Index implements LogService.
 func (s *logService) Index(ctx context.Context, pg *pagination.Pagination) ([]*models.Log, response.Meta, error) {
+	// Preload the acting user so the response's user field is populated.
+	pg.AddCustomScope(func(db *gorm.DB) *gorm.DB {
+		return db.Preload("User")
+	})
+
 	logs, err := s.logRepository.FindAll(ctx, pg)
 	if err != nil {
 		return nil, response.Meta{}, err
@@ -48,7 +56,7 @@ func (s *logService) Index(ctx context.Context, pg *pagination.Pagination) ([]*m
 
 // FindByID implements LogService.
 func (s *logService) FindByID(ctx context.Context, logID uint) (*models.Log, error) {
-	log, err := s.logRepository.FindByID(ctx, logID)
+	log, err := s.logRepository.FindByID(ctx, logID, generated.Log.User)
 	if err != nil {
 		return nil, err
 	}

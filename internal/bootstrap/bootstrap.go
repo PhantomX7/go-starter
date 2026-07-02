@@ -96,6 +96,7 @@ func SetupServer(cfg *config.Config, m *middlewares.Middleware, cv cvalidator.Cu
 		"exist":    cv.Exist(),
 		"filesize": cv.FileSize(),
 		"fileext":  cv.FileExtension(),
+		"filemime": cv.FileMimeType(),
 	}
 
 	registerValidators(validators)

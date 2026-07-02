@@ -152,67 +152,116 @@ func TestUnique_InvalidTableColumnFormat(t *testing.T) {
 	customValidator := New(db)
 	v.RegisterValidation("unique", customValidator.Unique())
 
-	// Test struct with invalid table.column format
-	type TestStruct struct {
-		InvalidFormat1 string `validate:"unique=invalid_format"`
-		InvalidFormat2 string `validate:"unique=table.column.extra"`
-		InvalidFormat3 string `validate:"unique="`
-		ValidFormat    string `validate:"unique=unique_test_models.email"`
-	}
-
-	tests := []struct {
-		name        string
-		input       TestStruct
-		expectValid bool
-		description string
-	}{
-		{
-			name: "invalid format without dot",
-			input: TestStruct{
-				InvalidFormat1: "test",
-				InvalidFormat2: "test",
-				InvalidFormat3: "test",
-				ValidFormat:    "new@example.com",
+	// Malformed tags must fail CLOSED: a broken tag silently disabling the
+	// check would let unverified duplicates through.
+	t.Run("malformed tags fail closed", func(t *testing.T) {
+		malformedCases := []struct {
+			name  string
+			input any
+		}{
+			{
+				name: "missing dot",
+				input: struct {
+					Value string `validate:"unique=invalid_format"`
+				}{Value: "test"},
 			},
-			expectValid: true, // Invalid formats should pass validation (fail open)
-			description: "Should pass validation for invalid table.column formats",
-		},
-		{
-			name: "valid format with unique value",
-			input: TestStruct{
-				InvalidFormat1: "anything",
-				InvalidFormat2: "anything",
-				InvalidFormat3: "anything",
-				ValidFormat:    "unique@example.com",
+			{
+				name: "too many segments",
+				input: struct {
+					Value string `validate:"unique=table.column.extra"`
+				}{Value: "test"},
 			},
-			expectValid: true,
-			description: "Should pass validation with valid format and unique value",
-		},
-		{
-			name: "valid format with duplicate value",
-			input: TestStruct{
-				InvalidFormat1: "anything",
-				InvalidFormat2: "anything",
-				InvalidFormat3: "anything",
-				ValidFormat:    "existing1@example.com",
+			{
+				name: "empty parameter",
+				input: struct {
+					Value string `validate:"unique="`
+				}{Value: "test"},
 			},
-			expectValid: false,
-			description: "Should fail validation with valid format but duplicate value",
-		},
-	}
+			{
+				name: "unsafe table identifier",
+				input: struct {
+					Value string `validate:"unique=bad-table.email"`
+				}{Value: "test"},
+			},
+			{
+				name: "unsafe column identifier",
+				input: struct {
+					Value string `validate:"unique=unique_test_models.email;--"`
+				}{Value: "test"},
+			},
+			{
+				name: "identifier starting with digit",
+				input: struct {
+					Value string `validate:"unique=1table.email"`
+				}{Value: "test"},
+			},
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := v.Struct(tt.input)
-			isValid := err == nil
-
-			if isValid != tt.expectValid {
-				t.Errorf("Validation result = %v, want %v. %s", isValid, tt.expectValid, tt.description)
-				if err != nil {
-					t.Errorf("Validation error: %v", err)
+		for _, tc := range malformedCases {
+			t.Run(tc.name, func(t *testing.T) {
+				if err := v.Struct(tc.input); err == nil {
+					t.Errorf("expected malformed tag to fail closed, but validation passed")
 				}
-			}
-		})
+			})
+		}
+	})
+
+	// A well-formed tag keeps working normally alongside the hardening.
+	type ValidStruct struct {
+		ValidFormat string `validate:"unique=unique_test_models.email"`
+	}
+
+	t.Run("valid format with unique value", func(t *testing.T) {
+		if err := v.Struct(ValidStruct{ValidFormat: "unique@example.com"}); err != nil {
+			t.Errorf("expected validation to pass for unique value, got: %v", err)
+		}
+	})
+
+	t.Run("valid format with duplicate value", func(t *testing.T) {
+		if err := v.Struct(ValidStruct{ValidFormat: "existing1@example.com"}); err == nil {
+			t.Errorf("expected validation to fail for duplicate value")
+		}
+	})
+}
+
+// UniqueSoftDeleteModel exercises the deleted_at handling (and its cache).
+type UniqueSoftDeleteModel struct {
+	ID        uint   `gorm:"primarykey"`
+	Email     string `gorm:"unique"`
+	DeletedAt gorm.DeletedAt
+}
+
+func TestUnique_IgnoresSoftDeletedRows(t *testing.T) {
+	db := setupUniqueTestDB(t)
+	if err := db.AutoMigrate(&UniqueSoftDeleteModel{}); err != nil {
+		t.Fatalf("Failed to migrate soft-delete test model: %v", err)
+	}
+
+	v := validator.New()
+	customValidator := New(db)
+	v.RegisterValidation("unique", customValidator.Unique())
+
+	type TestStruct struct {
+		Email string `validate:"unique=unique_soft_delete_models.email"`
+	}
+
+	row := UniqueSoftDeleteModel{ID: 1, Email: "ghost@example.com"}
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatalf("Failed to create row: %v", err)
+	}
+
+	// Live row: value is taken.
+	if err := v.Struct(TestStruct{Email: "ghost@example.com"}); err == nil {
+		t.Error("expected duplicate of live row to fail validation")
+	}
+
+	// Soft-delete the row: the value becomes reusable. This second call also
+	// exercises the cached deleted_at lookup.
+	if err := db.Delete(&row).Error; err != nil {
+		t.Fatalf("Failed to soft delete row: %v", err)
+	}
+	if err := v.Struct(TestStruct{Email: "ghost@example.com"}); err != nil {
+		t.Errorf("expected soft-deleted value to be reusable, got: %v", err)
 	}
 }
 

@@ -11,8 +11,6 @@ import (
 	"gorm.io/gorm"
 )
 
-const BcryptCost = 12
-
 func main() {
 	log.Println("Starting seeder...")
 

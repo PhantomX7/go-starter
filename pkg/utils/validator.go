@@ -69,6 +69,8 @@ func formatSingleError(e validator.FieldError) string {
 		return fmt.Sprintf("%s exceeds maximum size of %s bytes", errorField, param)
 	case "fileext":
 		return fmt.Sprintf("%s must be one of: %s", errorField, strings.ReplaceAll(param, "&", ","))
+	case "filemime":
+		return fmt.Sprintf("%s content must be one of: %s", errorField, strings.ReplaceAll(param, "&", ","))
 	default:
 		return fmt.Sprintf("%s is invalid", errorField)
 	}

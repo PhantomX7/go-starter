@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
+	tmtypes "github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -30,9 +31,10 @@ import (
 // testS3Config is the S3 configuration every test client is built with.
 func testS3Config() config.S3Config {
 	return config.S3Config{
-		Bucket:   "test-bucket",
-		Region:   "us-east-1",
-		Endpoint: "http://storage.local",
+		Bucket:    "test-bucket",
+		Region:    "us-east-1",
+		Endpoint:  "http://storage.local",
+		UploadACL: "public-read",
 	}
 }
 
@@ -180,6 +182,36 @@ func TestDetectContentType(t *testing.T) {
 	contentType, err := c.detectContentType(fh)
 	require.NoError(t, err)
 	require.Equal(t, "image/png", contentType)
+}
+
+func TestUploadACL(t *testing.T) {
+	setTestEnv(t)
+
+	cases := []struct {
+		configured string
+		want       tmtypes.ObjectCannedACL
+	}{
+		{"public-read", tmtypes.ObjectCannedACLPublicRead},
+		{"private", tmtypes.ObjectCannedACLPrivate},
+		{"authenticated-read", tmtypes.ObjectCannedACLAuthenticatedRead},
+		// Unknown or unset values must fall back to private, never public.
+		{"public-read-writ", tmtypes.ObjectCannedACLPrivate},
+		{"", tmtypes.ObjectCannedACLPrivate},
+	}
+
+	for _, tc := range cases {
+		c := &s3Client{s3Cfg: config.S3Config{UploadACL: tc.configured}}
+		require.Equal(t, tc.want, c.uploadACL(), "configured ACL %q", tc.configured)
+	}
+}
+
+func TestSanitizeMetadataValue(t *testing.T) {
+	// Plain ASCII passes through untouched.
+	require.Equal(t, "photo (1).jpg", sanitizeMetadataValue("photo (1).jpg"))
+	// Non-ASCII is percent-encoded so S3 metadata stays ASCII-only.
+	require.Equal(t, "caf%C3%A9.png", sanitizeMetadataValue("café.png"))
+	// Control characters are encoded too.
+	require.NotContains(t, sanitizeMetadataValue("a\nb.txt"), "\n")
 }
 
 func TestUploadImageWithoutCompression(t *testing.T) {
@@ -403,6 +435,74 @@ func TestUploadImagesParallelPropagatesFailures(t *testing.T) {
 		makeFileHeader(t, "b.txt", []byte("second")),
 	}
 
-	_, err := c.UploadImagesParallel(context.Background(), files, "docs", 2)
+	results, err := c.UploadImagesParallel(context.Background(), files, "docs", 2)
 	require.ErrorContains(t, err, "upload failed for 2 files")
+	require.Nil(t, results, "a failed batch must not hand back partial results")
+}
+
+func TestUploadImagesParallelCleansUpPartialUploads(t *testing.T) {
+	setTestEnv(t)
+
+	var uploadedKey, deleteBody atomic.Value
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			// Fail only the second file so the first one gets orphaned.
+			if r.Header.Get("x-amz-meta-original-filename") == "b.txt" {
+				http.Error(w, "boom", http.StatusInternalServerError)
+				return
+			}
+			uploadedKey.Store(strings.TrimPrefix(r.URL.Path, "/test-bucket/"))
+			w.Header().Set("ETag", `"etag"`)
+			w.WriteHeader(http.StatusOK)
+		case http.MethodPost:
+			// DeleteObjects (batch delete) for the rollback.
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			deleteBody.Store(string(body))
+
+			w.Header().Set("Content-Type", "application/xml")
+			out, err := xml.Marshal(deleteResult{Deleted: []deletedItem{{Key: "cleaned"}}})
+			require.NoError(t, err)
+			_, _ = w.Write(out)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	})
+	c := newTestClient(t, handler)
+
+	files := []*multipart.FileHeader{
+		makeFileHeader(t, "a.txt", []byte("first")),
+		makeFileHeader(t, "b.txt", []byte("second")),
+	}
+
+	results, err := c.UploadImagesParallel(context.Background(), files, "docs", 2)
+
+	require.ErrorContains(t, err, "upload failed for 1 files")
+	require.Nil(t, results)
+
+	key, ok := uploadedKey.Load().(string)
+	require.True(t, ok, "the first file should have been uploaded")
+	body, ok := deleteBody.Load().(string)
+	require.True(t, ok, "the orphaned object should have been deleted")
+	require.Contains(t, body, key, "cleanup must target the successfully uploaded key")
+}
+
+func TestUploadImageSanitizesNonASCIIFilenameMetadata(t *testing.T) {
+	setTestEnv(t)
+
+	var gotFilename atomic.Value
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotFilename.Store(r.Header.Get("x-amz-meta-original-filename"))
+		w.Header().Set("ETag", `"etag"`)
+		w.WriteHeader(http.StatusOK)
+	})
+	c := newTestClient(t, handler)
+
+	fh := makeFileHeader(t, "café photo.txt", []byte("payload"))
+
+	_, err := c.UploadImage(context.Background(), fh, "docs")
+
+	require.NoError(t, err)
+	require.Equal(t, "caf%C3%A9%20photo.txt", gotFilename.Load())
 }

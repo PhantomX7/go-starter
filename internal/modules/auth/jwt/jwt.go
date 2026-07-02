@@ -179,8 +179,10 @@ func (a *AuthJWT) identityHandler(c *gin.Context) any {
 	role, _ := claims[RoleKey].(string)
 
 	var adminRoleID *uint
-	if val, ok := claims[AdminRoleIDKey]; ok && val != nil {
-		id := uint(val.(float64))
+	// Comma-ok assertion: JSON numbers decode as float64, but a forged or
+	// malformed claim could carry any type — skip it rather than panic.
+	if val, ok := claims[AdminRoleIDKey].(float64); ok {
+		id := uint(val)
 		adminRoleID = &id
 	}
 
@@ -313,7 +315,12 @@ func (a *AuthJWT) GenerateTokensForUser(ctx context.Context, user *models.User) 
 	}, nil
 }
 
-// ValidateAndRotateRefreshToken rotates oldToken and returns a fresh token pair.
+// ValidateAndRotateRefreshToken rotates oldToken in place and returns a fresh
+// token pair bound to the SAME session. Rotation swaps only the stored token
+// hash on the existing row: the row ID is preserved so access tokens carrying
+// it as their jti claim keep working across a refresh, and expires_at is
+// preserved so the session has an absolute lifetime of JWT_REFRESH_EXPIRATION
+// from login instead of sliding forever one refresh at a time.
 func (a *AuthJWT) ValidateAndRotateRefreshToken(ctx context.Context, oldToken string) (*dto.AuthResponse, error) {
 	tokenRecord, err := a.refreshTokenRepo.FindByToken(ctx, oldToken)
 	if err != nil {
@@ -329,38 +336,57 @@ func (a *AuthJWT) ValidateAndRotateRefreshToken(ctx context.Context, oldToken st
 		return nil, cerrors.NewBadRequestError("user account is inactive")
 	}
 
-	// Rotate atomically: revoking the old token and minting its replacement must
-	// either both commit or both roll back. Outside a transaction, a failure to
-	// mint after a successful revoke would leave the user with a dead old token
-	// and no replacement — a silent logout that forces re-authentication.
+	newToken := newRefreshTokenValue()
+
+	// Rotate atomically: swapping the hash and minting the access token must
+	// either both commit or both roll back. Outside a transaction, a mint
+	// failure after the hash swap committed would leave the user with a dead
+	// old token and an undelivered replacement — a silent logout that forces
+	// re-authentication.
 	var resp *dto.AuthResponse
 	reuseDetected := false
 	err = a.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
-		// Revoke old token before issuing the new one. If revocation fails we
-		// must NOT mint a replacement: the old token would remain reusable and
+		// Swap the hash before minting anything. If the swap fails we must NOT
+		// hand out new tokens: the old token would remain presentable and
 		// rotation would silently degrade to "issue extra tokens", letting an
-		// attacker who captured a refresh token replay it indefinitely while the
-		// store is unhealthy.
-		revoked, err := a.refreshTokenRepo.RevokeByTokenIfActive(txCtx, oldToken)
+		// attacker who captured a refresh token replay it indefinitely while
+		// the store is unhealthy.
+		updated, err := a.refreshTokenRepo.UpdateTokenHashIfActive(txCtx, oldToken, newToken)
 		if err != nil {
-			logger.Error("Failed to revoke refresh token during rotation",
+			logger.Error("Failed to rotate refresh token hash",
 				zap.Uint("user_id", user.ID), zap.Error(err))
 			return cerrors.NewInternalServerError("failed to rotate refresh token", err)
 		}
 
-		// The token was active at FindByToken but no longer active by the time we
-		// revoked it: another request already rotated it, i.e. this token is being
-		// reused. Flag it and unwind the transaction — the session-wide revocation
-		// below MUST commit, so it cannot run inside this rolled-back tx. (The
-		// revoke above was a no-op since the row was already inactive, so there is
-		// nothing of value to roll back here.)
-		if !revoked {
+		// The token was active at FindByToken but its hash no longer matched by
+		// the time we tried to swap it: another request already rotated it (or a
+		// revocation landed in between), i.e. this token is being reused. This is
+		// the same detection window the previous revoke-and-replace rotation had —
+		// there, too, a long-rotated token failed the active FindByToken lookup
+		// with a generic error, and only race-window reuse tripped the alarm.
+		// Flag it and unwind the transaction — the session-wide revocation below
+		// MUST commit, so it cannot run inside this rolled-back tx. (The swap
+		// above was a no-op since no row matched, so there is nothing of value to
+		// roll back here.)
+		if !updated {
 			reuseDetected = true
 			return errRefreshTokenReuse
 		}
 
-		resp, err = a.GenerateTokensForUser(txCtx, user)
-		return err
+		// Mint the access token with the EXISTING session ID as jti so tokens
+		// issued before this refresh stay valid: the authorizer resolves jti to
+		// this same still-active row.
+		token, err := a.Middleware.TokenGenerator(txCtx, &authSubject{User: user, SessionID: tokenRecord.ID})
+		if err != nil {
+			return cerrors.NewInternalServerError("failed to generate access token", err)
+		}
+
+		resp = &dto.AuthResponse{
+			AccessToken:  token.AccessToken,
+			RefreshToken: newToken,
+			TokenType:    "Bearer",
+		}
+		return nil
 	})
 
 	// Reuse is a breach: revoke every session for the user so a stolen-then-
@@ -393,8 +419,16 @@ func (a *AuthJWT) RevokeRefreshToken(ctx context.Context, token string, userID u
 		return err
 	}
 
+	// Ownership mismatch must be indistinguishable from not-found: returning a
+	// distinct error would let a caller probe whether an arbitrary token value
+	// is currently active for SOME user (a validity oracle). Log server-side
+	// instead — a mismatch here means someone is submitting tokens that are not
+	// theirs — and leave the token untouched.
 	if tokenRecord.UserID != userID {
-		return cerrors.NewForbiddenError("token does not belong to user")
+		logger.Warn("Refresh token revocation attempted by non-owner",
+			zap.Uint("acting_user_id", userID),
+			zap.Uint("owner_user_id", tokenRecord.UserID))
+		return nil
 	}
 
 	return a.refreshTokenRepo.RevokeByToken(ctx, token)
@@ -436,12 +470,23 @@ func (a *AuthJWT) validateCredentials(ctx context.Context, username, password st
 	return user, nil
 }
 
+// newRefreshTokenValue returns a fresh opaque refresh-token wire value. Two
+// concatenated UUIDv4s give ~244 bits of entropy — far beyond brute-force
+// reach — and only the SHA-256 hash of this value is ever stored at rest.
+func newRefreshTokenValue() string {
+	return uuid.New().String() + "-" + uuid.New().String()
+}
+
 // createRefreshToken inserts a new refresh-token row and returns both the
 // opaque token string (handed to the client) and the row's UUID, which the
 // caller embeds in the access JWT as the jti claim to bind it to this session.
 func (a *AuthJWT) createRefreshToken(ctx context.Context, userID uint) (string, uuid.UUID, error) {
+	if err := a.enforceSessionCap(ctx, userID); err != nil {
+		return "", uuid.Nil, err
+	}
+
 	sessionID := uuid.New()
-	token := uuid.New().String() + "-" + uuid.New().String()
+	token := newRefreshTokenValue()
 
 	err := a.refreshTokenRepo.Create(ctx, &models.RefreshToken{
 		ID:        sessionID,
@@ -454,6 +499,38 @@ func (a *AuthJWT) createRefreshToken(ctx context.Context, userID uint) (string, 
 	}
 
 	return token, sessionID, nil
+}
+
+// enforceSessionCap keeps a user's concurrent active sessions at or below
+// JWT_MAX_ACTIVE_SESSIONS by revoking the oldest active session(s) so the
+// session about to be created fits. A cap of 0 disables the check. Enforcing
+// the cap at creation time (login/register) — rather than on refresh — means
+// rotation can never be blocked by it, and an attacker with stolen
+// credentials cannot mint unbounded parallel sessions.
+func (a *AuthJWT) enforceSessionCap(ctx context.Context, userID uint) error {
+	maxSessions := a.cfg.JWT.MaxActiveSessions
+	if maxSessions <= 0 {
+		return nil
+	}
+
+	count, err := a.refreshTokenRepo.GetValidCountByUserID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	// Revoke enough of the oldest sessions that count+1 (this new session)
+	// stays within the cap.
+	overflow := int(count) - maxSessions + 1
+	if overflow <= 0 {
+		return nil
+	}
+
+	logger.Info("Active session cap reached; revoking oldest session(s)",
+		zap.Uint("user_id", userID),
+		zap.Int64("active_sessions", count),
+		zap.Int("max_active_sessions", maxSessions),
+		zap.Int("revoking", overflow))
+	return a.refreshTokenRepo.RevokeOldestActiveByUserID(ctx, userID, overflow)
 }
 
 func (a *AuthJWT) setContextValues(c *gin.Context, userID uint, userName string, role string, adminRoleID *uint) {

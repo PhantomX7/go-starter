@@ -22,19 +22,9 @@ const (
 
 // Audit-log entity-type values.
 const (
-	LogEntityTypeAdminRole      = "admin_role"
-	LogEntityTypeBanner         = "banner"
-	LogEntityTypeBlog           = "blog"
-	LogEntityTypeBlogCategory   = "blog_category"
-	LogEntityTypeBrand          = "brand"
-	LogEntityTypeCategory       = "category"
-	LogEntityTypeConfig         = "config"
-	LogEntityTypePcBuild        = "pc_build"
-	LogEntityTypeProduct        = "product"
-	LogEntityTypeFooterMenu     = "footer_menu"
-	LogEntityTypeMenu           = "menu"
-	LogEntityTypeSpecDefinition = "spec_definition"
-	LogEntityTypeUser           = "user"
+	LogEntityTypeAdminRole = "admin_role"
+	LogEntityTypeConfig    = "config"
+	LogEntityTypeUser      = "user"
 )
 
 // ToString converts a LogAction to its raw string representation.
@@ -58,13 +48,6 @@ type Log struct {
 
 	// Relationships
 	User *User `json:"user,omitempty" gorm:"foreignKey:UserID"`
-
-	// Entity References (loaded manually based on EntityType)
-	// GORM polymorphic is for parent-to-child (has-one/has-many), not child-to-parent
-	// These fields are populated manually in the service/repository layer
-	AdminRole  *AdminRole `json:"admin_role,omitempty" gorm:"-"`
-	Config     *Config    `json:"config,omitempty" gorm:"-"`
-	TargetUser *User      `json:"target_user,omitempty" gorm:"-"`
 }
 
 // ToResponse converts a Log into its API response shape.
@@ -82,19 +65,6 @@ func (l Log) ToResponse() dto.LogResponse {
 	if l.User != nil {
 		userResp := l.User.ToResponse()
 		response.User = userResp
-	}
-
-	if l.AdminRole != nil {
-		resp := l.AdminRole.ToResponse()
-		response.AdminRole = resp
-	}
-	if l.Config != nil {
-		resp := l.Config.ToResponse()
-		response.Config = resp
-	}
-	if l.TargetUser != nil {
-		resp := l.TargetUser.ToResponse()
-		response.TargetUser = resp
 	}
 
 	return response

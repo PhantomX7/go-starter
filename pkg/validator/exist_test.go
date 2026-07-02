@@ -170,67 +170,95 @@ func TestExist_InvalidTableColumnFormat(t *testing.T) {
 	customValidator := New(db)
 	v.RegisterValidation("exist", customValidator.Exist())
 
-	// Test struct with invalid table.column format
-	type TestStruct struct {
-		InvalidFormat1 string `validate:"exist=invalid_format"`
-		InvalidFormat2 string `validate:"exist=table.column.extra"`
-		InvalidFormat3 string `validate:"exist="`
-		ValidFormat    string `validate:"exist=exist_test_models.email"`
-	}
-
-	tests := []struct {
-		name        string
-		input       TestStruct
-		expectValid bool
-		description string
-	}{
-		{
-			name: "invalid format without dot",
-			input: TestStruct{
-				InvalidFormat1: "test",
-				InvalidFormat2: "test",
-				InvalidFormat3: "test",
-				ValidFormat:    "user1@example.com",
+	// Malformed tags must fail CLOSED: a broken tag silently disabling the
+	// check would let unverified values through.
+	t.Run("malformed tags fail closed", func(t *testing.T) {
+		malformedCases := []struct {
+			name  string
+			input any
+		}{
+			{
+				name: "missing dot",
+				input: struct {
+					Value string `validate:"exist=invalid_format"`
+				}{Value: "test"},
 			},
-			expectValid: true, // Invalid formats should pass validation (fail open)
-			description: "Should pass validation for invalid table.column formats",
-		},
-		{
-			name: "valid format with existing value",
-			input: TestStruct{
-				InvalidFormat1: "anything",
-				InvalidFormat2: "anything",
-				InvalidFormat3: "anything",
-				ValidFormat:    "user2@example.com",
+			{
+				name: "too many segments",
+				input: struct {
+					Value string `validate:"exist=table.column.extra"`
+				}{Value: "test"},
 			},
-			expectValid: true,
-			description: "Should pass validation with valid format and existing value",
-		},
-		{
-			name: "valid format with non-existing value",
-			input: TestStruct{
-				InvalidFormat1: "anything",
-				InvalidFormat2: "anything",
-				InvalidFormat3: "anything",
-				ValidFormat:    "nonexistent@example.com",
+			{
+				name: "empty parameter",
+				input: struct {
+					Value string `validate:"exist="`
+				}{Value: "test"},
 			},
-			expectValid: false,
-			description: "Should fail validation with valid format but non-existing value",
-		},
-	}
+			{
+				name: "unsafe table identifier",
+				input: struct {
+					Value string `validate:"exist=bad-table.email"`
+				}{Value: "test"},
+			},
+			{
+				name: "unsafe column identifier",
+				input: struct {
+					Value string `validate:"exist=exist_test_models.email;--"`
+				}{Value: "test"},
+			},
+			{
+				name: "identifier starting with digit",
+				input: struct {
+					Value string `validate:"exist=1table.email"`
+				}{Value: "test"},
+			},
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := v.Struct(tt.input)
-			isValid := err == nil
-
-			if isValid != tt.expectValid {
-				t.Errorf("Validation result = %v, want %v. %s", isValid, tt.expectValid, tt.description)
-				if err != nil {
-					t.Errorf("Validation error: %v", err)
+		for _, tc := range malformedCases {
+			t.Run(tc.name, func(t *testing.T) {
+				if err := v.Struct(tc.input); err == nil {
+					t.Errorf("expected malformed tag to fail closed, but validation passed")
 				}
-			}
-		})
+			})
+		}
+	})
+
+	// A well-formed tag keeps working normally alongside the hardening.
+	type ValidStruct struct {
+		ValidFormat string `validate:"exist=exist_test_models.email"`
+	}
+
+	t.Run("valid format with existing value", func(t *testing.T) {
+		if err := v.Struct(ValidStruct{ValidFormat: "user2@example.com"}); err != nil {
+			t.Errorf("expected validation to pass for existing value, got: %v", err)
+		}
+	})
+
+	t.Run("valid format with non-existing value", func(t *testing.T) {
+		if err := v.Struct(ValidStruct{ValidFormat: "nonexistent@example.com"}); err == nil {
+			t.Errorf("expected validation to fail for non-existing value")
+		}
+	})
+}
+
+func TestExist_DeletedAtColumnLookupIsCached(t *testing.T) {
+	db := setupExistTestDB(t)
+
+	cv, ok := New(db).(*customValidator)
+	if !ok {
+		t.Fatal("New should return *customValidator")
+	}
+
+	// First lookup goes to the migrator and is cached.
+	if cv.hasDeletedAtColumn("exist_test_models") {
+		t.Fatal("exist_test_models should not have a deleted_at column")
+	}
+
+	// Poison the cache to prove subsequent calls never hit the migrator again.
+	cv.deletedAtCache.Store("exist_test_models", true)
+	if !cv.hasDeletedAtColumn("exist_test_models") {
+		t.Error("expected the cached value to be returned instead of a fresh migrator lookup")
 	}
 }
 

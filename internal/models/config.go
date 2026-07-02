@@ -19,8 +19,10 @@ func (c ConfigKey) ToString() string {
 type Config struct {
 	gorm.Model
 
-	Key   string `json:"key" gorm:"type:varchar(255);not null" `
-	Value string `json:"value" gorm:"type:text;not null" `
+	// Key uses a partial unique index (WHERE deleted_at IS NULL) so
+	// soft-deleted rows do not block reuse of the key.
+	Key   string `json:"key" gorm:"type:varchar(255);not null;uniqueIndex:idx_configs_key,where:deleted_at IS NULL"`
+	Value string `json:"value" gorm:"type:text;not null"`
 
 	// Polymorphic Logs
 	Logs []Log `json:"-" gorm:"polymorphic:Entity;polymorphicValue:configs"`

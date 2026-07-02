@@ -72,7 +72,9 @@ func newLogPagination(conditions map[string][]string) *pagination.Pagination {
 	})
 }
 
-// Index handles the listing of logs with pagination
+// Index handles the listing of logs with pagination.
+// BuildPaginationResponse maps each models.Log through ToResponse, so Index
+// and FindByID both return the dto.LogResponse shape.
 func (c *logController) Index(ctx *gin.Context) {
 	logs, meta, err := c.logService.Index(
 		ctx.Request.Context(),

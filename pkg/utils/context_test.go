@@ -93,6 +93,26 @@ func TestTxRoundTrip(t *testing.T) {
 	require.Nil(t, utils.GetTxFromContext(context.Background()))
 }
 
+func TestStripTxClearsInheritedTransaction(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+
+	ctx := utils.SetTxToContext(context.Background(), db)
+	stripped := utils.StripTx(ctx)
+
+	// The stripped context must not expose the parent's transaction...
+	require.Nil(t, utils.GetTxFromContext(stripped))
+	// ...while the parent context keeps it (contexts are immutable).
+	require.Same(t, db, utils.GetTxFromContext(ctx))
+
+	// Stripping a context that never carried a tx stays nil.
+	require.Nil(t, utils.GetTxFromContext(utils.StripTx(context.Background())))
+
+	// Non-tx values survive the strip: only the transaction slot is cleared.
+	withReq := utils.SetRequestIDToContext(ctx, "req-9")
+	require.Equal(t, "req-9", utils.GetRequestIDFromContext(utils.StripTx(withReq)))
+}
+
 func TestMapTransformsSlice(t *testing.T) {
 	got := utils.Map([]int{1, 2, 3}, func(n int) int { return n * 2 })
 	require.Equal(t, []int{2, 4, 6}, got)

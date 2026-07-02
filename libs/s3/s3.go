@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
-	"net/http"
+	"net/url"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -19,6 +19,7 @@ import (
 	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/utils"
 	"github.com/PhantomX7/athleton/pkg/utils/image"
+	"github.com/PhantomX7/athleton/pkg/validator"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	s3config "github.com/aws/aws-sdk-go-v2/config"
@@ -192,9 +193,10 @@ func (s3c *s3Client) UploadImage(ctx context.Context, file *multipart.FileHeader
 		Key:         aws.String(key),
 		Body:        uploadBody,
 		ContentType: aws.String(contentType),
-		ACL:         tmtypes.ObjectCannedACLPublicRead,
+		ACL:         s3c.uploadACL(),
 		Metadata: map[string]string{
-			"original-filename": file.Filename,
+			// S3 user metadata must be ASCII — sanitize the client-supplied name.
+			"original-filename": sanitizeMetadataValue(file.Filename),
 			"original-size":     fmt.Sprintf("%d", file.Size),
 			"output-format":     outputFormat,
 			"compressed-size":   fmt.Sprintf("%d", fileSize),
@@ -262,23 +264,41 @@ func (s3c *s3Client) generateS3KeyWithExtension(folder, format string) string {
 	return fmt.Sprintf("%s/%s%s", timestamp, uniqueID, ext)
 }
 
-// detectContentType detects content type from file
+// uploadACL resolves the canned ACL to apply to uploaded objects from the
+// configured S3 UploadACL string. Unknown (or empty) values default to
+// private — the safe choice — and log a warning so a config typo is noticed
+// instead of silently exposing objects.
+func (s3c *s3Client) uploadACL() tmtypes.ObjectCannedACL {
+	configured := s3c.s3Cfg.UploadACL
+	for _, acl := range tmtypes.ObjectCannedACLPrivate.Values() {
+		if string(acl) == configured {
+			return acl
+		}
+	}
+
+	logger.Warn("Unknown S3 upload ACL configured, defaulting to private",
+		zap.String("configured_acl", configured),
+	)
+	return tmtypes.ObjectCannedACLPrivate
+}
+
+// sanitizeMetadataValue makes a string safe for S3 user metadata, which must
+// be ASCII. Values that are already printable ASCII pass through unchanged;
+// anything else (non-ASCII filenames, control characters) is percent-encoded
+// with url.PathEscape so the upload cannot fail on a signature mismatch.
+func sanitizeMetadataValue(s string) string {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] > 0x7e {
+			return url.PathEscape(s)
+		}
+	}
+	return s
+}
+
+// detectContentType detects the content type from the file's leading bytes.
+// The sniffing itself is shared with the filemime validator.
 func (s3c *s3Client) detectContentType(file *multipart.FileHeader) (string, error) {
-	src, err := file.Open()
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		_ = src.Close()
-	}()
-
-	buffer := make([]byte, 512)
-	n, err := src.Read(buffer)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return "", err
-	}
-
-	return http.DetectContentType(buffer[:n]), nil
+	return validator.DetectContentType(file)
 }
 
 // isImageFile checks if file is an image
@@ -360,7 +380,13 @@ func (s3c *s3Client) DeleteImage(ctx context.Context, key string) error {
 	return nil
 }
 
-// UploadImagesParallel uploads multiple images concurrently
+// UploadImagesParallel uploads multiple images concurrently.
+//
+// Contract: the operation is all-or-nothing. On success it returns one result
+// per input file, in input order. If ANY file fails, every object that was
+// already uploaded is deleted again (best effort — cleanup failures are logged
+// and do not mask the upload error) and (nil, error) is returned, so callers
+// never receive a partially-populated slice or orphaned objects in the bucket.
 func (s3c *s3Client) UploadImagesParallel(
 	ctx context.Context,
 	files []*multipart.FileHeader,
@@ -439,7 +465,8 @@ func (s3c *s3Client) UploadImagesParallel(
 
 	wg.Wait()
 
-	// Handle errors
+	// Handle errors: roll back the uploads that did succeed so no orphaned
+	// objects are left behind, then fail the whole batch.
 	if len(uploadErrors) > 0 {
 		successCount := len(files) - len(uploadErrors)
 		logger.Error("Parallel upload completed with errors",
@@ -448,7 +475,26 @@ func (s3c *s3Client) UploadImagesParallel(
 			zap.Int("success", successCount),
 			zap.Int("failed", len(uploadErrors)),
 		)
-		return results, fmt.Errorf("upload failed for %d files", len(uploadErrors))
+
+		var uploadedKeys []string
+		for _, r := range results {
+			if r != nil {
+				uploadedKeys = append(uploadedKeys, r.Key)
+			}
+		}
+		if len(uploadedKeys) > 0 {
+			// Best-effort cleanup. Use a context detached from cancellation so
+			// a cancelled request cannot also abort the rollback.
+			if cleanupErr := s3c.DeleteImages(context.WithoutCancel(ctx), uploadedKeys); cleanupErr != nil {
+				logger.Error("Failed to clean up partially uploaded images",
+					zap.String("request_id", requestID),
+					zap.Strings("keys", uploadedKeys),
+					zap.Error(cleanupErr),
+				)
+			}
+		}
+
+		return nil, fmt.Errorf("upload failed for %d files", len(uploadErrors))
 	}
 
 	logger.Info("Parallel upload completed successfully",

@@ -1,29 +1,31 @@
 package validator
 
 import (
-	"strings"
-
 	"github.com/go-playground/validator/v10"
 )
 
-// check if value of request is unique in database
-// tag format : unique=tablename.columnname
+// Unique checks that the value of the request field is unique in the database.
+//
+// Tag format: unique=tablename.columnname
+//
+// Table and column names come from struct tags, so both are validated as
+// strict SQL identifiers before being spliced into the query. A malformed tag
+// or unsafe identifier fails CLOSED (the field is rejected) and logs a warning
+// so the developer notices — a broken tag must never silently disable the check.
 func (cv customValidator) Unique() validator.Func {
 	return func(fl validator.FieldLevel) bool {
-		var count int64
-
-		arr := strings.Split(fl.Param(), ".")
-		// Validate parameter format
-		if len(arr) != 2 {
-			return true // Invalid format, validation passes (fail open)
+		table, column, ok := parseTableColumn("unique", fl.Param())
+		if !ok {
+			return false // Malformed tag: fail closed.
 		}
 
-		table, column := arr[0], arr[1]
+		var count int64
 
 		query := cv.db.Table(table).Where(column+" = ?", fl.Field().Interface())
 
-		// Check for soft deletes
-		if cv.db.Migrator().HasColumn(table, "deleted_at") {
+		// Check for soft deletes.
+		// The column lookup is cached per table (see hasDeletedAtColumn).
+		if cv.hasDeletedAtColumn(table) {
 			query = query.Where("deleted_at IS NULL")
 		}
 

@@ -65,6 +65,12 @@ func (m *mockRefreshTokenRepository) RevokeByToken(context.Context, string) erro
 func (m *mockRefreshTokenRepository) RevokeByTokenIfActive(context.Context, string) (bool, error) {
 	panic("unexpected RevokeByTokenIfActive call")
 }
+func (m *mockRefreshTokenRepository) RevokeOldestActiveByUserID(context.Context, uint, int) error {
+	panic("unexpected RevokeOldestActiveByUserID call")
+}
+func (m *mockRefreshTokenRepository) UpdateTokenHashIfActive(context.Context, string, string) (bool, error) {
+	panic("unexpected UpdateTokenHashIfActive call")
+}
 
 func setupLogger(t *testing.T) {
 	t.Helper()
@@ -88,7 +94,7 @@ func TestCronServiceClearRefreshTokenDeletesInvalidTokens(t *testing.T) {
 		},
 	}
 
-	svc := service.NewCronService(nil, repo)
+	svc := service.NewCronService(repo)
 
 	err := svc.ClearRefreshToken(context.Background())
 
@@ -106,7 +112,7 @@ func TestCronServiceClearRefreshTokenReturnsRepositoryError(t *testing.T) {
 		},
 	}
 
-	svc := service.NewCronService(nil, repo)
+	svc := service.NewCronService(repo)
 
 	err := svc.ClearRefreshToken(context.Background())
 
@@ -124,7 +130,7 @@ func TestCronServiceRunAllCleanupJobsContinuesAfterError(t *testing.T) {
 		},
 	}
 
-	svc := service.NewCronService(nil, repo)
+	svc := service.NewCronService(repo)
 
 	err := svc.RunAllCleanupJobs(context.Background())
 

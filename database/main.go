@@ -24,11 +24,15 @@ func main() {
 		log.Fatalf("failed to open static schema: %v", err)
 	}
 
+	// List every persisted model explicitly so the generated schema (and any
+	// future `atlas migrate diff`) never depends on transitive discovery.
 	stmts, err := gormschema.New("postgres").Load(
 		&models.User{},
 		&models.RefreshToken{},
 		&models.Config{},
 		&models.Log{},
+		&models.AdminRole{},
+		&models.Post{},
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load gorm schema: %v\n", err)

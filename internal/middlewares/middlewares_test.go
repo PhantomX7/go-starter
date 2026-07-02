@@ -9,6 +9,7 @@ import (
 
 	"github.com/PhantomX7/athleton/internal/middlewares"
 	"github.com/PhantomX7/athleton/libs/casbin"
+	"github.com/PhantomX7/athleton/pkg/config"
 	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/utils"
 )
@@ -73,8 +74,16 @@ var _ casbin.Client = (*mockCasbinClient)(nil)
 
 // newMiddleware builds the middleware bundle without a JWT dependency; tests
 // here never exercise RequireAuth/LoginHandler, which are gin-jwt passthroughs.
+// The zero-value config leaves CORS in wildcard mode; tests that need an
+// origin allowlist use newMiddlewareWithConfig instead.
 func newMiddleware(casbinClient casbin.Client) *middlewares.Middleware {
-	return middlewares.NewMiddleware(nil, casbinClient)
+	return newMiddlewareWithConfig(&config.Config{}, casbinClient)
+}
+
+// newMiddlewareWithConfig builds the middleware bundle with an explicit config
+// for tests that exercise config-driven behavior (e.g. the CORS allowlist).
+func newMiddlewareWithConfig(cfg *config.Config, casbinClient casbin.Client) *middlewares.Middleware {
+	return middlewares.NewMiddleware(cfg, nil, casbinClient)
 }
 
 // withContextValues stands in for the JWT middleware by injecting

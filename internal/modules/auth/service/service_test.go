@@ -67,6 +67,9 @@ func (m *mockUserRepository) FindByUsername(context.Context, string) (*models.Us
 func (m *mockUserRepository) FindByEmail(context.Context, string) (*models.User, error) {
 	panic("unexpected FindByEmail call")
 }
+func (m *mockUserRepository) FindByIDForUpdate(context.Context, uint) (*models.User, error) {
+	panic("unexpected FindByIDForUpdate call")
+}
 
 var _ userrepository.UserRepository = (*mockUserRepository)(nil)
 
@@ -76,6 +79,8 @@ type mockRefreshTokenRepository struct {
 	revokeByTokenFn           func(context.Context, string) error
 	revokeByTokenIfActiveFn   func(context.Context, string) (bool, error)
 	revokeAllByUserIDExceptFn func(context.Context, uint, string) error
+	getValidCountByUserIDFn   func(context.Context, uint) (int64, error)
+	updateTokenHashIfActiveFn func(context.Context, string, string) (bool, error)
 }
 
 func (m *mockRefreshTokenRepository) Create(ctx context.Context, entity *models.RefreshToken) error {
@@ -108,8 +113,11 @@ func (m *mockRefreshTokenRepository) FindByToken(ctx context.Context, token stri
 func (m *mockRefreshTokenRepository) FindActiveByID(context.Context, uuid.UUID) (*models.RefreshToken, error) {
 	panic("unexpected FindActiveByID call")
 }
-func (m *mockRefreshTokenRepository) GetValidCountByUserID(context.Context, uint) (int64, error) {
-	panic("unexpected GetValidCountByUserID call")
+func (m *mockRefreshTokenRepository) GetValidCountByUserID(ctx context.Context, userID uint) (int64, error) {
+	if m.getValidCountByUserIDFn == nil {
+		panic("unexpected GetValidCountByUserID call")
+	}
+	return m.getValidCountByUserIDFn(ctx, userID)
 }
 func (m *mockRefreshTokenRepository) DeleteInvalidToken(context.Context) error {
 	panic("unexpected DeleteInvalidToken call")
@@ -134,6 +142,15 @@ func (m *mockRefreshTokenRepository) RevokeByTokenIfActive(ctx context.Context, 
 		panic("unexpected RevokeByTokenIfActive call")
 	}
 	return m.revokeByTokenIfActiveFn(ctx, token)
+}
+func (m *mockRefreshTokenRepository) RevokeOldestActiveByUserID(context.Context, uint, int) error {
+	panic("unexpected RevokeOldestActiveByUserID call")
+}
+func (m *mockRefreshTokenRepository) UpdateTokenHashIfActive(ctx context.Context, oldToken, newToken string) (bool, error) {
+	if m.updateTokenHashIfActiveFn == nil {
+		panic("unexpected UpdateTokenHashIfActive call")
+	}
+	return m.updateTokenHashIfActiveFn(ctx, oldToken, newToken)
 }
 
 var _ refreshtokenrepository.RefreshTokenRepository = (*mockRefreshTokenRepository)(nil)
@@ -218,6 +235,9 @@ func setupConfig(t *testing.T) *config.Config {
 	t.Setenv("JWT_ISSUER", "athleton-test")
 	t.Setenv("APP_NAME", "Athleton Test")
 	t.Setenv("APP_ENVIRONMENT", "development")
+	// Config validation requires an admin default password (no default is
+	// provided on purpose); any strong non-weak value satisfies it in tests.
+	t.Setenv("ADMIN_DEFAULT_PASSWORD", "test-admin-password-123")
 
 	cfg, err := config.Load()
 	require.NoError(t, err)
@@ -311,6 +331,10 @@ func TestAuthServiceRegisterCreatesUserAndTokens(t *testing.T) {
 			require.NotEqual(t, uuid.Nil, token.ID)
 			return nil
 		},
+		// Session-cap check runs at token creation; no active sessions yet.
+		getValidCountByUserIDFn: func(context.Context, uint) (int64, error) {
+			return 0, nil
+		},
 	}
 	auth := newAuthJWT(t, userRepo, refreshRepo, logRepo)
 	txManager := &mockTxManager{
@@ -346,15 +370,14 @@ func TestAuthServiceRefreshRotatesToken(t *testing.T) {
 	refreshRepo := &mockRefreshTokenRepository{
 		findByTokenFn: func(ctx context.Context, token string) (*models.RefreshToken, error) {
 			require.Equal(t, "old-token", token)
-			return &models.RefreshToken{UserID: 3, Token: token}, nil
+			return &models.RefreshToken{ID: uuid.New(), UserID: 3, Token: token}, nil
 		},
-		revokeByTokenIfActiveFn: func(ctx context.Context, token string) (bool, error) {
-			require.Equal(t, "old-token", token)
+		// Rotation swaps the stored hash in place on the existing session row.
+		updateTokenHashIfActiveFn: func(ctx context.Context, oldToken, newToken string) (bool, error) {
+			require.Equal(t, "old-token", oldToken)
+			require.NotEmpty(t, newToken)
+			require.NotEqual(t, oldToken, newToken)
 			return true, nil
-		},
-		createFn: func(ctx context.Context, entity *models.RefreshToken) error {
-			require.Equal(t, uint(3), entity.UserID)
-			return nil
 		},
 	}
 	auth := newAuthJWT(t, userRepo, refreshRepo, &mockLogRepository{})

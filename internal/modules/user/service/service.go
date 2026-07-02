@@ -10,11 +10,13 @@ import (
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/generated"
 	"github.com/PhantomX7/athleton/internal/models"
+	adminrolerepo "github.com/PhantomX7/athleton/internal/modules/admin_role/repository"
 	logrepo "github.com/PhantomX7/athleton/internal/modules/log/repository"
 	rtokenrepo "github.com/PhantomX7/athleton/internal/modules/refresh_token/repository"
 	"github.com/PhantomX7/athleton/internal/modules/user/repository"
 	"github.com/PhantomX7/athleton/libs/casbin"
 	"github.com/PhantomX7/athleton/libs/transaction_manager"
+	"github.com/PhantomX7/athleton/pkg/constants/security"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/pagination"
@@ -37,6 +39,7 @@ type UserService interface {
 // userService implements the UserService interface
 type userService struct {
 	userRepository   repository.UserRepository
+	adminRoleRepo    adminrolerepo.AdminRoleRepository
 	refreshTokenRepo rtokenrepo.RefreshTokenRepository
 	logRepository    logrepo.LogRepository
 	casbinClient     casbin.Client
@@ -47,6 +50,7 @@ type userService struct {
 // NewUserService creates a new instance of UserService
 func NewUserService(
 	userRepository repository.UserRepository,
+	adminRoleRepo adminrolerepo.AdminRoleRepository,
 	refreshTokenRepo rtokenrepo.RefreshTokenRepository,
 	logRepository logrepo.LogRepository,
 	casbinClient casbin.Client,
@@ -55,6 +59,7 @@ func NewUserService(
 ) UserService {
 	return &userService{
 		userRepository:   userRepository,
+		adminRoleRepo:    adminRoleRepo,
 		refreshTokenRepo: refreshTokenRepo,
 		logRepository:    logRepository,
 		casbinClient:     casbinClient,
@@ -89,21 +94,43 @@ func (s *userService) Index(ctx context.Context, pg *pagination.Pagination) ([]*
 
 // Update implements UserService.
 func (s *userService) Update(ctx context.Context, userID uint, req *dto.UserUpdateRequest) (*models.User, error) {
-	user, err := s.userRepository.FindByID(ctx, userID)
+	// Run the find→guard→modify→update sequence inside a single transaction
+	// with the user row locked: the repository persists with a full-row Save,
+	// so without the lock a concurrent user-mutating flow (AssignAdminRole,
+	// ChangePassword) could interleave between the read and the write and have
+	// its columns silently reverted.
+	var user *models.User
+	err := s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
+		var err error
+		user, err = s.userRepository.FindByIDForUpdate(txCtx, userID)
+		if err != nil {
+			return err
+		}
+
+		// Prevent modifying root users — same guard as AssignAdminRole and
+		// ChangePassword, so Update cannot be used to demote or rename root.
+		if user.Role == models.UserRoleRoot {
+			logger.CtxWith(ctx, s.log, zap.Uint("user_id", userID)).Warn("Attempted to modify root user")
+			return cerrors.NewForbiddenError("cannot modify root user")
+		}
+
+		// Pointer fields: an omitted field (nil) keeps its current value — PATCH semantics.
+		if req.Name != nil {
+			user.Name = *req.Name
+		}
+		if req.Role != nil {
+			user.Role = models.UserRole(*req.Role)
+			// Demoting away from an admin-type role must clear the admin-role
+			// assignment in the same write so no dangling AdminRoleID remains.
+			if !user.Role.IsAdminType() {
+				user.AdminRoleID = nil
+			}
+		}
+
+		return s.userRepository.Update(txCtx, user)
+	})
 	if err != nil {
-		return user, err
-	}
-
-	// Pointer fields: an omitted field (nil) keeps its current value — PATCH semantics.
-	if req.Name != nil {
-		user.Name = *req.Name
-	}
-	if req.Role != nil {
-		user.Role = models.UserRole(*req.Role)
-	}
-
-	if err := s.userRepository.Update(ctx, user); err != nil {
-		return user, err
+		return nil, err
 	}
 
 	// Create audit log
@@ -126,16 +153,33 @@ func (s *userService) FindByID(ctx context.Context, userID uint) (*models.User, 
 	return user, nil
 }
 
-// AssignAdminRole assigns an admin role to a user
+// AssignAdminRole assigns an admin role to a user and promotes the account to
+// the "admin" role in the same write — Casbin's CheckPermissionWithRoot only
+// consults AdminRoleID when Role == "admin", so setting only one of the two
+// fields would grant nothing. There is no separate unassign endpoint: demotion
+// goes through Update (role "user"), which clears AdminRoleID in the same
+// write so both fields always change together.
 func (s *userService) AssignAdminRole(ctx context.Context, userID uint, req *dto.UserAssignAdminRoleRequest) (*models.User, error) {
 	// Run the find→check→assign→update sequence inside a single transaction so
 	// a failure at any step rolls everything back and concurrent writers cannot
 	// interleave between the read and the role assignment.
 	var user *models.User
 	err := s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
-		// Find user
+		// Lock the target admin-role row first. This serializes with
+		// adminRoleService.Delete, which locks the same row before its
+		// "no users assigned" check: either this assignment commits first (and
+		// the delete sees the user), or the delete commits first (and this
+		// locked read finds the role gone and fails). It also re-verifies the
+		// role's existence inside the transaction instead of trusting the
+		// request-validation lookup that ran outside it.
+		if _, err := s.adminRoleRepo.FindByIDForUpdate(txCtx, req.AdminRoleID); err != nil {
+			return err
+		}
+
+		// Find and lock the user row so the full-row Save below cannot race
+		// other user-mutating flows.
 		var err error
-		user, err = s.userRepository.FindByID(txCtx, userID)
+		user, err = s.userRepository.FindByIDForUpdate(txCtx, userID)
 		if err != nil {
 			return err
 		}
@@ -148,6 +192,7 @@ func (s *userService) AssignAdminRole(ctx context.Context, userID uint, req *dto
 
 		// Assign admin role and set role to admin
 		user.AdminRoleID = &req.AdminRoleID
+		user.Role = models.UserRoleAdmin
 
 		return s.userRepository.Update(txCtx, user)
 	})
@@ -163,35 +208,42 @@ func (s *userService) AssignAdminRole(ctx context.Context, userID uint, req *dto
 
 // ChangePassword allows root to change another admin's password
 func (s *userService) ChangePassword(ctx context.Context, userID uint, req *dto.ChangeAdminPasswordRequest) error {
-	user, err := s.userRepository.FindByID(ctx, userID)
-	if err != nil {
-		return err
-	}
-
-	// Only allow changing password of admin users
-	if !user.Role.IsAdminType() {
-		return cerrors.NewBadRequestError("can only change password of admin users")
-	}
-
-	// Prevent changing another root user's password
-	if user.Role == models.UserRoleRoot {
-		return cerrors.NewForbiddenError("cannot change root user password")
-	}
-
-	// Hash new password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), 12)
-	if err != nil {
-		return cerrors.NewInternalServerError("failed to process new password", err)
-	}
-
-	// Update the password and revoke all refresh tokens in one transaction so a
+	// Run the find→guard→hash→update→revoke sequence inside a single
+	// transaction with the user row locked: the repository persists with a
+	// full-row Save, so reading outside the transaction would let a concurrent
+	// Update/AssignAdminRole interleave and have its columns silently
+	// reverted. The same transaction also revokes all refresh tokens, so a
 	// partial failure cannot leave the password changed while stale sessions
 	// remain valid (or vice versa).
-	user.Password = string(hashedPassword)
-	// Clears the must-change-default-password gate for the target account.
-	now := time.Now()
-	user.PasswordChangedAt = &now
-	err = s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
+	var user *models.User
+	err := s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
+		var err error
+		user, err = s.userRepository.FindByIDForUpdate(txCtx, userID)
+		if err != nil {
+			return err
+		}
+
+		// Only allow changing password of admin users
+		if !user.Role.IsAdminType() {
+			return cerrors.NewBadRequestError("can only change password of admin users")
+		}
+
+		// Prevent changing another root user's password
+		if user.Role == models.UserRoleRoot {
+			return cerrors.NewForbiddenError("cannot change root user password")
+		}
+
+		// Hash new password
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), security.BcryptCost)
+		if err != nil {
+			return cerrors.NewInternalServerError("failed to process new password", err)
+		}
+
+		user.Password = string(hashedPassword)
+		// Clears the must-change-default-password gate for the target account.
+		now := time.Now()
+		user.PasswordChangedAt = &now
+
 		if err := s.userRepository.Update(txCtx, user); err != nil {
 			return err
 		}

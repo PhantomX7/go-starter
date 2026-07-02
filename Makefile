@@ -1,6 +1,7 @@
 app-name=athleton
 
-include .env
+# -include: don't die in a fresh checkout that has no .env yet
+-include .env
 export
 
 # Database settings from .env file, with defaults
@@ -103,7 +104,7 @@ test:
 	go test ./... -coverprofile cp.out
 
 test-html:
-	go test $(go list ./... | grep -v /mock/) -coverprofile cp.out
+	go test $$(go list ./... | grep -v /mock/) -coverprofile cp.out
 	go tool cover -html=cp.out
 
 # Usage: make generate-module module_name=inventory_item [model=0] [dto=0] [force=1]
@@ -124,4 +125,4 @@ seed:
 	go run ./database/seeder/main.go
 
 build:
-	set GOOS=linux&& set GOARCH=amd64&& go build -o bin/${app-name} cmd/main.go
+	GOOS=linux GOARCH=amd64 go build -o bin/${app-name} cmd/main.go

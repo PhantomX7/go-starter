@@ -102,7 +102,11 @@ func TestValidateDatabase(t *testing.T) {
 
 	c := validConfig()
 	c.Database.Driver = ""
-	require.ErrorContains(t, c.validateDatabase(), "driver is required")
+	require.ErrorContains(t, c.validateDatabase(), "invalid driver")
+
+	c = validConfig()
+	c.Database.Driver = "oracle" // unsupported drivers must fail at startup, not connect time
+	require.ErrorContains(t, c.validateDatabase(), "invalid driver")
 
 	c = validConfig()
 	c.Database.Host = ""
@@ -134,6 +138,18 @@ func TestValidateJWT(t *testing.T) {
 	c.JWT.RefreshExpiration = -time.Hour
 	require.ErrorContains(t, c.validateJWT(), "refresh expiration must be greater than 0")
 
+	// Placeholder secrets from .env.example pass the length check but are
+	// public knowledge: rejected in production, tolerated (warned) in dev.
+	c = validConfig()
+	c.JWT.Secret = "your-super-secret-jwt-key-change-this-in-production"
+	require.NoError(t, c.validateJWT())
+	c.App.Environment = "production"
+	require.ErrorContains(t, c.validateJWT(), "known placeholder")
+
+	c = validConfig()
+	c.JWT.MaxActiveSessions = -1
+	require.ErrorContains(t, c.validateJWT(), "max active sessions")
+
 	require.NoError(t, validConfig().validateJWT())
 }
 
@@ -161,6 +177,19 @@ func TestValidateAdmin(t *testing.T) {
 	c := validConfig()
 	c.Admin.DefaultPassword = ""
 	require.ErrorContains(t, c.validateAdmin(), "default password must be set")
+
+	// Well-known weak values are rejected in production, warned in dev.
+	c = validConfig()
+	c.Admin.DefaultPassword = "q1w2e3r4"
+	require.NoError(t, c.validateAdmin())
+	c.App.Environment = "production"
+	require.ErrorContains(t, c.validateAdmin(), "weak value")
+
+	c = validConfig()
+	c.Admin.DefaultPassword = "short-pass" // 10 chars: fine in dev, too short in prod
+	require.NoError(t, c.validateAdmin())
+	c.App.Environment = "production"
+	require.ErrorContains(t, c.validateAdmin(), "at least 12 characters")
 
 	require.NoError(t, validConfig().validateAdmin())
 }
@@ -231,6 +260,14 @@ func TestGetDatabaseURL(t *testing.T) {
 	c.Database.Driver = "mysql"
 	require.Equal(t,
 		"user:pass@tcp(db.local:5432)/app?charset=utf8mb4&parseTime=True&loc=Local",
+		c.GetDatabaseURL())
+
+	// Credentials with URL metacharacters must be escaped, not spliced raw
+	// (p@ss@evil-host would otherwise re-parse "evil-host" as the host).
+	c.Database.Driver = "postgres"
+	c.Database.Password = "p@ss:w/rd%23"
+	require.Equal(t,
+		"postgres://user:p%40ss%3Aw%2Frd%2523@db.local:5432/app?sslmode=disable&TimeZone=Asia/Jakarta",
 		c.GetDatabaseURL())
 
 	c.Database.Driver = "oracle"

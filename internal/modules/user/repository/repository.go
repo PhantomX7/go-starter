@@ -14,6 +14,7 @@ import (
 	"github.com/PhantomX7/athleton/pkg/repository"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // UserRepository defines the interface for user repository operations.
@@ -21,6 +22,7 @@ type UserRepository interface {
 	repository.Repository[models.User]
 	FindByUsername(ctx context.Context, username string) (*models.User, error)
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
+	FindByIDForUpdate(ctx context.Context, id uint) (*models.User, error)
 }
 
 type userRepository struct {
@@ -49,6 +51,32 @@ func (r *userRepository) FindByUsername(ctx context.Context, username string) (*
 			return nil, cerrors.NewNotFoundError(fmt.Sprintf("user with username %s not found", username))
 		}
 		return nil, cerrors.NewInternalServerError(fmt.Sprintf("failed to find user by username %s", username), err)
+	}
+
+	return &user, nil
+}
+
+// FindByIDForUpdate loads the user row under a pessimistic SELECT ... FOR
+// UPDATE lock so read-modify-write flows (which persist with a full-row Save)
+// serialize instead of silently reverting each other's columns. Call it only
+// inside a transaction — the lock is held until commit/rollback. On sqlite
+// (unit tests via glebarez) the locking clause is a no-op, which is fine:
+// sqlite serializes writers at the database level anyway.
+func (r *userRepository) FindByIDForUpdate(ctx context.Context, id uint) (*models.User, error) {
+	start := time.Now()
+
+	var user models.User
+	err := r.GetDB(ctx).WithContext(ctx).
+		Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}).
+		First(&user, "id = ?", id).Error
+
+	r.LogSlowRead(ctx, "FindByIDForUpdate", time.Since(start))
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, cerrors.NewNotFoundError(fmt.Sprintf("user with id %d not found", id))
+		}
+		return nil, cerrors.NewInternalServerError(fmt.Sprintf("failed to find user by id %d", id), err)
 	}
 
 	return &user, nil

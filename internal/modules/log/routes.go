@@ -20,4 +20,5 @@ func NewRoutes(controller controller.LogController) routes.Registrar {
 func (r *routeRegistrar) RegisterRoutes(ctx *routes.Context) {
 	logRoute := ctx.Admin.Group("/log")
 	logRoute.GET("", ctx.MW.RequirePermission(permissions.LogRead), r.controller.Index)
+	logRoute.GET("/:id", ctx.MW.RequirePermission(permissions.LogRead), r.controller.FindByID)
 }
