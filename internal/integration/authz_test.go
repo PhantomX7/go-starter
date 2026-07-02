@@ -15,7 +15,7 @@ func TestAdminEndpointsRejectMissingOrInvalidToken(t *testing.T) {
 	app := newTestApp(t)
 
 	t.Run("missing token", func(t *testing.T) {
-		rec := app.request(t, http.MethodGet, "/api/v1/admin/post", nil, "")
+		rec := app.request(t, http.MethodGet, "/api/v1/admin/log", nil, "")
 		require.Equal(t, http.StatusUnauthorized, rec.Code, rec.Body.String())
 		env := decodeEnvelope(t, rec)
 		require.False(t, env.Status)
@@ -23,7 +23,7 @@ func TestAdminEndpointsRejectMissingOrInvalidToken(t *testing.T) {
 	})
 
 	t.Run("garbage token", func(t *testing.T) {
-		rec := app.request(t, http.MethodGet, "/api/v1/admin/post", nil, "not-a-jwt")
+		rec := app.request(t, http.MethodGet, "/api/v1/admin/log", nil, "not-a-jwt")
 		require.Equal(t, http.StatusUnauthorized, rec.Code, rec.Body.String())
 		require.False(t, decodeEnvelope(t, rec).Status)
 	})
@@ -62,7 +62,7 @@ func TestPermissionEnforcementOnGuardedEndpoint(t *testing.T) {
 // TestRolePermissionRevocationRemovesAccess covers the replace semantics the
 // admin-role Update endpoint relies on (casbin SetRolePermissions): a role
 // granted log:read reaches the guarded endpoint, and once its permission set is
-// replaced with an unrelated grant the SAME access token is denied — proving a
+// replaced with an unrelated grant the SAME access token is denied â€” proving a
 // permission edit propagates to live sessions without re-login. The existing
 // enforcement test only covers the grant direction; this covers revocation.
 func TestRolePermissionRevocationRemovesAccess(t *testing.T) {

@@ -42,7 +42,7 @@ func TestValidationErrorReturnsStructuredEnvelope(t *testing.T) {
 	app := newTestApp(t)
 	tokens := app.loginAs(t, rootUsername, testPassword)
 
-	rec := app.request(t, http.MethodPost, "/api/v1/admin/post", map[string]string{}, tokens.AccessToken)
+	rec := app.request(t, http.MethodPost, "/api/v1/admin/admin-role", map[string]string{}, tokens.AccessToken)
 	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 
 	env := decodeEnvelope(t, rec)
@@ -54,8 +54,9 @@ func TestValidationErrorReturnsStructuredEnvelope(t *testing.T) {
 		Fields      map[string]string `json:"fields"`
 	}
 	require.NoError(t, json.Unmarshal(env.Error, &validation))
-	require.Equal(t, 1, validation.TotalErrors)
+	require.Equal(t, 2, validation.TotalErrors)
 	require.Contains(t, validation.Fields, "name")
+	require.Contains(t, validation.Fields, "permissions")
 }
 
 // TestMalformedJSONBodyReturns400 verifies that a syntactically invalid JSON
@@ -65,7 +66,7 @@ func TestMalformedJSONBodyReturns400(t *testing.T) {
 	app := newTestApp(t)
 	tokens := app.loginAs(t, rootUsername, testPassword)
 
-	rec := app.request(t, http.MethodPost, "/api/v1/admin/post", `{"name": "broken"`, tokens.AccessToken)
+	rec := app.request(t, http.MethodPost, "/api/v1/admin/admin-role", `{"name": "broken"`, tokens.AccessToken)
 	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 	env := decodeEnvelope(t, rec)
 	require.False(t, env.Status)

@@ -7,7 +7,6 @@ import (
 	"github.com/PhantomX7/athleton/internal/modules/config"
 	"github.com/PhantomX7/athleton/internal/modules/cron"
 	"github.com/PhantomX7/athleton/internal/modules/log"
-	"github.com/PhantomX7/athleton/internal/modules/post"
 	"github.com/PhantomX7/athleton/internal/modules/refresh_token"
 	"github.com/PhantomX7/athleton/internal/modules/user"
 
@@ -16,7 +15,6 @@ import (
 
 // Module groups all application modules behind a single Fx option.
 var Module = fx.Options(
-	post.Module,
 	admin_role.Module,
 	auth.Module,
 	config.Module,

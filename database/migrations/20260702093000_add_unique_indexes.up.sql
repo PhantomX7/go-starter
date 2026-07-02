@@ -1,16 +1,3 @@
--- create "posts" table
-CREATE TABLE "posts" (
-  "id" bigserial NOT NULL,
-  "created_at" timestamptz NULL,
-  "updated_at" timestamptz NULL,
-  "deleted_at" timestamptz NULL,
-  "name" character varying(255) NOT NULL,
-  "description" text NULL,
-  "is_active" boolean NULL DEFAULT true,
-  PRIMARY KEY ("id")
-);
--- create index "idx_posts_deleted_at" to table: "posts"
-CREATE INDEX "idx_posts_deleted_at" ON "posts" ("deleted_at");
 -- create index "idx_users_username" to table: "users" (partial: soft-deleted rows do not block reuse)
 CREATE UNIQUE INDEX "idx_users_username" ON "users" ("username") WHERE deleted_at IS NULL;
 -- create index "idx_users_email" to table: "users" (partial: soft-deleted rows do not block reuse)

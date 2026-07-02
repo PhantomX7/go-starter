@@ -148,18 +148,19 @@ func (c *userController) FindByID(ctx *gin.Context) {
 }
 
 // AssignAdminRole handles assigning an admin role to a user
-// @Summary      Assign admin role
-// @Description  Assign an admin role to a user (changes user role to admin)
-// @Tags         user
-// @Accept       json
-// @Produce      json
-// @Param        id    path      uint                          true  "User ID"
-// @Param        body  body      dto.UserAssignAdminRoleRequest true  "Assign Admin Role Request"
-// @Success      200  {object}  response.Response{data=dto.UserResponse}
-// @Failure      400  {object}  response.Response
-// @Failure      404  {object}  response.Response
-// @Failure      500  {object}  response.Response
-// @Router       /admin/user/{id}/admin-role [post]
+//
+//	@Summary		Assign admin role
+//	@Description	Assign an admin role to a user (changes user role to admin)
+//	@Tags			user
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		uint							true	"User ID"
+//	@Param			body	body		dto.UserAssignAdminRoleRequest	true	"Assign Admin Role Request"
+//	@Success		200		{object}	response.Response{data=dto.UserResponse}
+//	@Failure		400		{object}	response.Response
+//	@Failure		404		{object}	response.Response
+//	@Failure		500		{object}	response.Response
+//	@Router			/admin/user/{id}/admin-role [post]
 func (c *userController) AssignAdminRole(ctx *gin.Context) {
 	userID, ok := ginx.ParseUintParam(ctx, "id")
 	if !ok {

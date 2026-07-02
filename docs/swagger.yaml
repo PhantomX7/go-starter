@@ -1,59 +1,115 @@
 definitions:
-  dto.AuthResponse:
+  dto.AdminRoleResponse:
     properties:
-      access_token:
+      created_at:
         type: string
-      refresh_token:
-        type: string
-      token_type:
-        type: string
-    type: object
-  dto.LoginRequest:
-    properties:
-      password:
-        minLength: 8
-        type: string
-      username:
-        type: string
-    required:
-    - password
-    - username
-    type: object
-  dto.RefreshRequest:
-    properties:
-      refresh_token:
-        type: string
-    required:
-    - refresh_token
-    type: object
-  dto.RegisterRequest:
-    properties:
-      email:
-        type: string
-      password:
-        minLength: 8
-        type: string
-      phone:
-        type: string
-      username:
-        type: string
-    required:
-    - email
-    - password
-    - phone
-    - username
-    type: object
-  dto.UserCreateRequest:
-    properties:
       description:
         type: string
+      id:
+        type: integer
+      is_active:
+        type: boolean
       name:
         type: string
+      permissions:
+        items:
+          type: string
+        type: array
+      updated_at:
+        type: string
+    type: object
+  dto.ConfigResponse:
+    properties:
+      id:
+        type: integer
+      key:
+        type: string
+      value:
+        type: string
+    type: object
+  dto.ConfigUpdateRequest:
+    properties:
+      value:
+        type: string
+    required:
+    - value
+    type: object
+  dto.CreateAdminRoleRequest:
+    properties:
+      description:
+        maxLength: 255
+        type: string
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      permissions:
+        items:
+          type: string
+        minItems: 1
+        type: array
     required:
     - name
+    - permissions
+    type: object
+  dto.LogResponse:
+    properties:
+      action:
+        type: string
+      admin_role:
+        $ref: '#/definitions/dto.AdminRoleResponse'
+      config:
+        $ref: '#/definitions/dto.ConfigResponse'
+      created_at:
+        type: string
+      entity_id:
+        type: integer
+      entity_type:
+        type: string
+      id:
+        type: integer
+      message:
+        type: string
+      target_user:
+        $ref: '#/definitions/dto.UserResponse'
+      user:
+        allOf:
+        - $ref: '#/definitions/dto.UserResponse'
+        description: Relationships
+      user_id:
+        type: integer
+    type: object
+  dto.UpdateAdminRoleRequest:
+    properties:
+      description:
+        maxLength: 255
+        type: string
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      permissions:
+        items:
+          type: string
+        type: array
+    required:
+    - permissions
+    type: object
+  dto.UserAssignAdminRoleRequest:
+    properties:
+      admin_role_id:
+        type: integer
+    required:
+    - admin_role_id
     type: object
   dto.UserResponse:
     properties:
+      admin_role:
+        $ref: '#/definitions/dto.AdminRoleResponse'
+      admin_role_id:
+        type: integer
+      business_name:
+        type: string
       created_at:
         type: string
       email:
@@ -62,6 +118,8 @@ definitions:
         type: integer
       is_active:
         type: boolean
+      name:
+        type: string
       phone:
         type: string
       role:
@@ -71,10 +129,22 @@ definitions:
     type: object
   dto.UserUpdateRequest:
     properties:
-      description:
-        type: string
       name:
         type: string
+      role:
+        enum:
+        - user
+        type: string
+    type: object
+  response.Meta:
+    properties:
+      facet: {}
+      limit:
+        type: integer
+      offset:
+        type: integer
+      total:
+        type: integer
     type: object
   response.Response:
     properties:
@@ -95,167 +165,60 @@ info:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
 paths:
-  /auth/login:
-    post:
-      consumes:
-      - application/json
-      description: Login with email and password
-      parameters:
-      - description: Login request
-        in: body
-        name: req
-        required: true
-        schema:
-          $ref: '#/definitions/dto.LoginRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Login success
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/dto.AuthResponse'
-              type: object
-        "400":
-          description: Bad request
-          schema:
-            $ref: '#/definitions/response.Response'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.Response'
-        "500":
-          description: Internal server error
-          schema:
-            $ref: '#/definitions/response.Response'
-      summary: Login
-      tags:
-      - Auth
-  /auth/me:
+  /admin/admin-role:
     get:
       consumes:
       - application/json
-      description: Get authenticated user information
+      description: Get a paginated list of admin roles
+      parameters:
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: limit
+        type: integer
+      - description: Filter by name
+        in: query
+        name: name
+        type: string
+      - description: Filter by active status
+        in: query
+        name: is_active
+        type: boolean
       produces:
       - application/json
       responses:
         "200":
-          description: Get me success
+          description: OK
           schema:
             allOf:
             - $ref: '#/definitions/response.Response'
             - properties:
                 data:
-                  $ref: '#/definitions/dto.UserResponse'
+                  items:
+                    $ref: '#/definitions/dto.AdminRoleResponse'
+                  type: array
               type: object
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.Response'
         "500":
-          description: Internal server error
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/response.Response'
-      security:
-      - BearerAuth: []
-      summary: Get Me
+      summary: List admin roles
       tags:
-      - Auth
-  /auth/refresh:
+      - admin-role
     post:
       consumes:
       - application/json
-      description: Refresh access token using refresh token
+      description: Create a new admin role with permissions
       parameters:
-      - description: Refresh request
+      - description: Admin Role Create Request
         in: body
-        name: req
+        name: body
         required: true
         schema:
-          $ref: '#/definitions/dto.RefreshRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Refresh success
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/dto.AuthResponse'
-              type: object
-        "400":
-          description: Bad request
-          schema:
-            $ref: '#/definitions/response.Response'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.Response'
-        "500":
-          description: Internal server error
-          schema:
-            $ref: '#/definitions/response.Response'
-      security:
-      - BearerAuth: []
-      summary: Refresh
-      tags:
-      - Auth
-  /auth/register:
-    post:
-      consumes:
-      - application/json
-      description: Register a new user
-      parameters:
-      - description: Register request
-        in: body
-        name: req
-        required: true
-        schema:
-          $ref: '#/definitions/dto.RegisterRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Register success
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/dto.AuthResponse'
-              type: object
-        "400":
-          description: Bad request
-          schema:
-            $ref: '#/definitions/response.Response'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/response.Response'
-        "500":
-          description: Internal server error
-          schema:
-            $ref: '#/definitions/response.Response'
-      summary: Register
-      tags:
-      - Auth
-  /user:
-    post:
-      consumes:
-      - application/json
-      description: Create a new user with the provided details
-      parameters:
-      - description: User Create Request
-        in: body
-        name: user
-        required: true
-        schema:
-          $ref: '#/definitions/dto.UserCreateRequest'
+          $ref: '#/definitions/dto.CreateAdminRoleRequest'
       produces:
       - application/json
       responses:
@@ -266,7 +229,7 @@ paths:
             - $ref: '#/definitions/response.Response'
             - properties:
                 data:
-                  $ref: '#/definitions/dto.UserResponse'
+                  $ref: '#/definitions/dto.AdminRoleResponse'
               type: object
         "400":
           description: Bad Request
@@ -276,16 +239,48 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.Response'
-      summary: Create a new user
+      summary: Create admin role
       tags:
-      - user
-  /user/{id}:
+      - admin-role
+  /admin/admin-role/{id}:
     delete:
       consumes:
       - application/json
-      description: Delete a user with the provided ID
+      description: Delete an admin role (cannot delete if users are assigned)
       parameters:
-      - description: User ID
+      - description: Admin Role ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Delete admin role
+      tags:
+      - admin-role
+    get:
+      consumes:
+      - application/json
+      description: Get an admin role's details including permissions
+      parameters:
+      - description: Admin Role ID
         in: path
         name: id
         required: true
@@ -300,7 +295,171 @@ paths:
             - $ref: '#/definitions/response.Response'
             - properties:
                 data:
+                  $ref: '#/definitions/dto.AdminRoleResponse'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Get admin role by ID
+      tags:
+      - admin-role
+    put:
+      consumes:
+      - application/json
+      description: Update an admin role's details and permissions
+      parameters:
+      - description: Admin Role ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Admin Role Update Request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateAdminRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.AdminRoleResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Update admin role
+      tags:
+      - admin-role
+  /admin/admin-role/permissions:
+    get:
+      consumes:
+      - application/json
+      description: Get all available permissions grouped by resource
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  additionalProperties:
+                    items:
+                      type: string
+                    type: array
                   type: object
+              type: object
+      summary: Get all permissions
+      tags:
+      - admin-role
+  /admin/user/{id}/admin-role:
+    post:
+      consumes:
+      - application/json
+      description: Assign an admin role to a user (changes user role to admin)
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Assign Admin Role Request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UserAssignAdminRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.UserResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Assign admin role
+      tags:
+      - user
+  /config:
+    get:
+      consumes:
+      - application/json
+      description: Get a paginated list of configs
+      parameters:
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      - description: Offset
+        in: query
+        name: offset
+        type: integer
+      - description: Sort
+        in: query
+        name: sort
+        type: string
+      - description: Filter by key
+        in: query
+        name: key
+        type: string
+      - description: Filter by group
+        in: query
+        name: group
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/dto.ConfigResponse'
+                  type: array
+                meta:
+                  $ref: '#/definitions/response.Meta'
               type: object
         "400":
           description: Bad Request
@@ -310,9 +469,126 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.Response'
-      summary: Delete a user
+      summary: List configs
       tags:
-      - user
+      - config
+  /config/{id}:
+    put:
+      consumes:
+      - application/json
+      description: Update a config with the provided details
+      parameters:
+      - description: Config ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Config Update Request
+        in: body
+        name: config
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ConfigUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.ConfigResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Update a config
+      tags:
+      - config
+  /config/key/{key}:
+    get:
+      consumes:
+      - application/json
+      description: Find a config with the provided key
+      parameters:
+      - description: Config Key
+        in: path
+        name: key
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.ConfigResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Find a config by key
+      tags:
+      - config
+  /log/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Find a log with the provided ID
+      parameters:
+      - description: Log ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.LogResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Find a log by ID
+      tags:
+      - log
+  /user/{id}:
     get:
       consumes:
       - application/json

@@ -23,18 +23,22 @@ import (
 	"github.com/PhantomX7/athleton/internal/bootstrap"
 	"github.com/PhantomX7/athleton/internal/middlewares"
 	"github.com/PhantomX7/athleton/internal/models"
+	adminrolemodule "github.com/PhantomX7/athleton/internal/modules/admin_role"
+	adminrolecontroller "github.com/PhantomX7/athleton/internal/modules/admin_role/controller"
+	adminrolerepository "github.com/PhantomX7/athleton/internal/modules/admin_role/repository"
+	adminroleservice "github.com/PhantomX7/athleton/internal/modules/admin_role/service"
 	authmodule "github.com/PhantomX7/athleton/internal/modules/auth"
 	authcontroller "github.com/PhantomX7/athleton/internal/modules/auth/controller"
 	authjwt "github.com/PhantomX7/athleton/internal/modules/auth/jwt"
 	authservice "github.com/PhantomX7/athleton/internal/modules/auth/service"
+	configmodule "github.com/PhantomX7/athleton/internal/modules/config"
+	configcontroller "github.com/PhantomX7/athleton/internal/modules/config/controller"
+	configrepository "github.com/PhantomX7/athleton/internal/modules/config/repository"
+	configservice "github.com/PhantomX7/athleton/internal/modules/config/service"
 	logmodule "github.com/PhantomX7/athleton/internal/modules/log"
 	logcontroller "github.com/PhantomX7/athleton/internal/modules/log/controller"
 	logrepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
 	logservice "github.com/PhantomX7/athleton/internal/modules/log/service"
-	postmodule "github.com/PhantomX7/athleton/internal/modules/post"
-	postcontroller "github.com/PhantomX7/athleton/internal/modules/post/controller"
-	postrepository "github.com/PhantomX7/athleton/internal/modules/post/repository"
-	postservice "github.com/PhantomX7/athleton/internal/modules/post/service"
 	rtokenrepository "github.com/PhantomX7/athleton/internal/modules/refresh_token/repository"
 	userrepository "github.com/PhantomX7/athleton/internal/modules/user/repository"
 	"github.com/PhantomX7/athleton/internal/routes"
@@ -157,14 +161,14 @@ func newTestApp(t *testing.T) *testApp {
 		&models.AdminRole{},
 		&models.RefreshToken{},
 		&models.Log{},
-		&models.Post{},
 		&models.Config{},
 	))
 
 	userRepo := userrepository.NewUserRepository(db)
 	refreshTokenRepo := rtokenrepository.NewRefreshTokenRepository(db)
 	logRepo := logrepository.NewLogRepository(db)
-	postRepo := postrepository.NewPostRepository(db)
+	adminRoleRepo := adminrolerepository.NewAdminRoleRepository(db)
+	configRepo := configrepository.NewConfigRepository(db)
 
 	txManager := transaction_manager.NewTransactionManager(db)
 
@@ -178,7 +182,8 @@ func newTestApp(t *testing.T) *testApp {
 	engine := bootstrap.SetupServer(cfg, mw, pkgvalidator.New(db), db)
 
 	authService := authservice.NewAuthService(userRepo, logRepo, authJWT, casbinClient, txManager)
-	postService := postservice.NewPostService(postRepo)
+	adminRoleService := adminroleservice.NewAdminRoleService(adminRoleRepo, logRepo, casbinClient, txManager)
+	configService := configservice.NewConfigService(configRepo, logRepo)
 	logService := logservice.NewLogService(logRepo)
 
 	// Mirror routes.RegisterRoutes: shared /api/v1 groups with the same
@@ -192,7 +197,10 @@ func newTestApp(t *testing.T) *testApp {
 		MW:     mw,
 	}
 	authmodule.NewRoutes(authcontroller.NewAuthController(authService)).RegisterRoutes(routeCtx)
-	postmodule.NewRoutes(postcontroller.NewPostController(postService)).RegisterRoutes(routeCtx)
+	adminrolemodule.NewRoutes(adminrolecontroller.NewAdminRoleController(adminRoleService)).RegisterRoutes(routeCtx)
+	configController := configcontroller.NewConfigController(configService)
+	configmodule.NewAdminRoutes(configController).RegisterRoutes(routeCtx)
+	configmodule.NewPublicRoutes(configController).RegisterRoutes(routeCtx)
 	logmodule.NewRoutes(logcontroller.NewLogController(logService)).RegisterRoutes(routeCtx)
 
 	app := &testApp{

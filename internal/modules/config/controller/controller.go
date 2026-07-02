@@ -49,20 +49,20 @@ func newConfigPagination(conditions map[string][]string) *pagination.Pagination 
 	})
 }
 
-// @Summary      List configs
-// @Description  Get a paginated list of configs
-// @Tags         config
-// @Accept       json
-// @Produce      json
-// @Param        limit   query     int     false  "Limit"
-// @Param        offset  query     int     false  "Offset"
-// @Param        sort    query     string  false  "Sort"
-// @Param        key     query     string  false  "Filter by key"
-// @Param        group   query     string  false  "Filter by group"
-// @Success      200  {object}  response.Response{data=[]dto.ConfigResponse,meta=response.Meta}
-// @Failure      400  {object}  response.Response
-// @Failure      500  {object}  response.Response
-// @Router       /config [get]
+// @Summary		List configs
+// @Description	Get a paginated list of configs
+// @Tags			config
+// @Accept			json
+// @Produce		json
+// @Param			limit	query		int		false	"Limit"
+// @Param			offset	query		int		false	"Offset"
+// @Param			sort	query		string	false	"Sort"
+// @Param			key		query		string	false	"Filter by key"
+// @Param			group	query		string	false	"Filter by group"
+// @Success		200		{object}	response.Response{data=[]dto.ConfigResponse,meta=response.Meta}
+// @Failure		400		{object}	response.Response
+// @Failure		500		{object}	response.Response
+// @Router			/config [get]
 func (c *configController) Index(ctx *gin.Context) {
 	configs, meta, err := c.configService.Index(
 		ctx.Request.Context(),
@@ -76,18 +76,18 @@ func (c *configController) Index(ctx *gin.Context) {
 		response.BuildPaginationResponse(configs, meta))
 }
 
-// @Summary      Update a config
-// @Description  Update a config with the provided details
-// @Tags         config
-// @Accept       json
-// @Produce      json
-// @Param        id      path      uint                     true  "Config ID"
-// @Param        config  body      dto.ConfigUpdateRequest  true  "Config Update Request"
-// @Success      200  {object}  response.Response{data=dto.ConfigResponse}
-// @Failure      400  {object}  response.Response
-// @Failure      404  {object}  response.Response
-// @Failure      500  {object}  response.Response
-// @Router       /config/{id} [put]
+// @Summary		Update a config
+// @Description	Update a config with the provided details
+// @Tags			config
+// @Accept			json
+// @Produce		json
+// @Param			id		path		uint					true	"Config ID"
+// @Param			config	body		dto.ConfigUpdateRequest	true	"Config Update Request"
+// @Success		200		{object}	response.Response{data=dto.ConfigResponse}
+// @Failure		400		{object}	response.Response
+// @Failure		404		{object}	response.Response
+// @Failure		500		{object}	response.Response
+// @Router			/config/{id} [put]
 func (c *configController) Update(ctx *gin.Context) {
 	configID, ok := ginx.ParseUintParam(ctx, "id")
 	if !ok {
@@ -109,17 +109,17 @@ func (c *configController) Update(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, response.BuildResponseSuccess("Config updated successfully", config.ToResponse()))
 }
 
-// @Summary      Find a config by key
-// @Description  Find a config with the provided key
-// @Tags         config
-// @Accept       json
-// @Produce      json
-// @Param        key   path      string  true  "Config Key"
-// @Success      200  {object}  response.Response{data=dto.ConfigResponse}
-// @Failure      400  {object}  response.Response
-// @Failure      404  {object}  response.Response
-// @Failure      500  {object}  response.Response
-// @Router       /config/key/{key} [get]
+// @Summary		Find a config by key
+// @Description	Find a config with the provided key
+// @Tags			config
+// @Accept			json
+// @Produce		json
+// @Param			key	path		string	true	"Config Key"
+// @Success		200	{object}	response.Response{data=dto.ConfigResponse}
+// @Failure		400	{object}	response.Response
+// @Failure		404	{object}	response.Response
+// @Failure		500	{object}	response.Response
+// @Router			/config/key/{key} [get]
 func (c *configController) FindByKey(ctx *gin.Context) {
 	config, err := c.configService.FindByKey(ctx.Request.Context(), ctx.Param("key"))
 	if err != nil {

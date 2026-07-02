@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PhantomX7/athleton/internal/models"
+	"github.com/PhantomX7/athleton/pkg/constants/permissions"
 )
 
 // TestSeededAdminMustChangeDefaultPassword exercises the
@@ -19,22 +20,27 @@ func TestSeededAdminMustChangeDefaultPassword(t *testing.T) {
 	app := newTestApp(t)
 
 	// Seed an admin exactly like database/seeder/seed/user.go does: default
-	// password, PasswordChangedAt left nil.
+	// password, PasswordChangedAt left nil. The role carries log:read so that
+	// once the gate clears, /admin/log answers 200 instead of a permission 403.
 	seededAdmin := models.User{
-		Username: "seeded-admin",
-		Name:     "Seeded Admin",
-		Email:    "seeded.admin@test.local",
-		Phone:    "+620000000004",
-		IsActive: true,
-		Role:     models.UserRoleAdmin,
-		Password: testPasswordHash(),
+		Username:    "seeded-admin",
+		Name:        "Seeded Admin",
+		Email:       "seeded.admin@test.local",
+		Phone:       "+620000000004",
+		IsActive:    true,
+		Role:        models.UserRoleAdmin,
+		AdminRoleID: &app.adminRole.ID,
+		Password:    testPasswordHash(),
 	}
 	require.NoError(t, app.db.Create(&seededAdmin).Error)
+	require.NoError(t, app.casbinClient.AddRolePermissions(
+		app.adminRole.ID, []string{permissions.LogRead.String()},
+	))
 
 	tokens := app.loginAs(t, "seeded-admin", testPassword)
 
 	// Gated: every /admin endpoint answers 403 with the canonical envelope.
-	rec := app.request(t, http.MethodGet, "/api/v1/admin/post", nil, tokens.AccessToken)
+	rec := app.request(t, http.MethodGet, "/api/v1/admin/log", nil, tokens.AccessToken)
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 	env := decodeEnvelope(t, rec)
 	require.False(t, env.Status)
@@ -59,12 +65,12 @@ func TestSeededAdminMustChangeDefaultPassword(t *testing.T) {
 
 	// The current session was excepted from revocation, so the same access
 	// token now clears the gate and reaches /admin.
-	rec = app.request(t, http.MethodGet, "/api/v1/admin/post", nil, tokens.AccessToken)
+	rec = app.request(t, http.MethodGet, "/api/v1/admin/log", nil, tokens.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// A fresh login with the new password also works against /admin.
 	fresh := app.loginAs(t, "seeded-admin", testNewPassword)
-	rec = app.request(t, http.MethodGet, "/api/v1/admin/post", nil, fresh.AccessToken)
+	rec = app.request(t, http.MethodGet, "/api/v1/admin/log", nil, fresh.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// Logout (the other escape hatch) keeps working for completeness.
@@ -94,7 +100,7 @@ func TestSeededRootMustChangeDefaultPassword(t *testing.T) {
 
 	tokens := app.loginAs(t, "seeded-root", testPassword)
 
-	rec := app.request(t, http.MethodGet, "/api/v1/admin/post", nil, tokens.AccessToken)
+	rec := app.request(t, http.MethodGet, "/api/v1/admin/log", nil, tokens.AccessToken)
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 	env := decodeEnvelope(t, rec)
 	require.False(t, env.Status)
@@ -107,6 +113,6 @@ func TestSeededRootMustChangeDefaultPassword(t *testing.T) {
 	}, tokens.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
-	rec = app.request(t, http.MethodGet, "/api/v1/admin/post", nil, tokens.AccessToken)
+	rec = app.request(t, http.MethodGet, "/api/v1/admin/log", nil, tokens.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 }

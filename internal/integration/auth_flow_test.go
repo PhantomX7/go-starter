@@ -24,12 +24,12 @@ func TestAuthLoginRefreshLogoutFlow(t *testing.T) {
 	first := app.loginAs(t, rootUsername, testPassword)
 
 	// The access token works on a protected admin endpoint.
-	rec := app.request(t, http.MethodGet, "/api/v1/admin/post", nil, first.AccessToken)
+	rec := app.request(t, http.MethodGet, "/api/v1/admin/log", nil, first.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// Refresh swaps the refresh-token hash on the same session row. The new
 	// access token reuses the session's jti, so it can be byte-identical to
-	// the first one when minted within the same second — only the refresh
+	// the first one when minted within the same second â€” only the refresh
 	// token is guaranteed to change.
 	rec = app.request(t, http.MethodPost, "/api/v1/auth/refresh", map[string]string{
 		"refresh_token": first.RefreshToken,
@@ -50,13 +50,13 @@ func TestAuthLoginRefreshLogoutFlow(t *testing.T) {
 	require.False(t, decodeEnvelope(t, rec).Status)
 
 	// Rotation keeps the session row (and its jti) alive, so access tokens
-	// minted before the refresh keep working until they expire — parallel
+	// minted before the refresh keep working until they expire â€” parallel
 	// requests no longer race the refresh.
-	rec = app.request(t, http.MethodGet, "/api/v1/admin/post", nil, first.AccessToken)
+	rec = app.request(t, http.MethodGet, "/api/v1/admin/log", nil, first.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// The rotated access token works.
-	rec = app.request(t, http.MethodGet, "/api/v1/admin/post", nil, second.AccessToken)
+	rec = app.request(t, http.MethodGet, "/api/v1/admin/log", nil, second.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// Logout revokes the session.
@@ -67,9 +67,9 @@ func TestAuthLoginRefreshLogoutFlow(t *testing.T) {
 
 	// Every access token minted for that session is now rejected (jti
 	// binding; gin-jwt reports the authorizer denial as 403 rather than 401).
-	rec = app.request(t, http.MethodGet, "/api/v1/admin/post", nil, second.AccessToken)
+	rec = app.request(t, http.MethodGet, "/api/v1/admin/log", nil, second.AccessToken)
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
-	rec = app.request(t, http.MethodGet, "/api/v1/admin/post", nil, first.AccessToken)
+	rec = app.request(t, http.MethodGet, "/api/v1/admin/log", nil, first.AccessToken)
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 
 	// And the logged-out refresh token cannot be used to mint new tokens.

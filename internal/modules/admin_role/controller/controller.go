@@ -62,18 +62,19 @@ func newAdminRolePagination(conditions map[string][]string) *pagination.Paginati
 }
 
 // Index handles the listing of admin roles with pagination
-// @Summary      List admin roles
-// @Description  Get a paginated list of admin roles
-// @Tags         admin-role
-// @Accept       json
-// @Produce      json
-// @Param        page    query     int     false  "Page number"
-// @Param        limit   query     int     false  "Items per page"
-// @Param        name    query     string  false  "Filter by name"
-// @Param        is_active query   bool    false  "Filter by active status"
-// @Success      200  {object}  response.Response{data=[]dto.AdminRoleListResponse}
-// @Failure      500  {object}  response.Response
-// @Router       /admin/admin-role [get]
+//
+//	@Summary		List admin roles
+//	@Description	Get a paginated list of admin roles
+//	@Tags			admin-role
+//	@Accept			json
+//	@Produce		json
+//	@Param			page		query		int		false	"Page number"
+//	@Param			limit		query		int		false	"Items per page"
+//	@Param			name		query		string	false	"Filter by name"
+//	@Param			is_active	query		bool	false	"Filter by active status"
+//	@Success		200			{object}	response.Response{data=[]dto.AdminRoleResponse}
+//	@Failure		500			{object}	response.Response
+//	@Router			/admin/admin-role [get]
 func (c *adminRoleController) Index(ctx *gin.Context) {
 	roles, meta, err := c.adminRoleService.Index(
 		ctx.Request.Context(),
@@ -87,16 +88,17 @@ func (c *adminRoleController) Index(ctx *gin.Context) {
 }
 
 // Create handles the creation of a new admin role
-// @Summary      Create admin role
-// @Description  Create a new admin role with permissions
-// @Tags         admin-role
-// @Accept       json
-// @Produce      json
-// @Param        body  body      dto.CreateAdminRoleRequest  true  "Admin Role Create Request"
-// @Success      201  {object}  response.Response{data=dto.AdminRoleResponse}
-// @Failure      400  {object}  response.Response
-// @Failure      500  {object}  response.Response
-// @Router       /admin/admin-role [post]
+//
+//	@Summary		Create admin role
+//	@Description	Create a new admin role with permissions
+//	@Tags			admin-role
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		dto.CreateAdminRoleRequest	true	"Admin Role Create Request"
+//	@Success		201		{object}	response.Response{data=dto.AdminRoleResponse}
+//	@Failure		400		{object}	response.Response
+//	@Failure		500		{object}	response.Response
+//	@Router			/admin/admin-role [post]
 func (c *adminRoleController) Create(ctx *gin.Context) {
 	var req dto.CreateAdminRoleRequest
 	if err := ctx.ShouldBind(&req); err != nil {
@@ -114,18 +116,19 @@ func (c *adminRoleController) Create(ctx *gin.Context) {
 }
 
 // Update handles the update of an existing admin role
-// @Summary      Update admin role
-// @Description  Update an admin role's details and permissions
-// @Tags         admin-role
-// @Accept       json
-// @Produce      json
-// @Param        id    path      uint                       true  "Admin Role ID"
-// @Param        body  body      dto.UpdateAdminRoleRequest true  "Admin Role Update Request"
-// @Success      200  {object}  response.Response{data=dto.AdminRoleResponse}
-// @Failure      400  {object}  response.Response
-// @Failure      404  {object}  response.Response
-// @Failure      500  {object}  response.Response
-// @Router       /admin/admin-role/{id} [put]
+//
+//	@Summary		Update admin role
+//	@Description	Update an admin role's details and permissions
+//	@Tags			admin-role
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		uint						true	"Admin Role ID"
+//	@Param			body	body		dto.UpdateAdminRoleRequest	true	"Admin Role Update Request"
+//	@Success		200		{object}	response.Response{data=dto.AdminRoleResponse}
+//	@Failure		400		{object}	response.Response
+//	@Failure		404		{object}	response.Response
+//	@Failure		500		{object}	response.Response
+//	@Router			/admin/admin-role/{id} [put]
 func (c *adminRoleController) Update(ctx *gin.Context) {
 	roleID, ok := ginx.ParseUintParam(ctx, "id")
 	if !ok {
@@ -148,17 +151,18 @@ func (c *adminRoleController) Update(ctx *gin.Context) {
 }
 
 // Delete handles the deletion of an admin role
-// @Summary      Delete admin role
-// @Description  Delete an admin role (cannot delete if users are assigned)
-// @Tags         admin-role
-// @Accept       json
-// @Produce      json
-// @Param        id   path      uint  true  "Admin Role ID"
-// @Success      200  {object}  response.Response
-// @Failure      400  {object}  response.Response
-// @Failure      404  {object}  response.Response
-// @Failure      500  {object}  response.Response
-// @Router       /admin/admin-role/{id} [delete]
+//
+//	@Summary		Delete admin role
+//	@Description	Delete an admin role (cannot delete if users are assigned)
+//	@Tags			admin-role
+//	@Accept			json
+//	@Produce		json
+//	@Param			id	path		uint	true	"Admin Role ID"
+//	@Success		200	{object}	response.Response
+//	@Failure		400	{object}	response.Response
+//	@Failure		404	{object}	response.Response
+//	@Failure		500	{object}	response.Response
+//	@Router			/admin/admin-role/{id} [delete]
 func (c *adminRoleController) Delete(ctx *gin.Context) {
 	roleID, ok := ginx.ParseUintParam(ctx, "id")
 	if !ok {
@@ -174,16 +178,17 @@ func (c *adminRoleController) Delete(ctx *gin.Context) {
 }
 
 // FindByID handles fetching a single admin role by ID
-// @Summary      Get admin role by ID
-// @Description  Get an admin role's details including permissions
-// @Tags         admin-role
-// @Accept       json
-// @Produce      json
-// @Param        id   path      uint  true  "Admin Role ID"
-// @Success      200  {object}  response.Response{data=dto.AdminRoleResponse}
-// @Failure      404  {object}  response.Response
-// @Failure      500  {object}  response.Response
-// @Router       /admin/admin-role/{id} [get]
+//
+//	@Summary		Get admin role by ID
+//	@Description	Get an admin role's details including permissions
+//	@Tags			admin-role
+//	@Accept			json
+//	@Produce		json
+//	@Param			id	path		uint	true	"Admin Role ID"
+//	@Success		200	{object}	response.Response{data=dto.AdminRoleResponse}
+//	@Failure		404	{object}	response.Response
+//	@Failure		500	{object}	response.Response
+//	@Router			/admin/admin-role/{id} [get]
 func (c *adminRoleController) FindByID(ctx *gin.Context) {
 	roleID, ok := ginx.ParseUintParam(ctx, "id")
 	if !ok {
@@ -200,13 +205,14 @@ func (c *adminRoleController) FindByID(ctx *gin.Context) {
 }
 
 // GetAllPermissions returns all available permissions
-// @Summary      Get all permissions
-// @Description  Get all available permissions grouped by resource
-// @Tags         admin-role
-// @Accept       json
-// @Produce      json
-// @Success      200  {object}  response.Response{data=map[string][]string}
-// @Router       /admin/admin-role/permissions [get]
+//
+//	@Summary		Get all permissions
+//	@Description	Get all available permissions grouped by resource
+//	@Tags			admin-role
+//	@Accept			json
+//	@Produce		json
+//	@Success		200	{object}	response.Response{data=map[string][]string}
+//	@Router			/admin/admin-role/permissions [get]
 func (c *adminRoleController) GetAllPermissions(ctx *gin.Context) {
 	permissions := c.adminRoleService.GetAllPermissions(ctx.Request.Context())
 	ctx.JSON(http.StatusOK, response.BuildResponseSuccess("Permissions retrieved successfully", permissions))

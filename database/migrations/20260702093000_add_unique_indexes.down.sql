@@ -11,7 +11,3 @@ DROP INDEX "idx_configs_key";
 DROP INDEX "idx_users_email";
 -- reverse: create index "idx_users_username" to table: "users"
 DROP INDEX "idx_users_username";
--- reverse: create index "idx_posts_deleted_at" to table: "posts"
-DROP INDEX "idx_posts_deleted_at";
--- reverse: create "posts" table
-DROP TABLE "posts";

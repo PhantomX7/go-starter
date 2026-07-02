@@ -9,7 +9,6 @@ import (
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 
-	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/models"
 )
 
@@ -129,31 +128,6 @@ func TestAdminRoleToResponseNilPermissions(t *testing.T) {
 	require.False(t, got.IsActive)
 }
 
-func TestPostToResponseMapsAllFields(t *testing.T) {
-	createdAt := time.Date(2025, 3, 4, 5, 6, 7, 0, time.UTC)
-	updatedAt := time.Date(2025, 3, 5, 5, 6, 7, 0, time.UTC)
-	post := models.Post{
-		Model: gorm.Model{
-			ID:        21,
-			CreatedAt: createdAt,
-			UpdatedAt: updatedAt,
-		},
-		Name:        "Hello",
-		Description: "World",
-		IsActive:    true,
-	}
-
-	got := post.ToResponse()
-
-	resp, ok := got.(dto.PostResponse)
-	require.True(t, ok)
-	require.Equal(t, uint(21), resp.ID)
-	require.Equal(t, "Hello", resp.Name)
-	require.Equal(t, "World", resp.Description)
-	require.Equal(t, createdAt, resp.CreatedAt)
-	require.Equal(t, updatedAt, resp.UpdatedAt)
-}
-
 // TestAutoMigrateUniqueIndexes verifies the model index tags migrate cleanly
 // and that unique indexes on soft-deleting tables are partial: a soft-deleted
 // row must not block reuse of its value, while an active duplicate must fail.
@@ -169,7 +143,6 @@ func TestAutoMigrateUniqueIndexes(t *testing.T) {
 		&models.Config{},
 		&models.Log{},
 		&models.AdminRole{},
-		&models.Post{},
 	))
 
 	newUser := func(username, email string) *models.User {

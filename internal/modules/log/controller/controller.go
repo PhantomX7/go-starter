@@ -88,16 +88,16 @@ func (c *logController) Index(ctx *gin.Context) {
 		response.BuildPaginationResponse(logs, meta))
 }
 
-// @Summary      Find a log by ID
-// @Description  Find a log with the provided ID
-// @Tags         log
-// @Accept       json
-// @Produce      json
-// @Param        id    path      uint                  true  "Log ID"
-// @Success      200  {object}  response.Response{data=dto.LogResponse}
-// @Failure      400  {object}  response.Response
-// @Failure      500  {object}  response.Response
-// @Router       /log/{id} [get]
+// @Summary		Find a log by ID
+// @Description	Find a log with the provided ID
+// @Tags			log
+// @Accept			json
+// @Produce		json
+// @Param			id	path		uint	true	"Log ID"
+// @Success		200	{object}	response.Response{data=dto.LogResponse}
+// @Failure		400	{object}	response.Response
+// @Failure		500	{object}	response.Response
+// @Router			/log/{id} [get]
 func (c *logController) FindByID(ctx *gin.Context) {
 	logID, ok := ginx.ParseUintParam(ctx, "id")
 	if !ok {

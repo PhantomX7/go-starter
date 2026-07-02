@@ -32,7 +32,6 @@ func main() {
 		&models.Config{},
 		&models.Log{},
 		&models.AdminRole{},
-		&models.Post{},
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load gorm schema: %v\n", err)
