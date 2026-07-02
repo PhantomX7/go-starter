@@ -136,9 +136,11 @@ func (s *adminRoleService) Update(ctx context.Context, roleID uint, req *dto.Upd
 	// interleave between the read and the write.
 	var adminRole *models.AdminRole
 	err := s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
-		// Find existing role
+		// Lock the row for the read→modify→save sequence: a plain SELECT takes
+		// no lock under MVCC, so without FOR UPDATE a concurrent writer could
+		// interleave and have its columns reverted by this full-row save.
 		var err error
-		adminRole, err = s.adminRoleRepo.FindByID(txCtx, roleID)
+		adminRole, err = s.adminRoleRepo.FindByIDForUpdate(txCtx, roleID)
 		if err != nil {
 			return err
 		}

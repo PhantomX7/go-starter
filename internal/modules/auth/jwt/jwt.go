@@ -278,7 +278,9 @@ func (a *AuthJWT) loginResponse(c *gin.Context, token *core.Token) {
 		return
 	}
 
-	if user.Role == models.UserRoleAdmin {
+	// Audit every privileged login — root included; the most privileged
+	// account must not be the one with no trail.
+	if user.Role.IsAdminType() {
 		a.createLoginLog(user)
 	}
 

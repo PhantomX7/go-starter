@@ -88,17 +88,29 @@ func (m *Middleware) RequireAnyPermission(perms ...permissions.Permission) gin.H
 			return
 		}
 
+		// A later permission may still grant access, so a failed check is
+		// remembered rather than aborting immediately; but if nothing granted
+		// and any check errored, the outage must surface as a 500, not
+		// masquerade as an authorization denial.
+		checkFailed := false
 		for _, perm := range perms {
 			allowed, err := m.casbinClient.CheckPermissionWithRoot(values.Role, values.AdminRoleID, perm.String())
 			if err != nil {
 				logger.Ctx(ctx).Error("Failed to verify permission",
 					zap.String("permission", perm.String()), zap.Error(err))
+				checkFailed = true
 				continue
 			}
 			if allowed {
 				c.Next()
 				return
 			}
+		}
+
+		if checkFailed {
+			c.JSON(http.StatusInternalServerError, response.BuildResponseFailed("failed to verify permissions"))
+			c.Abort()
+			return
 		}
 
 		logger.Ctx(ctx).Warn("Access denied", zap.String("role", values.Role))
@@ -115,6 +127,15 @@ func (m *Middleware) RequireAllPermissions(perms ...permissions.Permission) gin.
 		values, err := utils.ValuesFromContext(ctx)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, response.BuildResponseFailed("unauthorized"))
+			c.Abort()
+			return
+		}
+
+		// Fail closed on an empty list: a guard accidentally built from an
+		// empty slice must deny, not wave every request through.
+		if len(perms) == 0 {
+			logger.Ctx(ctx).Warn("RequireAllPermissions called with no permissions")
+			c.JSON(http.StatusForbidden, response.BuildResponseFailed("insufficient permissions"))
 			c.Abort()
 			return
 		}

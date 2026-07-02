@@ -52,8 +52,10 @@ type User struct {
 	// Relationships
 	AdminRole *AdminRole `json:"admin_role,omitempty" gorm:"foreignKey:AdminRoleID"`
 
-	// Polymorphic Logs
-	Logs []Log `json:"-" gorm:"polymorphic:Entity;polymorphicValue:users"`
+	// Polymorphic Logs. polymorphicValue must equal LogEntityTypeUser — it is
+	// the discriminator the audit writers store; a mismatch makes this preload
+	// silently return zero rows.
+	Logs []Log `json:"-" gorm:"polymorphic:Entity;polymorphicValue:user"`
 }
 
 // ToResponse converts a User into its response DTO.

@@ -863,6 +863,43 @@ func TestRevokeRefreshTokenSilentlyIgnoresOtherUsersToken(t *testing.T) {
 	require.NoError(t, err, "ownership mismatch must look exactly like not-found")
 }
 
+func TestLoginResponseCreatesAuditLogForPrivilegedRoles(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupLogger(t)
+
+	// Root is the most privileged account; its logins must be audited exactly
+	// like admin logins.
+	for _, role := range []models.UserRole{models.UserRoleAdmin, models.UserRoleRoot} {
+		t.Run(string(role), func(t *testing.T) {
+			created := make(chan *models.Log, 1)
+			a := &AuthJWT{logRepository: &mockLogRepository{
+				createFn: func(_ context.Context, entry *models.Log) error {
+					created <- entry
+					return nil
+				},
+			}}
+
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/login", nil)
+			c.Set(AuthUserKey, &models.User{ID: 3, Name: "Privileged", Role: role})
+			c.Set(authRefreshTokenKey, "refresh-token")
+
+			a.loginResponse(c, &core.Token{AccessToken: "access"})
+			require.Equal(t, http.StatusOK, rec.Code)
+
+			select {
+			case entry := <-created:
+				require.Equal(t, models.LogActionLogin, entry.Action)
+				require.Equal(t, models.LogEntityTypeUser, entry.EntityType)
+				require.Equal(t, uint(3), entry.EntityID)
+			case <-time.After(2 * time.Second):
+				t.Fatalf("no login audit log written for role %s", role)
+			}
+		})
+	}
+}
+
 func TestLoginResponseReturnsInternalErrorWithoutAuthenticatedUser(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

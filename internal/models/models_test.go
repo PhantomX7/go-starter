@@ -250,3 +250,48 @@ func TestLogToResponseIncludesRelationships(t *testing.T) {
 	require.Equal(t, uint(7), got.User.ID)
 	require.Equal(t, "actor", got.User.Username)
 }
+
+// TestPolymorphicLogAssociationsMatchWriterEntityTypes verifies that the Logs
+// associations on User/AdminRole/Config use the same entity-type discriminator
+// the audit writers store (models.LogEntityType*); a mismatch makes every
+// preload silently return zero rows.
+func TestPolymorphicLogAssociationsMatchWriterEntityTypes(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(
+		&models.User{},
+		&models.AdminRole{},
+		&models.Config{},
+		&models.Log{},
+	))
+
+	user := &models.User{Username: "audited", Email: "audited@test.local", Role: models.UserRoleAdmin}
+	require.NoError(t, db.Create(user).Error)
+	role := &models.AdminRole{Name: "Audited Role"}
+	require.NoError(t, db.Create(role).Error)
+	cfg := &models.Config{Key: "audited_key", Value: "v"}
+	require.NoError(t, db.Create(cfg).Error)
+
+	// Write logs exactly like the audit writers do.
+	for _, entry := range []*models.Log{
+		{Action: models.LogActionUpdate, EntityType: models.LogEntityTypeUser, EntityID: user.ID},
+		{Action: models.LogActionUpdate, EntityType: models.LogEntityTypeAdminRole, EntityID: role.ID},
+		{Action: models.LogActionUpdate, EntityType: models.LogEntityTypeConfig, EntityID: cfg.ID},
+	} {
+		require.NoError(t, db.Create(entry).Error)
+	}
+
+	var gotUser models.User
+	require.NoError(t, db.Preload("Logs").First(&gotUser, user.ID).Error)
+	require.Len(t, gotUser.Logs, 1, "User.Logs preload must find logs written with LogEntityTypeUser")
+
+	var gotRole models.AdminRole
+	require.NoError(t, db.Preload("Logs").First(&gotRole, role.ID).Error)
+	require.Len(t, gotRole.Logs, 1, "AdminRole.Logs preload must find logs written with LogEntityTypeAdminRole")
+
+	var gotConfig models.Config
+	require.NoError(t, db.Preload("Logs").First(&gotConfig, cfg.ID).Error)
+	require.Len(t, gotConfig.Logs, 1, "Config.Logs preload must find logs written with LogEntityTypeConfig")
+}

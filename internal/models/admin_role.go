@@ -16,8 +16,9 @@ type AdminRole struct {
 	Permissions []string `json:"permissions" gorm:"-"`
 	Timestamp
 
-	// Polymorphic Logs
-	Logs []Log `json:"-" gorm:"polymorphic:Entity;polymorphicValue:admin_roles"`
+	// Polymorphic Logs. polymorphicValue must equal LogEntityTypeAdminRole
+	// (the discriminator the audit writers store).
+	Logs []Log `json:"-" gorm:"polymorphic:Entity;polymorphicValue:admin_role"`
 }
 
 // ToResponse converts an AdminRole into its response DTO.

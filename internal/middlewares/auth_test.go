@@ -228,6 +228,61 @@ func TestRequireAllPermissionsRejectsWhenOneMissing(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, rec.Code)
 }
 
+func TestRequireAnyPermissionFailsClosedWhenAllChecksError(t *testing.T) {
+	setupLogger(t)
+	casbinClient := &mockCasbinClient{
+		checkPermissionFn: func(uint, string) (bool, error) {
+			return false, errors.New("enforcer unavailable")
+		},
+	}
+	m := newMiddleware(casbinClient)
+
+	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)),
+		m.RequireAnyPermission(permissions.UserRead, permissions.ProductRead)))
+
+	// An infrastructure outage must surface as a 500, not masquerade as an
+	// authorization denial.
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+}
+
+func TestRequireAnyPermissionStillAllowsWhenOneErrorsButAnotherGrants(t *testing.T) {
+	setupLogger(t)
+	casbinClient := &mockCasbinClient{
+		checkPermissionFn: func(_ uint, permission string) (bool, error) {
+			if permission == permissions.UserRead.String() {
+				return false, errors.New("enforcer hiccup")
+			}
+			return true, nil
+		},
+	}
+	m := newMiddleware(casbinClient)
+
+	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)),
+		m.RequireAnyPermission(permissions.UserRead, permissions.ProductRead)))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestRequireAnyPermissionRejectsEmptyPermissionList(t *testing.T) {
+	setupLogger(t)
+	m := newMiddleware(&mockCasbinClient{})
+
+	rec := serve(newAuthRouter(nil, withContextValues(adminValues(3)), m.RequireAnyPermission()))
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestRequireAllPermissionsRejectsEmptyPermissionList(t *testing.T) {
+	setupLogger(t)
+	m := newMiddleware(&mockCasbinClient{})
+
+	// Zero permissions must fail closed: a guard accidentally built from an
+	// empty slice should deny, not wave everything through.
+	rec := serve(newAuthRouter(nil, withContextValues(adminValues(3)), m.RequireAllPermissions()))
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
 func TestRequireAllPermissionsFailsClosedOnCasbinError(t *testing.T) {
 	setupLogger(t)
 	casbinClient := &mockCasbinClient{

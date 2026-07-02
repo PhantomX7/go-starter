@@ -340,7 +340,9 @@ func TestAdminRoleServiceUpdateUpdatesRoleInTransactionAndSyncsCasbinAfterCommit
 	current := &models.AdminRole{ID: 8, Name: "Manager", Description: "old"}
 	dbUpdated := false
 	repo := &mockAdminRoleRepository{
-		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.AdminRole, error) {
+		// Update must lock the row (FOR UPDATE) so concurrent writers cannot
+		// interleave with the read→modify→save sequence.
+		findByIDForUpdateFn: func(ctx context.Context, id uint) (*models.AdminRole, error) {
 			require.Equal(t, uint(8), id)
 			return current, nil
 		},
@@ -413,7 +415,7 @@ func TestAdminRoleServiceUpdateReturnsErrorWhenCasbinSyncFails(t *testing.T) {
 	casbinErr := errors.New("casbin unavailable")
 	dbUpdated := false
 	repo := &mockAdminRoleRepository{
-		findByIDFn: func(context.Context, uint, ...repository.Association) (*models.AdminRole, error) {
+		findByIDForUpdateFn: func(context.Context, uint) (*models.AdminRole, error) {
 			return &models.AdminRole{ID: 8, Name: "Manager"}, nil
 		},
 		updateFn: func(context.Context, *models.AdminRole) error {

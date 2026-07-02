@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -58,6 +59,38 @@ func TestRequestIDPropagatesIncomingHeader(t *testing.T) {
 	require.Equal(t, "trace-123", rec.Header().Get(middlewares.RequestIDHeader))
 	require.Equal(t, "trace-123", capture.ginContextID)
 	require.Equal(t, "trace-123", capture.requestContextID)
+}
+
+func TestRequestIDRegeneratesOversizedHeader(t *testing.T) {
+	capture := &requestIDCapture{}
+	r := newRequestIDRouter(capture)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
+	req.Header.Set(middlewares.RequestIDHeader, strings.Repeat("x", 200))
+	r.ServeHTTP(rec, req)
+
+	// An arbitrarily long client value must not be injected into every log
+	// line verbatim; the middleware caps it and generates a fresh UUID.
+	responseID := rec.Header().Get(middlewares.RequestIDHeader)
+	_, err := uuid.Parse(responseID)
+	require.NoError(t, err, "oversized request ID should be replaced with a UUID")
+	require.Equal(t, responseID, capture.ginContextID)
+}
+
+func TestRequestIDRegeneratesNonPrintableHeader(t *testing.T) {
+	capture := &requestIDCapture{}
+	r := newRequestIDRouter(capture)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
+	req.Header.Set(middlewares.RequestIDHeader, "abc\tdef")
+	r.ServeHTTP(rec, req)
+
+	responseID := rec.Header().Get(middlewares.RequestIDHeader)
+	_, err := uuid.Parse(responseID)
+	require.NoError(t, err, "request ID with control characters should be replaced with a UUID")
+	require.Equal(t, responseID, capture.ginContextID)
 }
 
 func TestGetRequestIDReturnsEmptyWithoutMiddleware(t *testing.T) {

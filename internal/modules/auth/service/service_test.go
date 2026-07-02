@@ -307,6 +307,35 @@ func TestAuthServiceGetMeReturnsUserWithPermissions(t *testing.T) {
 	require.Equal(t, []string{permissions.UserRead.String()}, me.AdminRole.Permissions)
 }
 
+func TestAuthServiceGetMeToleratesMissingPreloadedRole(t *testing.T) {
+	setupLogger(t)
+
+	// AdminRoleID can point at a role whose row failed to preload (soft-deleted
+	// role, seed drift). GetMe must degrade gracefully instead of panicking.
+	adminRoleID := uint(7)
+	userRepo := &mockUserRepository{
+		findByIDFn: func(context.Context, uint, ...repository.Association) (*models.User, error) {
+			return &models.User{
+				ID:          5,
+				Username:    "admin",
+				IsActive:    true,
+				Role:        models.UserRoleAdmin,
+				AdminRoleID: &adminRoleID,
+				AdminRole:   nil,
+			}, nil
+		},
+	}
+
+	svc := service.NewAuthService(userRepo, &mockLogRepository{}, nil, &mockCasbinClient{}, &mockTxManager{})
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{UserID: 5})
+
+	me, err := svc.GetMe(ctx)
+
+	require.NoError(t, err)
+	require.Equal(t, uint(5), me.ID)
+	require.Nil(t, me.AdminRole)
+}
+
 func TestAuthServiceRegisterCreatesUserAndTokens(t *testing.T) {
 	logRepo := &mockLogRepository{}
 	userRepo := &mockUserRepository{
@@ -450,6 +479,59 @@ func TestAuthServiceChangePasswordUpdatesHashRevokesTokensAndLogsAdmin(t *testin
 		require.Equal(t, "Root changed password for: Admin User", entry.Message)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for audit log")
+	}
+}
+
+func TestAuthServiceChangePasswordAuditsRootUsers(t *testing.T) {
+	logCh := make(chan *models.Log, 1)
+	oldHash, err := bcrypt.GenerateFromPassword([]byte("old-password"), bcrypt.MinCost)
+	require.NoError(t, err)
+
+	// Root accounts are the most privileged; their password rotations must be
+	// audited just like admin ones.
+	user := &models.User{
+		ID:       4,
+		Name:     "Root User",
+		Role:     models.UserRoleRoot,
+		Password: string(oldHash),
+	}
+	userRepo := &mockUserRepository{
+		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
+			return user, nil
+		},
+		updateFn: func(context.Context, *models.User) error { return nil },
+	}
+	refreshRepo := &mockRefreshTokenRepository{
+		revokeAllByUserIDExceptFn: func(context.Context, uint, string) error { return nil },
+	}
+	logRepo := &mockLogRepository{
+		createFn: func(ctx context.Context, entry *models.Log) error {
+			logCh <- entry
+			return nil
+		},
+	}
+	auth := newAuthJWT(t, userRepo, refreshRepo, logRepo)
+	txManager := &mockTxManager{
+		executeFn: func(ctx context.Context, fn func(context.Context) error) error {
+			return fn(ctx)
+		},
+	}
+
+	svc := service.NewAuthService(userRepo, logRepo, auth, &mockCasbinClient{}, txManager)
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{UserID: 4, UserName: "Root User"})
+
+	err = svc.ChangePassword(ctx, &dto.ChangePasswordRequest{
+		OldPassword: "old-password",
+		NewPassword: "new-password",
+		ExceptToken: "keep-token",
+	})
+
+	require.NoError(t, err)
+	select {
+	case entry := <-logCh:
+		require.Equal(t, models.LogActionChangePassword, entry.Action)
+	case <-time.After(2 * time.Second):
+		t.Fatal("root password change must produce an audit log")
 	}
 }
 

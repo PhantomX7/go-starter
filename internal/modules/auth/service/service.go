@@ -76,10 +76,10 @@ func (s *authService) GetMe(ctx context.Context) (*dto.MeResponse, error) {
 		return nil, cerrors.NewForbiddenError("user account is inactive")
 	}
 
-	if user.AdminRoleID != nil {
-		// Get permissions for response
-		rolePermissions := s.casbinClient.GetRolePermissions(*user.AdminRoleID)
-		user.AdminRole.Permissions = rolePermissions
+	// AdminRole can be nil even when AdminRoleID is set (soft-deleted role,
+	// seed drift); degrade to a role-less profile instead of panicking.
+	if user.AdminRoleID != nil && user.AdminRole != nil {
+		user.AdminRole.Permissions = s.casbinClient.GetRolePermissions(*user.AdminRoleID)
 	}
 
 	return &dto.MeResponse{UserResponse: *user.ToResponse()}, nil
@@ -182,8 +182,8 @@ func (s *authService) ChangePassword(ctx context.Context, req *dto.ChangePasswor
 		return err
 	}
 
-	// Create audit log for admin users only
-	if user.Role == models.UserRoleAdmin {
+	// Audit every privileged password rotation — root included.
+	if user.Role.IsAdminType() {
 		s.createLog(ctx, models.LogActionChangePassword, user.ID, user.Name)
 	}
 

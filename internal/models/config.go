@@ -24,8 +24,9 @@ type Config struct {
 	Key   string `json:"key" gorm:"type:varchar(255);not null;uniqueIndex:idx_configs_key,where:deleted_at IS NULL"`
 	Value string `json:"value" gorm:"type:text;not null"`
 
-	// Polymorphic Logs
-	Logs []Log `json:"-" gorm:"polymorphic:Entity;polymorphicValue:configs"`
+	// Polymorphic Logs. polymorphicValue must equal LogEntityTypeConfig
+	// (the discriminator the audit writers store).
+	Logs []Log `json:"-" gorm:"polymorphic:Entity;polymorphicValue:config"`
 }
 
 // ToResponse converts the Config model to a response DTO
