@@ -15,53 +15,23 @@ import (
 
 	"github.com/PhantomX7/athleton/internal/audit"
 	"github.com/PhantomX7/athleton/internal/models"
-	logrepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
+	logmocks "github.com/PhantomX7/athleton/internal/modules/log/repository/mocks"
 	"github.com/PhantomX7/athleton/pkg/logger"
-	"github.com/PhantomX7/athleton/pkg/pagination"
-	"github.com/PhantomX7/athleton/pkg/repository"
 	"github.com/PhantomX7/athleton/pkg/utils"
 )
 
-// mockLogRepository signals every Create call on a channel so tests can wait
-// for the background goroutine spawned by audit.Record.
-type mockLogRepository struct {
-	createErr error
-	created   chan *models.Log
+// newMockLogRepository returns a mock log repository that signals every Create
+// call on the returned channel so tests can wait for the background goroutine
+// spawned by audit.Record.
+func newMockLogRepository(createErr error) (*logmocks.LogRepositoryMock, chan *models.Log) {
+	created := make(chan *models.Log, 1)
+	return &logmocks.LogRepositoryMock{
+		CreateFunc: func(_ context.Context, entity *models.Log) error {
+			created <- entity
+			return createErr
+		},
+	}, created
 }
-
-func newMockLogRepository(createErr error) *mockLogRepository {
-	return &mockLogRepository{
-		createErr: createErr,
-		created:   make(chan *models.Log, 1),
-	}
-}
-
-func (m *mockLogRepository) Create(_ context.Context, entity *models.Log) error {
-	m.created <- entity
-	return m.createErr
-}
-
-func (m *mockLogRepository) Update(context.Context, *models.Log) error {
-	panic("unexpected Update call")
-}
-
-func (m *mockLogRepository) Delete(context.Context, *models.Log) error {
-	panic("unexpected Delete call")
-}
-
-func (m *mockLogRepository) FindByID(context.Context, uint, ...repository.Association) (*models.Log, error) {
-	panic("unexpected FindByID call")
-}
-
-func (m *mockLogRepository) FindAll(context.Context, *pagination.Pagination) ([]*models.Log, error) {
-	panic("unexpected FindAll call")
-}
-
-func (m *mockLogRepository) Count(context.Context, *pagination.Pagination) (int64, error) {
-	panic("unexpected Count call")
-}
-
-var _ logrepository.LogRepository = (*mockLogRepository)(nil)
 
 func setupLogger(t *testing.T) {
 	t.Helper()
@@ -75,11 +45,11 @@ func setupLogger(t *testing.T) {
 
 // waitForCreate blocks until the mock repository receives a Create call or the
 // timeout elapses. The timeout only fires when the code under test is broken.
-func waitForCreate(t *testing.T, repo *mockLogRepository) *models.Log {
+func waitForCreate(t *testing.T, created chan *models.Log) *models.Log {
 	t.Helper()
 
 	select {
-	case entity := <-repo.created:
+	case entity := <-created:
 		return entity
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for repository Create call")
@@ -90,7 +60,7 @@ func waitForCreate(t *testing.T, repo *mockLogRepository) *models.Log {
 func TestRecordAttributesUserFromContext(t *testing.T) {
 	setupLogger(t)
 
-	repo := newMockLogRepository(nil)
+	repo, created := newMockLogRepository(nil)
 	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{
 		UserID:   42,
 		UserName: "kenichi",
@@ -103,7 +73,7 @@ func TestRecordAttributesUserFromContext(t *testing.T) {
 		Message:    "kenichi created config",
 	})
 
-	got := waitForCreate(t, repo)
+	got := waitForCreate(t, created)
 	require.NotNil(t, got)
 	require.NotNil(t, got.UserID)
 	require.Equal(t, uint(42), *got.UserID)
@@ -116,7 +86,7 @@ func TestRecordAttributesUserFromContext(t *testing.T) {
 func TestRecordWithoutUserLeavesUserIDNil(t *testing.T) {
 	setupLogger(t)
 
-	repo := newMockLogRepository(nil)
+	repo, created := newMockLogRepository(nil)
 
 	audit.Record(context.Background(), repo, audit.Entry{
 		Action:     models.LogActionDelete,
@@ -125,26 +95,13 @@ func TestRecordWithoutUserLeavesUserIDNil(t *testing.T) {
 		Message:    "user deleted",
 	})
 
-	got := waitForCreate(t, repo)
+	got := waitForCreate(t, created)
 	require.NotNil(t, got)
 	require.Nil(t, got.UserID)
 	require.Equal(t, models.LogActionDelete, got.Action)
 	require.Equal(t, models.LogEntityTypeUser, got.EntityType)
 	require.Equal(t, uint(9), got.EntityID)
 	require.Equal(t, "user deleted", got.Message)
-}
-
-// txCapturingLogRepository records the transaction (if any) carried by the
-// context each Create call receives, so tests can prove the background audit
-// write does not inherit the caller's transaction.
-type txCapturingLogRepository struct {
-	mockLogRepository
-	txSeen chan *gorm.DB
-}
-
-func (m *txCapturingLogRepository) Create(ctx context.Context, entity *models.Log) error {
-	m.txSeen <- utils.GetTxFromContext(ctx)
-	return m.mockLogRepository.Create(ctx, entity)
 }
 
 func TestRecordDoesNotUseCallerTransaction(t *testing.T) {
@@ -160,9 +117,17 @@ func TestRecordDoesNotUseCallerTransaction(t *testing.T) {
 	require.NoError(t, tx.Error)
 	t.Cleanup(func() { tx.Rollback() })
 
-	repo := &txCapturingLogRepository{
-		mockLogRepository: *newMockLogRepository(nil),
-		txSeen:            make(chan *gorm.DB, 1),
+	// Capture the transaction (if any) carried by the context each Create call
+	// receives, so the test can prove the background audit write does not
+	// inherit the caller's transaction.
+	created := make(chan *models.Log, 1)
+	txSeen := make(chan *gorm.DB, 1)
+	repo := &logmocks.LogRepositoryMock{
+		CreateFunc: func(ctx context.Context, entity *models.Log) error {
+			txSeen <- utils.GetTxFromContext(ctx)
+			created <- entity
+			return nil
+		},
 	}
 	ctx := utils.SetTxToContext(context.Background(), tx)
 
@@ -173,9 +138,9 @@ func TestRecordDoesNotUseCallerTransaction(t *testing.T) {
 		Message:    "created inside tx",
 	})
 
-	waitForCreate(t, &repo.mockLogRepository)
+	waitForCreate(t, created)
 	select {
-	case seen := <-repo.txSeen:
+	case seen := <-txSeen:
 		require.Nil(t, seen, "background audit write must not reuse the caller's transaction")
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for tx capture")
@@ -185,7 +150,7 @@ func TestRecordDoesNotUseCallerTransaction(t *testing.T) {
 func TestRecordSurvivesCanceledRequestContext(t *testing.T) {
 	setupLogger(t)
 
-	repo := newMockLogRepository(nil)
+	repo, created := newMockLogRepository(nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancellation must be detached via context.WithoutCancel
 
@@ -196,7 +161,7 @@ func TestRecordSurvivesCanceledRequestContext(t *testing.T) {
 		Message:    "role updated",
 	})
 
-	got := waitForCreate(t, repo)
+	got := waitForCreate(t, created)
 	require.NotNil(t, got)
 	require.Equal(t, models.LogActionUpdate, got.Action)
 }
@@ -216,7 +181,7 @@ func TestRecordRepoErrorDoesNotPanic(t *testing.T) {
 		return nil
 	}))
 
-	repo := newMockLogRepository(errors.New("db down"))
+	repo, created := newMockLogRepository(errors.New("db down"))
 
 	require.NotPanics(t, func() {
 		audit.Record(context.Background(), repo, audit.Entry{
@@ -225,7 +190,7 @@ func TestRecordRepoErrorDoesNotPanic(t *testing.T) {
 			EntityID:   1,
 			Message:    "login",
 		})
-		waitForCreate(t, repo)
+		waitForCreate(t, created)
 
 		select {
 		case <-logged:

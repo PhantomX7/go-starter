@@ -15,61 +15,16 @@ import (
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/config/controller"
-	configservice "github.com/PhantomX7/athleton/internal/modules/config/service"
+	configservicemocks "github.com/PhantomX7/athleton/internal/modules/config/service/mocks"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 )
 
-type mockConfigService struct {
-	indexFn           func(context.Context, *pagination.Pagination) ([]*models.Config, response.Meta, error)
-	publicIndexFn     func(context.Context, *pagination.Pagination) ([]*models.Config, response.Meta, error)
-	updateFn          func(context.Context, uint, *dto.ConfigUpdateRequest) (*models.Config, error)
-	findByKeyFn       func(context.Context, string) (*models.Config, error)
-	findPublicByKeyFn func(context.Context, string) (*models.Config, error)
-}
-
-func (m *mockConfigService) Index(ctx context.Context, pg *pagination.Pagination) ([]*models.Config, response.Meta, error) {
-	if m.indexFn == nil {
-		panic("unexpected Index call")
-	}
-	return m.indexFn(ctx, pg)
-}
-
-func (m *mockConfigService) PublicIndex(ctx context.Context, pg *pagination.Pagination) ([]*models.Config, response.Meta, error) {
-	if m.publicIndexFn == nil {
-		panic("unexpected PublicIndex call")
-	}
-	return m.publicIndexFn(ctx, pg)
-}
-
-func (m *mockConfigService) FindPublicByKey(ctx context.Context, key string) (*models.Config, error) {
-	if m.findPublicByKeyFn == nil {
-		panic("unexpected FindPublicByKey call")
-	}
-	return m.findPublicByKeyFn(ctx, key)
-}
-
-func (m *mockConfigService) Update(ctx context.Context, configID uint, req *dto.ConfigUpdateRequest) (*models.Config, error) {
-	if m.updateFn == nil {
-		panic("unexpected Update call")
-	}
-	return m.updateFn(ctx, configID, req)
-}
-
-func (m *mockConfigService) FindByKey(ctx context.Context, key string) (*models.Config, error) {
-	if m.findByKeyFn == nil {
-		panic("unexpected FindByKey call")
-	}
-	return m.findByKeyFn(ctx, key)
-}
-
-var _ configservice.ConfigService = (*mockConfigService)(nil)
-
 func TestConfigControllerIndexReturnsPaginatedResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockConfigService{
-		indexFn: func(ctx context.Context, pg *pagination.Pagination) ([]*models.Config, response.Meta, error) {
+	svc := &configservicemocks.ConfigServiceMock{
+		IndexFunc: func(ctx context.Context, pg *pagination.Pagination) ([]*models.Config, response.Meta, error) {
 			require.NotNil(t, ctx)
 			require.Equal(t, 3, pg.Limit)
 			require.Equal(t, 6, pg.Offset)
@@ -108,8 +63,8 @@ func TestConfigControllerIndexReturnsPaginatedResponse(t *testing.T) {
 func TestConfigControllerUpdateReturnsSuccessResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockConfigService{
-		updateFn: func(ctx context.Context, configID uint, req *dto.ConfigUpdateRequest) (*models.Config, error) {
+	svc := &configservicemocks.ConfigServiceMock{
+		UpdateFunc: func(ctx context.Context, configID uint, req *dto.ConfigUpdateRequest) (*models.Config, error) {
 			require.NotNil(t, ctx)
 			require.Equal(t, uint(5), configID)
 			require.Equal(t, "New Value", req.Value)
@@ -149,8 +104,8 @@ func TestConfigControllerUpdateReturnsSuccessResponse(t *testing.T) {
 func TestConfigControllerUpdateRejectsEmptyValue(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockConfigService{
-		updateFn: func(context.Context, uint, *dto.ConfigUpdateRequest) (*models.Config, error) {
+	svc := &configservicemocks.ConfigServiceMock{
+		UpdateFunc: func(context.Context, uint, *dto.ConfigUpdateRequest) (*models.Config, error) {
 			t.Fatal("Update should not be called when the value is missing")
 			return nil, nil
 		},
@@ -181,8 +136,8 @@ func TestConfigControllerUpdateRejectsEmptyValue(t *testing.T) {
 func TestConfigControllerUpdateRejectsInvalidID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockConfigService{
-		updateFn: func(context.Context, uint, *dto.ConfigUpdateRequest) (*models.Config, error) {
+	svc := &configservicemocks.ConfigServiceMock{
+		UpdateFunc: func(context.Context, uint, *dto.ConfigUpdateRequest) (*models.Config, error) {
 			t.Fatal("Update should not be called for invalid ids")
 			return nil, nil
 		},
@@ -203,8 +158,8 @@ func TestConfigControllerUpdateRejectsInvalidID(t *testing.T) {
 func TestConfigControllerFindByKeyReturnsSuccessResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockConfigService{
-		findByKeyFn: func(ctx context.Context, key string) (*models.Config, error) {
+	svc := &configservicemocks.ConfigServiceMock{
+		FindByKeyFunc: func(ctx context.Context, key string) (*models.Config, error) {
 			require.NotNil(t, ctx)
 			require.Equal(t, "timezone", key)
 			return &models.Config{
@@ -233,8 +188,8 @@ func TestConfigControllerIndexPropagatesServiceError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	expectedErr := errors.New("service failed")
-	svc := &mockConfigService{
-		indexFn: func(context.Context, *pagination.Pagination) ([]*models.Config, response.Meta, error) {
+	svc := &configservicemocks.ConfigServiceMock{
+		IndexFunc: func(context.Context, *pagination.Pagination) ([]*models.Config, response.Meta, error) {
 			return nil, response.Meta{}, expectedErr
 		},
 	}

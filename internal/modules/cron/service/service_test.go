@@ -5,72 +5,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/cron/service"
+	refreshtokenmocks "github.com/PhantomX7/athleton/internal/modules/refresh_token/repository/mocks"
 	"github.com/PhantomX7/athleton/pkg/logger"
-	"github.com/PhantomX7/athleton/pkg/pagination"
-	"github.com/PhantomX7/athleton/pkg/repository"
 )
-
-type mockRefreshTokenRepository struct {
-	deleteInvalidTokenFn func(context.Context) error
-}
-
-func (m *mockRefreshTokenRepository) Create(context.Context, *models.RefreshToken) error {
-	panic("unexpected Create call")
-}
-func (m *mockRefreshTokenRepository) Update(context.Context, *models.RefreshToken) error {
-	panic("unexpected Update call")
-}
-func (m *mockRefreshTokenRepository) Delete(context.Context, *models.RefreshToken) error {
-	panic("unexpected Delete call")
-}
-func (m *mockRefreshTokenRepository) FindByID(context.Context, uint, ...repository.Association) (*models.RefreshToken, error) {
-	panic("unexpected FindByID call")
-}
-func (m *mockRefreshTokenRepository) FindAll(context.Context, *pagination.Pagination) ([]*models.RefreshToken, error) {
-	panic("unexpected FindAll call")
-}
-func (m *mockRefreshTokenRepository) Count(context.Context, *pagination.Pagination) (int64, error) {
-	panic("unexpected Count call")
-}
-func (m *mockRefreshTokenRepository) FindByToken(context.Context, string) (*models.RefreshToken, error) {
-	panic("unexpected FindByToken call")
-}
-func (m *mockRefreshTokenRepository) FindActiveByID(context.Context, uuid.UUID) (*models.RefreshToken, error) {
-	panic("unexpected FindActiveByID call")
-}
-func (m *mockRefreshTokenRepository) GetValidCountByUserID(context.Context, uint) (int64, error) {
-	panic("unexpected GetValidCountByUserID call")
-}
-func (m *mockRefreshTokenRepository) DeleteInvalidToken(ctx context.Context) error {
-	if m.deleteInvalidTokenFn == nil {
-		panic("unexpected DeleteInvalidToken call")
-	}
-	return m.deleteInvalidTokenFn(ctx)
-}
-func (m *mockRefreshTokenRepository) RevokeAllByUserID(context.Context, uint) error {
-	panic("unexpected RevokeAllByUserID call")
-}
-func (m *mockRefreshTokenRepository) RevokeAllByUserIDExcept(context.Context, uint, string) error {
-	panic("unexpected RevokeAllByUserIDExcept call")
-}
-func (m *mockRefreshTokenRepository) RevokeByToken(context.Context, string) error {
-	panic("unexpected RevokeByToken call")
-}
-func (m *mockRefreshTokenRepository) RevokeByTokenIfActive(context.Context, string) (bool, error) {
-	panic("unexpected RevokeByTokenIfActive call")
-}
-func (m *mockRefreshTokenRepository) RevokeOldestActiveByUserID(context.Context, uint, int) error {
-	panic("unexpected RevokeOldestActiveByUserID call")
-}
-func (m *mockRefreshTokenRepository) UpdateTokenHashIfActive(context.Context, string, string) (bool, error) {
-	panic("unexpected UpdateTokenHashIfActive call")
-}
 
 func setupLogger(t *testing.T) {
 	t.Helper()
@@ -86,8 +27,8 @@ func TestCronServiceClearRefreshTokenDeletesInvalidTokens(t *testing.T) {
 	setupLogger(t)
 
 	called := false
-	repo := &mockRefreshTokenRepository{
-		deleteInvalidTokenFn: func(ctx context.Context) error {
+	repo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		DeleteInvalidTokenFunc: func(ctx context.Context) error {
 			called = true
 			require.NotNil(t, ctx)
 			return nil
@@ -106,8 +47,8 @@ func TestCronServiceClearRefreshTokenReturnsRepositoryError(t *testing.T) {
 	setupLogger(t)
 
 	expectedErr := errors.New("cleanup failed")
-	repo := &mockRefreshTokenRepository{
-		deleteInvalidTokenFn: func(context.Context) error {
+	repo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		DeleteInvalidTokenFunc: func(context.Context) error {
 			return expectedErr
 		},
 	}
@@ -127,8 +68,8 @@ func TestCronServiceRunAllCleanupJobsReportsJobFailures(t *testing.T) {
 	// instead of a false success.
 	callCount := 0
 	jobErr := errors.New("cleanup failed")
-	repo := &mockRefreshTokenRepository{
-		deleteInvalidTokenFn: func(context.Context) error {
+	repo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		DeleteInvalidTokenFunc: func(context.Context) error {
 			callCount++
 			return jobErr
 		},
@@ -145,8 +86,8 @@ func TestCronServiceRunAllCleanupJobsReportsJobFailures(t *testing.T) {
 func TestCronServiceRunAllCleanupJobsSucceedsWhenJobsSucceed(t *testing.T) {
 	setupLogger(t)
 
-	repo := &mockRefreshTokenRepository{
-		deleteInvalidTokenFn: func(context.Context) error { return nil },
+	repo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		DeleteInvalidTokenFunc: func(context.Context) error { return nil },
 	}
 
 	svc := service.NewCronService(repo)

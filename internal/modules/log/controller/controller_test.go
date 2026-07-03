@@ -14,38 +14,17 @@ import (
 
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/log/controller"
-	logservice "github.com/PhantomX7/athleton/internal/modules/log/service"
+	logservicemocks "github.com/PhantomX7/athleton/internal/modules/log/service/mocks"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 )
-
-type mockLogService struct {
-	indexFn    func(context.Context, *pagination.Pagination) ([]*models.Log, response.Meta, error)
-	findByIDFn func(context.Context, uint) (*models.Log, error)
-}
-
-func (m *mockLogService) Index(ctx context.Context, pg *pagination.Pagination) ([]*models.Log, response.Meta, error) {
-	if m.indexFn == nil {
-		panic("unexpected Index call")
-	}
-	return m.indexFn(ctx, pg)
-}
-
-func (m *mockLogService) FindByID(ctx context.Context, logID uint) (*models.Log, error) {
-	if m.findByIDFn == nil {
-		panic("unexpected FindByID call")
-	}
-	return m.findByIDFn(ctx, logID)
-}
-
-var _ logservice.LogService = (*mockLogService)(nil)
 
 func TestLogControllerIndexReturnsPaginatedResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	createdAt := time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
-	svc := &mockLogService{
-		indexFn: func(ctx context.Context, pg *pagination.Pagination) ([]*models.Log, response.Meta, error) {
+	svc := &logservicemocks.LogServiceMock{
+		IndexFunc: func(ctx context.Context, pg *pagination.Pagination) ([]*models.Log, response.Meta, error) {
 			require.NotNil(t, ctx)
 			require.Equal(t, 5, pg.Limit)
 			require.Equal(t, 10, pg.Offset)
@@ -104,8 +83,8 @@ func TestLogControllerIndexReturnsPaginatedResponse(t *testing.T) {
 func TestLogControllerFindByIDReturnsSuccessResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockLogService{
-		findByIDFn: func(ctx context.Context, logID uint) (*models.Log, error) {
+	svc := &logservicemocks.LogServiceMock{
+		FindByIDFunc: func(ctx context.Context, logID uint) (*models.Log, error) {
 			require.NotNil(t, ctx)
 			require.Equal(t, uint(7), logID)
 			return &models.Log{
@@ -144,8 +123,8 @@ func TestLogControllerFindByIDReturnsSuccessResponse(t *testing.T) {
 func TestLogControllerFindByIDRejectsInvalidParam(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockLogService{
-		findByIDFn: func(context.Context, uint) (*models.Log, error) {
+	svc := &logservicemocks.LogServiceMock{
+		FindByIDFunc: func(context.Context, uint) (*models.Log, error) {
 			t.Fatal("FindByID should not be called for invalid ids")
 			return nil, nil
 		},
@@ -170,8 +149,8 @@ func TestLogControllerIndexPropagatesServiceError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	expectedErr := errors.New("service failed")
-	svc := &mockLogService{
-		indexFn: func(context.Context, *pagination.Pagination) ([]*models.Log, response.Meta, error) {
+	svc := &logservicemocks.LogServiceMock{
+		IndexFunc: func(context.Context, *pagination.Pagination) ([]*models.Log, response.Meta, error) {
 			return nil, response.Meta{}, expectedErr
 		},
 	}

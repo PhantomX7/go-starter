@@ -17,7 +17,7 @@ import (
 func TestRecoveryReturnsJSONEnvelopeOnPanic(t *testing.T) {
 	setupLogger(t)
 
-	mw := newMiddleware(&mockCasbinClient{})
+	mw := newMiddleware(newCasbinClient(nil))
 
 	engine := gin.New()
 	engine.Use(mw.Recovery())

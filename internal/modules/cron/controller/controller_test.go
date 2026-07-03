@@ -8,30 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PhantomX7/athleton/internal/modules/cron/controller"
-	cronservice "github.com/PhantomX7/athleton/internal/modules/cron/service"
+	cronservicemocks "github.com/PhantomX7/athleton/internal/modules/cron/service/mocks"
 )
-
-type mockCronService struct {
-	runAllCleanupJobsFn func(context.Context) error
-}
-
-func (m *mockCronService) ClearRefreshToken(context.Context) error {
-	panic("unexpected ClearRefreshToken call")
-}
-
-func (m *mockCronService) RunAllCleanupJobs(ctx context.Context) error {
-	if m.runAllCleanupJobsFn == nil {
-		panic("unexpected RunAllCleanupJobs call")
-	}
-	return m.runAllCleanupJobsFn(ctx)
-}
-
-var _ cronservice.CronService = (*mockCronService)(nil)
 
 func TestNewCronRegistersJobAndRunsTask(t *testing.T) {
 	called := make(chan struct{}, 1)
-	svc := &mockCronService{
-		runAllCleanupJobsFn: func(ctx context.Context) error {
+	svc := &cronservicemocks.CronServiceMock{
+		RunAllCleanupJobsFunc: func(ctx context.Context) error {
 			require.NotNil(t, ctx)
 			called <- struct{}{}
 			return nil

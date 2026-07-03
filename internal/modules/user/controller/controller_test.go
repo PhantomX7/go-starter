@@ -17,7 +17,7 @@ import (
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/user/controller"
-	userservice "github.com/PhantomX7/athleton/internal/modules/user/service"
+	userservicemocks "github.com/PhantomX7/athleton/internal/modules/user/service/mocks"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 )
@@ -34,64 +34,11 @@ func init() {
 	}
 }
 
-type mockUserService struct {
-	indexFn           func(context.Context, *pagination.Pagination) ([]*models.User, response.Meta, error)
-	createFn          func(context.Context, *dto.AdminUserCreateRequest) (*models.User, error)
-	updateFn          func(context.Context, uint, *dto.UserUpdateRequest) (*models.User, error)
-	findByIDFn        func(context.Context, uint) (*models.User, error)
-	assignAdminRoleFn func(context.Context, uint, *dto.UserAssignAdminRoleRequest) (*models.User, error)
-	changePasswordFn  func(context.Context, uint, *dto.ChangeAdminPasswordRequest) error
-}
-
-func (m *mockUserService) Create(ctx context.Context, req *dto.AdminUserCreateRequest) (*models.User, error) {
-	if m.createFn == nil {
-		panic("unexpected Create call")
-	}
-	return m.createFn(ctx, req)
-}
-
-func (m *mockUserService) Index(ctx context.Context, pg *pagination.Pagination) ([]*models.User, response.Meta, error) {
-	if m.indexFn == nil {
-		panic("unexpected Index call")
-	}
-	return m.indexFn(ctx, pg)
-}
-
-func (m *mockUserService) Update(ctx context.Context, userID uint, req *dto.UserUpdateRequest) (*models.User, error) {
-	if m.updateFn == nil {
-		panic("unexpected Update call")
-	}
-	return m.updateFn(ctx, userID, req)
-}
-
-func (m *mockUserService) FindByID(ctx context.Context, userID uint) (*models.User, error) {
-	if m.findByIDFn == nil {
-		panic("unexpected FindByID call")
-	}
-	return m.findByIDFn(ctx, userID)
-}
-
-func (m *mockUserService) AssignAdminRole(ctx context.Context, userID uint, req *dto.UserAssignAdminRoleRequest) (*models.User, error) {
-	if m.assignAdminRoleFn == nil {
-		panic("unexpected AssignAdminRole call")
-	}
-	return m.assignAdminRoleFn(ctx, userID, req)
-}
-
-func (m *mockUserService) ChangePassword(ctx context.Context, userID uint, req *dto.ChangeAdminPasswordRequest) error {
-	if m.changePasswordFn == nil {
-		panic("unexpected ChangePassword call")
-	}
-	return m.changePasswordFn(ctx, userID, req)
-}
-
-var _ userservice.UserService = (*mockUserService)(nil)
-
 func TestUserControllerIndexReturnsPaginatedResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockUserService{
-		indexFn: func(ctx context.Context, pg *pagination.Pagination) ([]*models.User, response.Meta, error) {
+	svc := &userservicemocks.UserServiceMock{
+		IndexFunc: func(ctx context.Context, pg *pagination.Pagination) ([]*models.User, response.Meta, error) {
 			require.NotNil(t, ctx)
 			require.Equal(t, 2, pg.Limit)
 			require.Equal(t, 3, pg.Offset)
@@ -123,8 +70,8 @@ func TestUserControllerIndexReturnsPaginatedResponse(t *testing.T) {
 func TestUserControllerCreateReturnsCreated(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockUserService{
-		createFn: func(ctx context.Context, req *dto.AdminUserCreateRequest) (*models.User, error) {
+	svc := &userservicemocks.UserServiceMock{
+		CreateFunc: func(ctx context.Context, req *dto.AdminUserCreateRequest) (*models.User, error) {
 			require.NotNil(t, ctx)
 			require.Equal(t, "new-admin", req.Username)
 			require.Equal(t, uint(3), req.AdminRoleID)
@@ -157,8 +104,8 @@ func TestUserControllerCreateReturnsCreated(t *testing.T) {
 func TestUserControllerCreateRejectsInvalidBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockUserService{
-		createFn: func(context.Context, *dto.AdminUserCreateRequest) (*models.User, error) {
+	svc := &userservicemocks.UserServiceMock{
+		CreateFunc: func(context.Context, *dto.AdminUserCreateRequest) (*models.User, error) {
 			t.Fatal("Create should not be called when binding fails")
 			return nil, nil
 		},
@@ -178,8 +125,8 @@ func TestUserControllerCreateRejectsInvalidBody(t *testing.T) {
 func TestUserControllerUpdateReturnsSuccessResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockUserService{
-		updateFn: func(ctx context.Context, userID uint, req *dto.UserUpdateRequest) (*models.User, error) {
+	svc := &userservicemocks.UserServiceMock{
+		UpdateFunc: func(ctx context.Context, userID uint, req *dto.UserUpdateRequest) (*models.User, error) {
 			require.NotNil(t, ctx)
 			require.Equal(t, uint(5), userID)
 			require.NotNil(t, req.Name)
@@ -213,8 +160,8 @@ func TestUserControllerUpdateReturnsSuccessResponse(t *testing.T) {
 func TestUserControllerFindByIDReturnsSuccessResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockUserService{
-		findByIDFn: func(ctx context.Context, userID uint) (*models.User, error) {
+	svc := &userservicemocks.UserServiceMock{
+		FindByIDFunc: func(ctx context.Context, userID uint) (*models.User, error) {
 			require.NotNil(t, ctx)
 			require.Equal(t, uint(7), userID)
 			return &models.User{
@@ -245,8 +192,8 @@ func TestUserControllerFindByIDReturnsSuccessResponse(t *testing.T) {
 func TestUserControllerAssignAdminRoleRejectsInvalidID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockUserService{
-		assignAdminRoleFn: func(context.Context, uint, *dto.UserAssignAdminRoleRequest) (*models.User, error) {
+	svc := &userservicemocks.UserServiceMock{
+		AssignAdminRoleFunc: func(context.Context, uint, *dto.UserAssignAdminRoleRequest) (*models.User, error) {
 			t.Fatal("AssignAdminRole should not be called for invalid ids")
 			return nil, nil
 		},
@@ -267,8 +214,8 @@ func TestUserControllerAssignAdminRoleRejectsInvalidID(t *testing.T) {
 func TestUserControllerChangePasswordReturnsSuccessResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockUserService{
-		changePasswordFn: func(ctx context.Context, userID uint, req *dto.ChangeAdminPasswordRequest) error {
+	svc := &userservicemocks.UserServiceMock{
+		ChangePasswordFunc: func(ctx context.Context, userID uint, req *dto.ChangeAdminPasswordRequest) error {
 			require.NotNil(t, ctx)
 			require.Equal(t, uint(9), userID)
 			require.Equal(t, "new-password", req.NewPassword)
@@ -293,8 +240,8 @@ func TestUserControllerChangePasswordReturnsSuccessResponse(t *testing.T) {
 
 func TestUserControllerUpdatePropagatesServiceError(t *testing.T) {
 	expectedErr := errors.New("service failed")
-	svc := &mockUserService{
-		updateFn: func(context.Context, uint, *dto.UserUpdateRequest) (*models.User, error) {
+	svc := &userservicemocks.UserServiceMock{
+		UpdateFunc: func(context.Context, uint, *dto.UserUpdateRequest) (*models.User, error) {
 			return nil, expectedErr
 		},
 	}
@@ -314,8 +261,8 @@ func TestUserControllerUpdatePropagatesServiceError(t *testing.T) {
 
 func TestUserControllerFindByIDPropagatesServiceError(t *testing.T) {
 	expectedErr := errors.New("service failed")
-	svc := &mockUserService{
-		findByIDFn: func(context.Context, uint) (*models.User, error) {
+	svc := &userservicemocks.UserServiceMock{
+		FindByIDFunc: func(context.Context, uint) (*models.User, error) {
 			return nil, expectedErr
 		},
 	}
@@ -334,8 +281,8 @@ func TestUserControllerFindByIDPropagatesServiceError(t *testing.T) {
 
 func TestUserControllerAssignAdminRolePropagatesServiceError(t *testing.T) {
 	expectedErr := errors.New("service failed")
-	svc := &mockUserService{
-		assignAdminRoleFn: func(context.Context, uint, *dto.UserAssignAdminRoleRequest) (*models.User, error) {
+	svc := &userservicemocks.UserServiceMock{
+		AssignAdminRoleFunc: func(context.Context, uint, *dto.UserAssignAdminRoleRequest) (*models.User, error) {
 			return nil, expectedErr
 		},
 	}
@@ -356,8 +303,8 @@ func TestUserControllerAssignAdminRolePropagatesServiceError(t *testing.T) {
 
 func TestUserControllerChangePasswordPropagatesServiceError(t *testing.T) {
 	expectedErr := errors.New("service failed")
-	svc := &mockUserService{
-		changePasswordFn: func(context.Context, uint, *dto.ChangeAdminPasswordRequest) error {
+	svc := &userservicemocks.UserServiceMock{
+		ChangePasswordFunc: func(context.Context, uint, *dto.ChangeAdminPasswordRequest) error {
 			return expectedErr
 		},
 	}
@@ -380,8 +327,8 @@ func TestUserControllerIndexPropagatesServiceError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	expectedErr := errors.New("service failed")
-	svc := &mockUserService{
-		indexFn: func(context.Context, *pagination.Pagination) ([]*models.User, response.Meta, error) {
+	svc := &userservicemocks.UserServiceMock{
+		IndexFunc: func(context.Context, *pagination.Pagination) ([]*models.User, response.Meta, error) {
 			return nil, response.Meta{}, expectedErr
 		},
 	}

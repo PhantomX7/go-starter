@@ -12,6 +12,8 @@ import (
 	"go.uber.org/zap"
 )
 
+//go:generate go tool moq -out mocks/mock.go -pkg mocks -fmt goimports . CronService
+
 // CronService exposes the background cleanup jobs run by the scheduler.
 type CronService interface {
 	ClearRefreshToken(ctx context.Context) error

@@ -25,6 +25,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+//go:generate go tool moq -out mocks/mock.go -pkg mocks -fmt goimports . AuthService
+
 // AuthService defines the interface for auth service operations
 type AuthService interface {
 	GetMe(ctx context.Context) (*dto.MeResponse, error)

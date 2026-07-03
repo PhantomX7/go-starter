@@ -12,125 +12,15 @@ import (
 
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/models"
-	configrepository "github.com/PhantomX7/athleton/internal/modules/config/repository"
+	configrepomocks "github.com/PhantomX7/athleton/internal/modules/config/repository/mocks"
 	"github.com/PhantomX7/athleton/internal/modules/config/service"
-	logrepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
+	logmocks "github.com/PhantomX7/athleton/internal/modules/log/repository/mocks"
 	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/repository"
 	"github.com/PhantomX7/athleton/pkg/response"
 	"github.com/PhantomX7/athleton/pkg/utils"
 )
-
-type mockConfigRepository struct {
-	findAllFn         func(context.Context, *pagination.Pagination) ([]*models.Config, error)
-	countFn           func(context.Context, *pagination.Pagination) (int64, error)
-	findByIDFn        func(context.Context, uint, ...repository.Association) (*models.Config, error)
-	updateFn          func(context.Context, *models.Config) error
-	findByKeyFn       func(context.Context, string) (*models.Config, error)
-	findAllPublicFn   func(context.Context, *pagination.Pagination) ([]*models.Config, error)
-	countPublicFn     func(context.Context, *pagination.Pagination) (int64, error)
-	findPublicByKeyFn func(context.Context, string) (*models.Config, error)
-}
-
-func (m *mockConfigRepository) Create(context.Context, *models.Config) error {
-	panic("unexpected Create call")
-}
-
-func (m *mockConfigRepository) Update(ctx context.Context, entity *models.Config) error {
-	if m.updateFn == nil {
-		panic("unexpected Update call")
-	}
-	return m.updateFn(ctx, entity)
-}
-
-func (m *mockConfigRepository) Delete(context.Context, *models.Config) error {
-	panic("unexpected Delete call")
-}
-
-func (m *mockConfigRepository) FindByID(ctx context.Context, id uint, preloads ...repository.Association) (*models.Config, error) {
-	if m.findByIDFn == nil {
-		panic("unexpected FindByID call")
-	}
-	return m.findByIDFn(ctx, id, preloads...)
-}
-
-func (m *mockConfigRepository) FindAll(ctx context.Context, pg *pagination.Pagination) ([]*models.Config, error) {
-	if m.findAllFn == nil {
-		panic("unexpected FindAll call")
-	}
-	return m.findAllFn(ctx, pg)
-}
-
-func (m *mockConfigRepository) Count(ctx context.Context, pg *pagination.Pagination) (int64, error) {
-	if m.countFn == nil {
-		panic("unexpected Count call")
-	}
-	return m.countFn(ctx, pg)
-}
-
-func (m *mockConfigRepository) FindByKey(ctx context.Context, key string) (*models.Config, error) {
-	if m.findByKeyFn == nil {
-		panic("unexpected FindByKey call")
-	}
-	return m.findByKeyFn(ctx, key)
-}
-
-func (m *mockConfigRepository) FindAllPublic(ctx context.Context, pg *pagination.Pagination) ([]*models.Config, error) {
-	if m.findAllPublicFn == nil {
-		panic("unexpected FindAllPublic call")
-	}
-	return m.findAllPublicFn(ctx, pg)
-}
-
-func (m *mockConfigRepository) CountPublic(ctx context.Context, pg *pagination.Pagination) (int64, error) {
-	if m.countPublicFn == nil {
-		panic("unexpected CountPublic call")
-	}
-	return m.countPublicFn(ctx, pg)
-}
-
-func (m *mockConfigRepository) FindPublicByKey(ctx context.Context, key string) (*models.Config, error) {
-	if m.findPublicByKeyFn == nil {
-		panic("unexpected FindPublicByKey call")
-	}
-	return m.findPublicByKeyFn(ctx, key)
-}
-
-var _ configrepository.ConfigRepository = (*mockConfigRepository)(nil)
-
-type mockLogRepository struct {
-	createFn func(context.Context, *models.Log) error
-}
-
-func (m *mockLogRepository) Create(ctx context.Context, entity *models.Log) error {
-	if m.createFn == nil {
-		panic("unexpected Create call")
-	}
-	return m.createFn(ctx, entity)
-}
-
-func (m *mockLogRepository) Update(context.Context, *models.Log) error {
-	panic("unexpected Update call")
-}
-
-func (m *mockLogRepository) Delete(context.Context, *models.Log) error {
-	panic("unexpected Delete call")
-}
-
-func (m *mockLogRepository) FindByID(context.Context, uint, ...repository.Association) (*models.Log, error) {
-	panic("unexpected FindByID call")
-}
-
-func (m *mockLogRepository) FindAll(context.Context, *pagination.Pagination) ([]*models.Log, error) {
-	panic("unexpected FindAll call")
-}
-
-func (m *mockLogRepository) Count(context.Context, *pagination.Pagination) (int64, error) {
-	panic("unexpected Count call")
-}
-
-var _ logrepository.LogRepository = (*mockLogRepository)(nil)
 
 func setupLogger(t *testing.T) {
 	t.Helper()
@@ -155,20 +45,20 @@ func TestConfigServiceIndexReturnsConfigsAndMeta(t *testing.T) {
 		{Model: gorm.Model{ID: 2}, Key: "maintenance_mode", Value: "false"},
 	}
 
-	repo := &mockConfigRepository{
-		findAllFn: func(ctx context.Context, gotPg *pagination.Pagination) ([]*models.Config, error) {
+	repo := &configrepomocks.ConfigRepositoryMock{
+		FindAllFunc: func(ctx context.Context, gotPg *pagination.Pagination) ([]*models.Config, error) {
 			require.Equal(t, "req-1", utils.GetRequestIDFromContext(ctx))
 			require.Same(t, pg, gotPg)
 			return expectedConfigs, nil
 		},
-		countFn: func(ctx context.Context, gotPg *pagination.Pagination) (int64, error) {
+		CountFunc: func(ctx context.Context, gotPg *pagination.Pagination) (int64, error) {
 			require.Equal(t, "req-1", utils.GetRequestIDFromContext(ctx))
 			require.Same(t, pg, gotPg)
 			return 15, nil
 		},
 	}
 
-	svc := service.NewConfigService(repo, &mockLogRepository{})
+	svc := service.NewConfigService(repo, &logmocks.LogRepositoryMock{})
 	ctx := utils.SetRequestIDToContext(context.Background(), "req-1")
 
 	configs, meta, err := svc.Index(ctx, pg)
@@ -189,14 +79,14 @@ func TestConfigServiceUpdateTogglesVisibilityOnlyWhenProvided(t *testing.T) {
 		Value:    "v",
 		IsPublic: false,
 	}
-	repo := &mockConfigRepository{
-		findByIDFn: func(context.Context, uint, ...repository.Association) (*models.Config, error) {
+	repo := &configrepomocks.ConfigRepositoryMock{
+		FindByIDFunc: func(context.Context, uint, ...repository.Association) (*models.Config, error) {
 			return current, nil
 		},
-		updateFn: func(context.Context, *models.Config) error { return nil },
+		UpdateFunc: func(context.Context, *models.Config) error { return nil },
 	}
-	logRepo := &mockLogRepository{
-		createFn: func(context.Context, *models.Log) error { return nil },
+	logRepo := &logmocks.LogRepositoryMock{
+		CreateFunc: func(context.Context, *models.Log) error { return nil },
 	}
 	svc := service.NewConfigService(repo, logRepo)
 	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{UserID: 1, UserName: "Root"})
@@ -222,15 +112,15 @@ func TestConfigServiceUpdateTogglesVisibilityOnlyWhenProvided(t *testing.T) {
 func TestConfigServicePublicIndexUsesPublicRepositoryVariants(t *testing.T) {
 	setupLogger(t)
 
-	repo := &mockConfigRepository{
-		findAllPublicFn: func(_ context.Context, pg *pagination.Pagination) ([]*models.Config, error) {
+	repo := &configrepomocks.ConfigRepositoryMock{
+		FindAllPublicFunc: func(_ context.Context, pg *pagination.Pagination) ([]*models.Config, error) {
 			return []*models.Config{{Key: "site_name", Value: "Athleton", IsPublic: true}}, nil
 		},
-		countPublicFn: func(context.Context, *pagination.Pagination) (int64, error) {
+		CountPublicFunc: func(context.Context, *pagination.Pagination) (int64, error) {
 			return 1, nil
 		},
 	}
-	svc := service.NewConfigService(repo, &mockLogRepository{})
+	svc := service.NewConfigService(repo, &logmocks.LogRepositoryMock{})
 
 	pg := pagination.NewPagination(nil, nil, pagination.PaginationOptions{DefaultLimit: 20})
 	configs, meta, err := svc.PublicIndex(context.Background(), pg)
@@ -250,21 +140,21 @@ func TestConfigServiceUpdateUpdatesConfigAndCreatesAuditLog(t *testing.T) {
 		Value: "Old Value",
 	}
 
-	repo := &mockConfigRepository{
-		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.Config, error) {
+	repo := &configrepomocks.ConfigRepositoryMock{
+		FindByIDFunc: func(ctx context.Context, id uint, _ ...repository.Association) (*models.Config, error) {
 			require.Equal(t, uint(7), id)
 			require.Equal(t, "req-2", utils.GetRequestIDFromContext(ctx))
 			return current, nil
 		},
-		updateFn: func(ctx context.Context, entity *models.Config) error {
+		UpdateFunc: func(ctx context.Context, entity *models.Config) error {
 			require.Equal(t, "req-2", utils.GetRequestIDFromContext(ctx))
 			require.Same(t, current, entity)
 			require.Equal(t, "New Value", entity.Value)
 			return nil
 		},
 	}
-	logRepo := &mockLogRepository{
-		createFn: func(ctx context.Context, entry *models.Log) error {
+	logRepo := &logmocks.LogRepositoryMock{
+		CreateFunc: func(ctx context.Context, entry *models.Log) error {
 			require.NotNil(t, ctx)
 			logCh <- entry
 			return nil
@@ -305,15 +195,15 @@ func TestConfigServiceFindByKeyReturnsConfig(t *testing.T) {
 		Key:   "timezone",
 		Value: "Asia/Jakarta",
 	}
-	repo := &mockConfigRepository{
-		findByKeyFn: func(ctx context.Context, key string) (*models.Config, error) {
+	repo := &configrepomocks.ConfigRepositoryMock{
+		FindByKeyFunc: func(ctx context.Context, key string) (*models.Config, error) {
 			require.Equal(t, "timezone", key)
 			require.Equal(t, "req-3", utils.GetRequestIDFromContext(ctx))
 			return expected, nil
 		},
 	}
 
-	svc := service.NewConfigService(repo, &mockLogRepository{})
+	svc := service.NewConfigService(repo, &logmocks.LogRepositoryMock{})
 	ctx := utils.SetRequestIDToContext(context.Background(), "req-3")
 
 	got, err := svc.FindByKey(ctx, "timezone")
@@ -326,17 +216,17 @@ func TestConfigServiceIndexReturnsRepositoryError(t *testing.T) {
 	setupLogger(t)
 
 	expectedErr := errors.New("find all failed")
-	repo := &mockConfigRepository{
-		findAllFn: func(context.Context, *pagination.Pagination) ([]*models.Config, error) {
+	repo := &configrepomocks.ConfigRepositoryMock{
+		FindAllFunc: func(context.Context, *pagination.Pagination) ([]*models.Config, error) {
 			return nil, expectedErr
 		},
-		countFn: func(context.Context, *pagination.Pagination) (int64, error) {
+		CountFunc: func(context.Context, *pagination.Pagination) (int64, error) {
 			t.Fatal("Count should not be called when FindAll fails")
 			return 0, nil
 		},
 	}
 
-	svc := service.NewConfigService(repo, &mockLogRepository{})
+	svc := service.NewConfigService(repo, &logmocks.LogRepositoryMock{})
 
 	configs, meta, err := svc.Index(context.Background(), pagination.NewPagination(nil, nil, pagination.PaginationOptions{}))
 

@@ -22,6 +22,8 @@ import (
 	"go.uber.org/zap"
 )
 
+//go:generate go tool moq -out mocks/mock.go -pkg mocks -fmt goimports . AdminRoleService
+
 // AdminRoleService exposes the admin-role use cases used by handlers.
 type AdminRoleService interface {
 	Index(ctx context.Context, req *pagination.Pagination) ([]*models.AdminRole, response.Meta, error)

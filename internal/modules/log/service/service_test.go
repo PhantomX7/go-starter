@@ -13,6 +13,7 @@ import (
 
 	"github.com/PhantomX7/athleton/internal/models"
 	logrepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
+	logmocks "github.com/PhantomX7/athleton/internal/modules/log/repository/mocks"
 	"github.com/PhantomX7/athleton/internal/modules/log/service"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/logger"
@@ -20,47 +21,6 @@ import (
 	"github.com/PhantomX7/athleton/pkg/repository"
 	"github.com/PhantomX7/athleton/pkg/utils"
 )
-
-type mockLogRepository struct {
-	findAllFn  func(context.Context, *pagination.Pagination) ([]*models.Log, error)
-	countFn    func(context.Context, *pagination.Pagination) (int64, error)
-	findByIDFn func(context.Context, uint, ...repository.Association) (*models.Log, error)
-}
-
-func (m *mockLogRepository) Create(context.Context, *models.Log) error {
-	panic("unexpected Create call")
-}
-
-func (m *mockLogRepository) Update(context.Context, *models.Log) error {
-	panic("unexpected Update call")
-}
-
-func (m *mockLogRepository) Delete(context.Context, *models.Log) error {
-	panic("unexpected Delete call")
-}
-
-func (m *mockLogRepository) FindByID(ctx context.Context, id uint, preloads ...repository.Association) (*models.Log, error) {
-	if m.findByIDFn == nil {
-		panic("unexpected FindByID call")
-	}
-	return m.findByIDFn(ctx, id, preloads...)
-}
-
-func (m *mockLogRepository) FindAll(ctx context.Context, pg *pagination.Pagination) ([]*models.Log, error) {
-	if m.findAllFn == nil {
-		panic("unexpected FindAll call")
-	}
-	return m.findAllFn(ctx, pg)
-}
-
-func (m *mockLogRepository) Count(ctx context.Context, pg *pagination.Pagination) (int64, error) {
-	if m.countFn == nil {
-		panic("unexpected Count call")
-	}
-	return m.countFn(ctx, pg)
-}
-
-var _ logrepository.LogRepository = (*mockLogRepository)(nil)
 
 func setupLogger(t *testing.T) {
 	t.Helper()
@@ -85,13 +45,13 @@ func TestLogServiceIndexReturnsLogsAndMeta(t *testing.T) {
 		{ID: 2, Message: "updated"},
 	}
 
-	repo := &mockLogRepository{
-		findAllFn: func(ctx context.Context, gotPg *pagination.Pagination) ([]*models.Log, error) {
+	repo := &logmocks.LogRepositoryMock{
+		FindAllFunc: func(ctx context.Context, gotPg *pagination.Pagination) ([]*models.Log, error) {
 			require.Equal(t, "req-123", utils.GetRequestIDFromContext(ctx))
 			require.Same(t, pg, gotPg)
 			return expectedLogs, nil
 		},
-		countFn: func(ctx context.Context, gotPg *pagination.Pagination) (int64, error) {
+		CountFunc: func(ctx context.Context, gotPg *pagination.Pagination) (int64, error) {
 			require.Equal(t, "req-123", utils.GetRequestIDFromContext(ctx))
 			require.Same(t, pg, gotPg)
 			return 42, nil
@@ -158,11 +118,11 @@ func TestLogServiceIndexReturnsRepositoryError(t *testing.T) {
 	setupLogger(t)
 
 	expectedErr := errors.New("find all failed")
-	repo := &mockLogRepository{
-		findAllFn: func(context.Context, *pagination.Pagination) ([]*models.Log, error) {
+	repo := &logmocks.LogRepositoryMock{
+		FindAllFunc: func(context.Context, *pagination.Pagination) ([]*models.Log, error) {
 			return nil, expectedErr
 		},
-		countFn: func(context.Context, *pagination.Pagination) (int64, error) {
+		CountFunc: func(context.Context, *pagination.Pagination) (int64, error) {
 			t.Fatal("Count should not be called when FindAll fails")
 			return 0, nil
 		},
@@ -183,8 +143,8 @@ func TestLogServiceFindByIDReturnsLog(t *testing.T) {
 	setupLogger(t)
 
 	expectedLog := &models.Log{ID: 7, Message: "found"}
-	repo := &mockLogRepository{
-		findByIDFn: func(ctx context.Context, id uint, preloads ...repository.Association) (*models.Log, error) {
+	repo := &logmocks.LogRepositoryMock{
+		FindByIDFunc: func(ctx context.Context, id uint, preloads ...repository.Association) (*models.Log, error) {
 			require.Equal(t, "req-456", utils.GetRequestIDFromContext(ctx))
 			require.Equal(t, uint(7), id)
 			require.Len(t, preloads, 1, "FindByID must preload the acting user")
@@ -206,8 +166,8 @@ func TestLogServiceFindByIDReturnsNotFoundError(t *testing.T) {
 	setupLogger(t)
 
 	expectedErr := cerrors.NewNotFoundError("log not found")
-	repo := &mockLogRepository{
-		findByIDFn: func(context.Context, uint, ...repository.Association) (*models.Log, error) {
+	repo := &logmocks.LogRepositoryMock{
+		FindByIDFunc: func(context.Context, uint, ...repository.Association) (*models.Log, error) {
 			return nil, expectedErr
 		},
 	}

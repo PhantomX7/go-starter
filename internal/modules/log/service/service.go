@@ -13,6 +13,8 @@ import (
 	"gorm.io/gorm"
 )
 
+//go:generate go tool moq -out mocks/mock.go -pkg mocks -fmt goimports . LogService
+
 // LogService exposes read-only audit-log operations.
 type LogService interface {
 	Index(ctx context.Context, req *pagination.Pagination) ([]*models.Log, response.Meta, error)

@@ -17,6 +17,8 @@ import (
 // ConfigService exposes the config use cases used by handlers. The *Public
 // variants back the unauthenticated surface and only see rows explicitly
 // marked is_public.
+//
+//go:generate go tool moq -out mocks/mock.go -pkg mocks -fmt goimports . ConfigService
 type ConfigService interface {
 	Index(ctx context.Context, req *pagination.Pagination) ([]*models.Config, response.Meta, error)
 	PublicIndex(ctx context.Context, req *pagination.Pagination) ([]*models.Config, response.Meta, error)

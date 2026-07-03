@@ -17,7 +17,7 @@ import (
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/admin_role/controller"
-	adminroleservice "github.com/PhantomX7/athleton/internal/modules/admin_role/service"
+	adminroleservicemocks "github.com/PhantomX7/athleton/internal/modules/admin_role/service/mocks"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 )
@@ -35,64 +35,11 @@ func init() {
 	}
 }
 
-type mockAdminRoleService struct {
-	indexFn             func(context.Context, *pagination.Pagination) ([]*models.AdminRole, response.Meta, error)
-	createFn            func(context.Context, *dto.CreateAdminRoleRequest) (*models.AdminRole, error)
-	updateFn            func(context.Context, uint, *dto.UpdateAdminRoleRequest) (*models.AdminRole, error)
-	deleteFn            func(context.Context, uint) error
-	findByIDFn          func(context.Context, uint) (*models.AdminRole, error)
-	getAllPermissionsFn func(context.Context) map[string][]map[string]string
-}
-
-func (m *mockAdminRoleService) Index(ctx context.Context, pg *pagination.Pagination) ([]*models.AdminRole, response.Meta, error) {
-	if m.indexFn == nil {
-		panic("unexpected Index call")
-	}
-	return m.indexFn(ctx, pg)
-}
-
-func (m *mockAdminRoleService) Create(ctx context.Context, req *dto.CreateAdminRoleRequest) (*models.AdminRole, error) {
-	if m.createFn == nil {
-		panic("unexpected Create call")
-	}
-	return m.createFn(ctx, req)
-}
-
-func (m *mockAdminRoleService) Update(ctx context.Context, roleID uint, req *dto.UpdateAdminRoleRequest) (*models.AdminRole, error) {
-	if m.updateFn == nil {
-		panic("unexpected Update call")
-	}
-	return m.updateFn(ctx, roleID, req)
-}
-
-func (m *mockAdminRoleService) Delete(ctx context.Context, roleID uint) error {
-	if m.deleteFn == nil {
-		panic("unexpected Delete call")
-	}
-	return m.deleteFn(ctx, roleID)
-}
-
-func (m *mockAdminRoleService) FindByID(ctx context.Context, roleID uint) (*models.AdminRole, error) {
-	if m.findByIDFn == nil {
-		panic("unexpected FindByID call")
-	}
-	return m.findByIDFn(ctx, roleID)
-}
-
-func (m *mockAdminRoleService) GetAllPermissions(ctx context.Context) map[string][]map[string]string {
-	if m.getAllPermissionsFn == nil {
-		panic("unexpected GetAllPermissions call")
-	}
-	return m.getAllPermissionsFn(ctx)
-}
-
-var _ adminroleservice.AdminRoleService = (*mockAdminRoleService)(nil)
-
 func TestAdminRoleControllerIndexReturnsPaginatedResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockAdminRoleService{
-		indexFn: func(ctx context.Context, pg *pagination.Pagination) ([]*models.AdminRole, response.Meta, error) {
+	svc := &adminroleservicemocks.AdminRoleServiceMock{
+		IndexFunc: func(ctx context.Context, pg *pagination.Pagination) ([]*models.AdminRole, response.Meta, error) {
 			require.NotNil(t, ctx)
 			require.Equal(t, 2, pg.Limit)
 			require.Equal(t, 4, pg.Offset)
@@ -124,8 +71,8 @@ func TestAdminRoleControllerIndexReturnsPaginatedResponse(t *testing.T) {
 func TestAdminRoleControllerDeleteRejectsInvalidID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockAdminRoleService{
-		deleteFn: func(context.Context, uint) error {
+	svc := &adminroleservicemocks.AdminRoleServiceMock{
+		DeleteFunc: func(context.Context, uint) error {
 			t.Fatal("Delete should not be called for invalid ids")
 			return nil
 		},
@@ -146,8 +93,8 @@ func TestAdminRoleControllerDeleteRejectsInvalidID(t *testing.T) {
 func TestAdminRoleControllerFindByIDReturnsSuccessResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockAdminRoleService{
-		findByIDFn: func(ctx context.Context, roleID uint) (*models.AdminRole, error) {
+	svc := &adminroleservicemocks.AdminRoleServiceMock{
+		FindByIDFunc: func(ctx context.Context, roleID uint) (*models.AdminRole, error) {
 			require.NotNil(t, ctx)
 			require.Equal(t, uint(5), roleID)
 			return &models.AdminRole{ID: 5, Name: "Support", IsActive: true}, nil
@@ -171,8 +118,8 @@ func TestAdminRoleControllerFindByIDReturnsSuccessResponse(t *testing.T) {
 func TestAdminRoleControllerGetAllPermissionsReturnsResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockAdminRoleService{
-		getAllPermissionsFn: func(ctx context.Context) map[string][]map[string]string {
+	svc := &adminroleservicemocks.AdminRoleServiceMock{
+		GetAllPermissionsFunc: func(ctx context.Context) map[string][]map[string]string {
 			require.NotNil(t, ctx)
 			return map[string][]map[string]string{
 				"admin_role": {
@@ -196,8 +143,8 @@ func TestAdminRoleControllerGetAllPermissionsReturnsResponse(t *testing.T) {
 }
 
 func TestAdminRoleControllerCreateReturnsCreatedResponse(t *testing.T) {
-	svc := &mockAdminRoleService{
-		createFn: func(ctx context.Context, req *dto.CreateAdminRoleRequest) (*models.AdminRole, error) {
+	svc := &adminroleservicemocks.AdminRoleServiceMock{
+		CreateFunc: func(ctx context.Context, req *dto.CreateAdminRoleRequest) (*models.AdminRole, error) {
 			require.NotNil(t, ctx)
 			require.Equal(t, "Manager", req.Name)
 			require.Equal(t, []string{"admin_role:read"}, req.Permissions)
@@ -221,8 +168,8 @@ func TestAdminRoleControllerCreateReturnsCreatedResponse(t *testing.T) {
 }
 
 func TestAdminRoleControllerCreateRejectsInvalidPayload(t *testing.T) {
-	svc := &mockAdminRoleService{
-		createFn: func(context.Context, *dto.CreateAdminRoleRequest) (*models.AdminRole, error) {
+	svc := &adminroleservicemocks.AdminRoleServiceMock{
+		CreateFunc: func(context.Context, *dto.CreateAdminRoleRequest) (*models.AdminRole, error) {
 			t.Fatal("Create should not be called for invalid payloads")
 			return nil, nil
 		},
@@ -243,8 +190,8 @@ func TestAdminRoleControllerCreateRejectsInvalidPayload(t *testing.T) {
 
 func TestAdminRoleControllerCreatePropagatesServiceError(t *testing.T) {
 	expectedErr := errors.New("service failed")
-	svc := &mockAdminRoleService{
-		createFn: func(context.Context, *dto.CreateAdminRoleRequest) (*models.AdminRole, error) {
+	svc := &adminroleservicemocks.AdminRoleServiceMock{
+		CreateFunc: func(context.Context, *dto.CreateAdminRoleRequest) (*models.AdminRole, error) {
 			return nil, expectedErr
 		},
 	}
@@ -264,8 +211,8 @@ func TestAdminRoleControllerCreatePropagatesServiceError(t *testing.T) {
 }
 
 func TestAdminRoleControllerUpdateReturnsSuccessResponse(t *testing.T) {
-	svc := &mockAdminRoleService{
-		updateFn: func(ctx context.Context, roleID uint, req *dto.UpdateAdminRoleRequest) (*models.AdminRole, error) {
+	svc := &adminroleservicemocks.AdminRoleServiceMock{
+		UpdateFunc: func(ctx context.Context, roleID uint, req *dto.UpdateAdminRoleRequest) (*models.AdminRole, error) {
 			require.NotNil(t, ctx)
 			require.Equal(t, uint(5), roleID)
 			require.Equal(t, []string{"admin_role:read"}, req.Permissions)
@@ -290,8 +237,8 @@ func TestAdminRoleControllerUpdateReturnsSuccessResponse(t *testing.T) {
 }
 
 func TestAdminRoleControllerUpdateRejectsInvalidID(t *testing.T) {
-	svc := &mockAdminRoleService{
-		updateFn: func(context.Context, uint, *dto.UpdateAdminRoleRequest) (*models.AdminRole, error) {
+	svc := &adminroleservicemocks.AdminRoleServiceMock{
+		UpdateFunc: func(context.Context, uint, *dto.UpdateAdminRoleRequest) (*models.AdminRole, error) {
 			t.Fatal("Update should not be called for invalid ids")
 			return nil, nil
 		},
@@ -312,8 +259,8 @@ func TestAdminRoleControllerUpdateRejectsInvalidID(t *testing.T) {
 
 func TestAdminRoleControllerUpdatePropagatesServiceError(t *testing.T) {
 	expectedErr := errors.New("service failed")
-	svc := &mockAdminRoleService{
-		updateFn: func(context.Context, uint, *dto.UpdateAdminRoleRequest) (*models.AdminRole, error) {
+	svc := &adminroleservicemocks.AdminRoleServiceMock{
+		UpdateFunc: func(context.Context, uint, *dto.UpdateAdminRoleRequest) (*models.AdminRole, error) {
 			return nil, expectedErr
 		},
 	}
@@ -336,8 +283,8 @@ func TestAdminRoleControllerIndexPropagatesServiceError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	expectedErr := errors.New("service failed")
-	svc := &mockAdminRoleService{
-		indexFn: func(context.Context, *pagination.Pagination) ([]*models.AdminRole, response.Meta, error) {
+	svc := &adminroleservicemocks.AdminRoleServiceMock{
+		IndexFunc: func(context.Context, *pagination.Pagination) ([]*models.AdminRole, response.Meta, error) {
 			return nil, response.Meta{}, expectedErr
 		},
 	}

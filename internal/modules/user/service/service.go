@@ -30,6 +30,8 @@ import (
 	"gorm.io/gorm"
 )
 
+//go:generate go tool moq -out mocks/mock.go -pkg mocks -fmt goimports . UserService
+
 // UserService defines the interface for user service operations
 type UserService interface {
 	Index(ctx context.Context, req *pagination.Pagination) ([]*models.User, response.Meta, error)

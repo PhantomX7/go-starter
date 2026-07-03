@@ -3,12 +3,12 @@ package middlewares_test
 import (
 	"testing"
 
-	casbinv2 "github.com/casbin/casbin/v3"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/PhantomX7/athleton/internal/middlewares"
 	"github.com/PhantomX7/athleton/libs/casbin"
+	casbinmocks "github.com/PhantomX7/athleton/libs/casbin/mocks"
 	"github.com/PhantomX7/athleton/pkg/config"
 	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/utils"
@@ -24,53 +24,26 @@ func setupLogger(t *testing.T) {
 	})
 }
 
-type mockCasbinClient struct {
-	checkPermissionFn func(uint, string) (bool, error)
-}
-
-func (m *mockCasbinClient) GetEnforcer() *casbinv2.Enforcer { return nil }
-
-func (m *mockCasbinClient) AddRolePermissions(uint, []string) error {
-	panic("unexpected AddRolePermissions call")
-}
-
-func (m *mockCasbinClient) RemoveRolePermissions(uint, []string) error {
-	panic("unexpected RemoveRolePermissions call")
-}
-
-func (m *mockCasbinClient) SetRolePermissions(uint, []string) error {
-	panic("unexpected SetRolePermissions call")
-}
-
-func (m *mockCasbinClient) GetRolePermissions(uint) []string {
-	panic("unexpected GetRolePermissions call")
-}
-
-func (m *mockCasbinClient) CheckPermission(roleID uint, permission string) (bool, error) {
-	if m.checkPermissionFn == nil {
-		panic("unexpected CheckPermission call")
+// newCasbinClient builds a generated casbin mock whose CheckPermissionWithRoot
+// mirrors the real client's decision so the guards exercise the production
+// authorization rule: root bypasses, non-admin (or an admin with no role) is
+// denied, and admins fall through to checkPermissionFn. A nil checkPermissionFn
+// leaves CheckPermission unmocked so it panics if unexpectedly called.
+func newCasbinClient(checkPermissionFn func(uint, string) (bool, error)) *casbinmocks.ClientMock {
+	mock := &casbinmocks.ClientMock{
+		CheckPermissionFunc: checkPermissionFn,
 	}
-	return m.checkPermissionFn(roleID, permission)
-}
-
-// CheckPermissionWithRoot mirrors the real client's decision so the guards
-// exercise the production authorization rule: root bypasses, non-admin (or an
-// admin with no role) is denied, and admins fall through to checkPermissionFn.
-func (m *mockCasbinClient) CheckPermissionWithRoot(userRole string, adminRoleID *uint, permission string) (bool, error) {
-	if userRole == "root" {
-		return true, nil
+	mock.CheckPermissionWithRootFunc = func(userRole string, adminRoleID *uint, permission string) (bool, error) {
+		if userRole == "root" {
+			return true, nil
+		}
+		if userRole != "admin" || adminRoleID == nil {
+			return false, nil
+		}
+		return mock.CheckPermission(*adminRoleID, permission)
 	}
-	if userRole != "admin" || adminRoleID == nil {
-		return false, nil
-	}
-	return m.CheckPermission(*adminRoleID, permission)
+	return mock
 }
-
-func (m *mockCasbinClient) DeleteRole(uint) error {
-	panic("unexpected DeleteRole call")
-}
-
-var _ casbin.Client = (*mockCasbinClient)(nil)
 
 // newMiddleware builds the middleware bundle without a JWT dependency; tests
 // here never exercise RequireAuth/LoginHandler, which are gin-jwt passthroughs.

@@ -16,7 +16,7 @@ import (
 
 	"github.com/PhantomX7/athleton/internal/dto"
 	"github.com/PhantomX7/athleton/internal/modules/auth/controller"
-	authservice "github.com/PhantomX7/athleton/internal/modules/auth/service"
+	authservicemocks "github.com/PhantomX7/athleton/internal/modules/auth/service/mocks"
 )
 
 // RegisterRequest carries a DB-backed unique= tag registered only in bootstrap.
@@ -30,56 +30,11 @@ func init() {
 	}
 }
 
-type mockAuthService struct {
-	getMeFn          func(context.Context) (*dto.MeResponse, error)
-	registerFn       func(context.Context, *dto.RegisterRequest) (*dto.AuthResponse, error)
-	refreshFn        func(context.Context, *dto.RefreshRequest) (*dto.AuthResponse, error)
-	changePasswordFn func(context.Context, *dto.ChangePasswordRequest) error
-	logoutFn         func(context.Context, *dto.LogoutRequest) error
-}
-
-func (m *mockAuthService) GetMe(ctx context.Context) (*dto.MeResponse, error) {
-	if m.getMeFn == nil {
-		panic("unexpected GetMe call")
-	}
-	return m.getMeFn(ctx)
-}
-
-func (m *mockAuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*dto.AuthResponse, error) {
-	if m.registerFn == nil {
-		panic("unexpected Register call")
-	}
-	return m.registerFn(ctx, req)
-}
-
-func (m *mockAuthService) Refresh(ctx context.Context, req *dto.RefreshRequest) (*dto.AuthResponse, error) {
-	if m.refreshFn == nil {
-		panic("unexpected Refresh call")
-	}
-	return m.refreshFn(ctx, req)
-}
-
-func (m *mockAuthService) ChangePassword(ctx context.Context, req *dto.ChangePasswordRequest) error {
-	if m.changePasswordFn == nil {
-		panic("unexpected ChangePassword call")
-	}
-	return m.changePasswordFn(ctx, req)
-}
-
-func (m *mockAuthService) Logout(ctx context.Context, req *dto.LogoutRequest) error {
-	if m.logoutFn == nil {
-		panic("unexpected Logout call")
-	}
-	return m.logoutFn(ctx, req)
-}
-
-var _ authservice.AuthService = (*mockAuthService)(nil)
-
 func TestAuthControllerGetMeReturnsSuccessResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockAuthService{
-		getMeFn: func(ctx context.Context) (*dto.MeResponse, error) {
+	svc := &authservicemocks.AuthServiceMock{
+		GetMeFunc: func(ctx context.Context) (*dto.MeResponse, error) {
 			require.NotNil(t, ctx)
 			return &dto.MeResponse{
 				UserResponse: dto.UserResponse{
@@ -110,8 +65,8 @@ func TestAuthControllerGetMeReturnsSuccessResponse(t *testing.T) {
 func TestAuthControllerRefreshReturnsSuccessResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockAuthService{
-		refreshFn: func(ctx context.Context, req *dto.RefreshRequest) (*dto.AuthResponse, error) {
+	svc := &authservicemocks.AuthServiceMock{
+		RefreshFunc: func(ctx context.Context, req *dto.RefreshRequest) (*dto.AuthResponse, error) {
 			require.NotNil(t, ctx)
 			require.Equal(t, "refresh-token", req.RefreshToken)
 			return &dto.AuthResponse{
@@ -139,8 +94,8 @@ func TestAuthControllerRefreshReturnsSuccessResponse(t *testing.T) {
 func TestAuthControllerChangePasswordReturnsSuccessResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockAuthService{
-		changePasswordFn: func(ctx context.Context, req *dto.ChangePasswordRequest) error {
+	svc := &authservicemocks.AuthServiceMock{
+		ChangePasswordFunc: func(ctx context.Context, req *dto.ChangePasswordRequest) error {
 			require.NotNil(t, ctx)
 			require.Equal(t, "old-password", req.OldPassword)
 			require.Equal(t, "new-password", req.NewPassword)
@@ -166,8 +121,8 @@ func TestAuthControllerChangePasswordReturnsSuccessResponse(t *testing.T) {
 func TestAuthControllerLogoutReturnsSuccessResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockAuthService{
-		logoutFn: func(ctx context.Context, req *dto.LogoutRequest) error {
+	svc := &authservicemocks.AuthServiceMock{
+		LogoutFunc: func(ctx context.Context, req *dto.LogoutRequest) error {
 			require.NotNil(t, ctx)
 			require.Equal(t, "refresh-token", req.RefreshToken)
 			return nil
@@ -191,8 +146,8 @@ func TestAuthControllerLogoutReturnsSuccessResponse(t *testing.T) {
 func TestAuthControllerRegisterRejectsInvalidPayload(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := &mockAuthService{
-		registerFn: func(context.Context, *dto.RegisterRequest) (*dto.AuthResponse, error) {
+	svc := &authservicemocks.AuthServiceMock{
+		RegisterFunc: func(context.Context, *dto.RegisterRequest) (*dto.AuthResponse, error) {
 			t.Fatal("Register should not be called for invalid payloads")
 			return nil, nil
 		},
@@ -211,8 +166,8 @@ func TestAuthControllerRegisterRejectsInvalidPayload(t *testing.T) {
 }
 
 func TestAuthControllerRegisterReturnsTokensOnSuccess(t *testing.T) {
-	svc := &mockAuthService{
-		registerFn: func(ctx context.Context, req *dto.RegisterRequest) (*dto.AuthResponse, error) {
+	svc := &authservicemocks.AuthServiceMock{
+		RegisterFunc: func(ctx context.Context, req *dto.RegisterRequest) (*dto.AuthResponse, error) {
 			require.NotNil(t, ctx)
 			require.Equal(t, "alice@example.com", req.Email)
 			return &dto.AuthResponse{
@@ -243,8 +198,8 @@ func TestAuthControllerRegisterReturnsTokensOnSuccess(t *testing.T) {
 
 func TestAuthControllerRefreshPropagatesServiceError(t *testing.T) {
 	expectedErr := errors.New("service failed")
-	svc := &mockAuthService{
-		refreshFn: func(context.Context, *dto.RefreshRequest) (*dto.AuthResponse, error) {
+	svc := &authservicemocks.AuthServiceMock{
+		RefreshFunc: func(context.Context, *dto.RefreshRequest) (*dto.AuthResponse, error) {
 			return nil, expectedErr
 		},
 	}
@@ -264,8 +219,8 @@ func TestAuthControllerRefreshPropagatesServiceError(t *testing.T) {
 
 func TestAuthControllerChangePasswordPropagatesServiceError(t *testing.T) {
 	expectedErr := errors.New("service failed")
-	svc := &mockAuthService{
-		changePasswordFn: func(context.Context, *dto.ChangePasswordRequest) error {
+	svc := &authservicemocks.AuthServiceMock{
+		ChangePasswordFunc: func(context.Context, *dto.ChangePasswordRequest) error {
 			return expectedErr
 		},
 	}
@@ -286,8 +241,8 @@ func TestAuthControllerChangePasswordPropagatesServiceError(t *testing.T) {
 
 func TestAuthControllerLogoutPropagatesServiceError(t *testing.T) {
 	expectedErr := errors.New("service failed")
-	svc := &mockAuthService{
-		logoutFn: func(context.Context, *dto.LogoutRequest) error {
+	svc := &authservicemocks.AuthServiceMock{
+		LogoutFunc: func(context.Context, *dto.LogoutRequest) error {
 			return expectedErr
 		},
 	}
@@ -309,8 +264,8 @@ func TestAuthControllerGetMePropagatesServiceError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	expectedErr := errors.New("service failed")
-	svc := &mockAuthService{
-		getMeFn: func(context.Context) (*dto.MeResponse, error) {
+	svc := &authservicemocks.AuthServiceMock{
+		GetMeFunc: func(context.Context) (*dto.MeResponse, error) {
 			return nil, expectedErr
 		},
 	}

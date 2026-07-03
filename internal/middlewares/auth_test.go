@@ -85,7 +85,7 @@ func TestRequirePermissionRejectsMissingContextValues(t *testing.T) {
 
 func TestRequirePermissionBypassesChecksForRoot(t *testing.T) {
 	setupLogger(t)
-	casbinClient := &mockCasbinClient{} // panics if CheckPermission is called
+	casbinClient := newCasbinClient(nil) // panics if CheckPermission is called
 	m := newMiddleware(casbinClient)
 	identity := withContextValues(utils.ContextValues{UserID: 1, Role: models.UserRoleRoot.ToString()})
 
@@ -96,7 +96,7 @@ func TestRequirePermissionBypassesChecksForRoot(t *testing.T) {
 
 func TestRequirePermissionRejectsNonAdminRoles(t *testing.T) {
 	setupLogger(t)
-	m := newMiddleware(&mockCasbinClient{})
+	m := newMiddleware(newCasbinClient(nil))
 	identity := withContextValues(utils.ContextValues{UserID: 7, Role: "member"})
 
 	rec := serve(newAuthRouter(nil, identity, m.RequirePermission(permissions.UserRead)))
@@ -106,7 +106,7 @@ func TestRequirePermissionRejectsNonAdminRoles(t *testing.T) {
 
 func TestRequirePermissionRejectsAdminWithoutAssignedRole(t *testing.T) {
 	setupLogger(t)
-	m := newMiddleware(&mockCasbinClient{})
+	m := newMiddleware(newCasbinClient(nil))
 	identity := withContextValues(utils.ContextValues{UserID: 7, Role: models.UserRoleAdmin.ToString()})
 
 	rec := serve(newAuthRouter(nil, identity, m.RequirePermission(permissions.UserRead)))
@@ -116,13 +116,12 @@ func TestRequirePermissionRejectsAdminWithoutAssignedRole(t *testing.T) {
 
 func TestRequirePermissionAllowsGrantedPermission(t *testing.T) {
 	setupLogger(t)
-	casbinClient := &mockCasbinClient{
-		checkPermissionFn: func(roleID uint, permission string) (bool, error) {
-			require.Equal(t, uint(3), roleID)
-			require.Equal(t, permissions.UserRead.String(), permission)
-			return true, nil
-		},
-	}
+	casbinClient := newCasbinClient(func(roleID uint, permission string) (bool, error) {
+		require.Equal(t, uint(3), roleID)
+		require.Equal(t, permissions.UserRead.String(), permission)
+		return true, nil
+	},
+	)
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)), m.RequirePermission(permissions.UserRead)))
@@ -132,11 +131,10 @@ func TestRequirePermissionAllowsGrantedPermission(t *testing.T) {
 
 func TestRequirePermissionRejectsDeniedPermission(t *testing.T) {
 	setupLogger(t)
-	casbinClient := &mockCasbinClient{
-		checkPermissionFn: func(uint, string) (bool, error) {
-			return false, nil
-		},
-	}
+	casbinClient := newCasbinClient(func(uint, string) (bool, error) {
+		return false, nil
+	},
+	)
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)), m.RequirePermission(permissions.UserRead)))
@@ -146,11 +144,10 @@ func TestRequirePermissionRejectsDeniedPermission(t *testing.T) {
 
 func TestRequirePermissionFailsClosedOnCasbinError(t *testing.T) {
 	setupLogger(t)
-	casbinClient := &mockCasbinClient{
-		checkPermissionFn: func(uint, string) (bool, error) {
-			return false, errors.New("enforcer unavailable")
-		},
-	}
+	casbinClient := newCasbinClient(func(uint, string) (bool, error) {
+		return false, errors.New("enforcer unavailable")
+	},
+	)
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)), m.RequirePermission(permissions.UserRead)))
@@ -160,11 +157,10 @@ func TestRequirePermissionFailsClosedOnCasbinError(t *testing.T) {
 
 func TestRequireAnyPermissionAllowsWhenOneGranted(t *testing.T) {
 	setupLogger(t)
-	casbinClient := &mockCasbinClient{
-		checkPermissionFn: func(_ uint, permission string) (bool, error) {
-			return permission == permissions.LogRead.String(), nil
-		},
-	}
+	casbinClient := newCasbinClient(func(_ uint, permission string) (bool, error) {
+		return permission == permissions.LogRead.String(), nil
+	},
+	)
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)),
@@ -175,11 +171,10 @@ func TestRequireAnyPermissionAllowsWhenOneGranted(t *testing.T) {
 
 func TestRequireAnyPermissionRejectsWhenNoneGranted(t *testing.T) {
 	setupLogger(t)
-	casbinClient := &mockCasbinClient{
-		checkPermissionFn: func(uint, string) (bool, error) {
-			return false, nil
-		},
-	}
+	casbinClient := newCasbinClient(func(uint, string) (bool, error) {
+		return false, nil
+	},
+	)
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)),
@@ -190,7 +185,7 @@ func TestRequireAnyPermissionRejectsWhenNoneGranted(t *testing.T) {
 
 func TestRequireAnyPermissionBypassesChecksForRoot(t *testing.T) {
 	setupLogger(t)
-	m := newMiddleware(&mockCasbinClient{})
+	m := newMiddleware(newCasbinClient(nil))
 	identity := withContextValues(utils.ContextValues{UserID: 1, Role: models.UserRoleRoot.ToString()})
 
 	rec := serve(newAuthRouter(nil, identity, m.RequireAnyPermission(permissions.UserRead)))
@@ -200,11 +195,10 @@ func TestRequireAnyPermissionBypassesChecksForRoot(t *testing.T) {
 
 func TestRequireAllPermissionsAllowsWhenAllGranted(t *testing.T) {
 	setupLogger(t)
-	casbinClient := &mockCasbinClient{
-		checkPermissionFn: func(uint, string) (bool, error) {
-			return true, nil
-		},
-	}
+	casbinClient := newCasbinClient(func(uint, string) (bool, error) {
+		return true, nil
+	},
+	)
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)),
@@ -215,11 +209,10 @@ func TestRequireAllPermissionsAllowsWhenAllGranted(t *testing.T) {
 
 func TestRequireAllPermissionsRejectsWhenOneMissing(t *testing.T) {
 	setupLogger(t)
-	casbinClient := &mockCasbinClient{
-		checkPermissionFn: func(_ uint, permission string) (bool, error) {
-			return permission == permissions.UserRead.String(), nil
-		},
-	}
+	casbinClient := newCasbinClient(func(_ uint, permission string) (bool, error) {
+		return permission == permissions.UserRead.String(), nil
+	},
+	)
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)),
@@ -230,11 +223,10 @@ func TestRequireAllPermissionsRejectsWhenOneMissing(t *testing.T) {
 
 func TestRequireAnyPermissionFailsClosedWhenAllChecksError(t *testing.T) {
 	setupLogger(t)
-	casbinClient := &mockCasbinClient{
-		checkPermissionFn: func(uint, string) (bool, error) {
-			return false, errors.New("enforcer unavailable")
-		},
-	}
+	casbinClient := newCasbinClient(func(uint, string) (bool, error) {
+		return false, errors.New("enforcer unavailable")
+	},
+	)
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)),
@@ -247,14 +239,13 @@ func TestRequireAnyPermissionFailsClosedWhenAllChecksError(t *testing.T) {
 
 func TestRequireAnyPermissionStillAllowsWhenOneErrorsButAnotherGrants(t *testing.T) {
 	setupLogger(t)
-	casbinClient := &mockCasbinClient{
-		checkPermissionFn: func(_ uint, permission string) (bool, error) {
-			if permission == permissions.UserRead.String() {
-				return false, errors.New("enforcer hiccup")
-			}
-			return true, nil
-		},
-	}
+	casbinClient := newCasbinClient(func(_ uint, permission string) (bool, error) {
+		if permission == permissions.UserRead.String() {
+			return false, errors.New("enforcer hiccup")
+		}
+		return true, nil
+	},
+	)
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)),
@@ -265,7 +256,7 @@ func TestRequireAnyPermissionStillAllowsWhenOneErrorsButAnotherGrants(t *testing
 
 func TestRequireAnyPermissionRejectsEmptyPermissionList(t *testing.T) {
 	setupLogger(t)
-	m := newMiddleware(&mockCasbinClient{})
+	m := newMiddleware(newCasbinClient(nil))
 
 	rec := serve(newAuthRouter(nil, withContextValues(adminValues(3)), m.RequireAnyPermission()))
 
@@ -274,7 +265,7 @@ func TestRequireAnyPermissionRejectsEmptyPermissionList(t *testing.T) {
 
 func TestRequireAllPermissionsRejectsEmptyPermissionList(t *testing.T) {
 	setupLogger(t)
-	m := newMiddleware(&mockCasbinClient{})
+	m := newMiddleware(newCasbinClient(nil))
 
 	// Zero permissions must fail closed: a guard accidentally built from an
 	// empty slice should deny, not wave everything through.
@@ -285,11 +276,10 @@ func TestRequireAllPermissionsRejectsEmptyPermissionList(t *testing.T) {
 
 func TestRequireAllPermissionsFailsClosedOnCasbinError(t *testing.T) {
 	setupLogger(t)
-	casbinClient := &mockCasbinClient{
-		checkPermissionFn: func(uint, string) (bool, error) {
-			return false, errors.New("enforcer unavailable")
-		},
-	}
+	casbinClient := newCasbinClient(func(uint, string) (bool, error) {
+		return false, errors.New("enforcer unavailable")
+	},
+	)
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)),

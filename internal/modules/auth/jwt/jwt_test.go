@@ -19,182 +19,18 @@ import (
 
 	"github.com/PhantomX7/athleton/internal/models"
 	logrepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
+	logmocks "github.com/PhantomX7/athleton/internal/modules/log/repository/mocks"
 	refreshtokenrepository "github.com/PhantomX7/athleton/internal/modules/refresh_token/repository"
+	refreshtokenmocks "github.com/PhantomX7/athleton/internal/modules/refresh_token/repository/mocks"
 	userrepository "github.com/PhantomX7/athleton/internal/modules/user/repository"
+	usermocks "github.com/PhantomX7/athleton/internal/modules/user/repository/mocks"
+	txmocks "github.com/PhantomX7/athleton/libs/transaction_manager/mocks"
 	"github.com/PhantomX7/athleton/pkg/config"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/logger"
-	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/repository"
 	"github.com/PhantomX7/athleton/pkg/utils"
 )
-
-type mockUserRepository struct {
-	findByIDFn       func(context.Context, uint, ...repository.Association) (*models.User, error)
-	findByUsernameFn func(context.Context, string) (*models.User, error)
-	findByEmailFn    func(context.Context, string) (*models.User, error)
-}
-
-func (m *mockUserRepository) Create(context.Context, *models.User) error {
-	panic("unexpected Create call")
-}
-func (m *mockUserRepository) Update(context.Context, *models.User) error {
-	panic("unexpected Update call")
-}
-func (m *mockUserRepository) Delete(context.Context, *models.User) error {
-	panic("unexpected Delete call")
-}
-func (m *mockUserRepository) FindByID(ctx context.Context, id uint, preloads ...repository.Association) (*models.User, error) {
-	if m.findByIDFn == nil {
-		panic("unexpected FindByID call")
-	}
-	return m.findByIDFn(ctx, id, preloads...)
-}
-func (m *mockUserRepository) FindByIDForUpdate(context.Context, uint) (*models.User, error) {
-	panic("unexpected FindByIDForUpdate call")
-}
-func (m *mockUserRepository) FindAll(context.Context, *pagination.Pagination) ([]*models.User, error) {
-	panic("unexpected FindAll call")
-}
-func (m *mockUserRepository) Count(context.Context, *pagination.Pagination) (int64, error) {
-	panic("unexpected Count call")
-}
-func (m *mockUserRepository) FindByUsername(ctx context.Context, username string) (*models.User, error) {
-	if m.findByUsernameFn == nil {
-		panic("unexpected FindByUsername call")
-	}
-	return m.findByUsernameFn(ctx, username)
-}
-func (m *mockUserRepository) FindByEmail(ctx context.Context, email string) (*models.User, error) {
-	if m.findByEmailFn == nil {
-		panic("unexpected FindByEmail call")
-	}
-	return m.findByEmailFn(ctx, email)
-}
-
-var _ userrepository.UserRepository = (*mockUserRepository)(nil)
-
-type mockRefreshTokenRepository struct {
-	createFn                     func(context.Context, *models.RefreshToken) error
-	findByTokenFn                func(context.Context, string) (*models.RefreshToken, error)
-	findActiveByIDFn             func(context.Context, uuid.UUID) (*models.RefreshToken, error)
-	getValidCountByUserIDFn      func(context.Context, uint) (int64, error)
-	revokeByTokenFn              func(context.Context, string) error
-	revokeByTokenIfActiveFn      func(context.Context, string) (bool, error)
-	revokeAllByUserIDFn          func(context.Context, uint) error
-	revokeAllByUserIDExceptFn    func(context.Context, uint, string) error
-	revokeOldestActiveByUserIDFn func(context.Context, uint, int) error
-	updateTokenHashIfActiveFn    func(context.Context, string, string) (bool, error)
-}
-
-func (m *mockRefreshTokenRepository) Create(ctx context.Context, entity *models.RefreshToken) error {
-	if m.createFn == nil {
-		panic("unexpected Create call")
-	}
-	return m.createFn(ctx, entity)
-}
-func (m *mockRefreshTokenRepository) Update(context.Context, *models.RefreshToken) error {
-	panic("unexpected Update call")
-}
-func (m *mockRefreshTokenRepository) Delete(context.Context, *models.RefreshToken) error {
-	panic("unexpected Delete call")
-}
-func (m *mockRefreshTokenRepository) FindByID(context.Context, uint, ...repository.Association) (*models.RefreshToken, error) {
-	panic("unexpected FindByID call")
-}
-func (m *mockRefreshTokenRepository) FindAll(context.Context, *pagination.Pagination) ([]*models.RefreshToken, error) {
-	panic("unexpected FindAll call")
-}
-func (m *mockRefreshTokenRepository) Count(context.Context, *pagination.Pagination) (int64, error) {
-	panic("unexpected Count call")
-}
-func (m *mockRefreshTokenRepository) FindByToken(ctx context.Context, token string) (*models.RefreshToken, error) {
-	if m.findByTokenFn == nil {
-		panic("unexpected FindByToken call")
-	}
-	return m.findByTokenFn(ctx, token)
-}
-func (m *mockRefreshTokenRepository) FindActiveByID(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error) {
-	if m.findActiveByIDFn == nil {
-		panic("unexpected FindActiveByID call")
-	}
-	return m.findActiveByIDFn(ctx, id)
-}
-func (m *mockRefreshTokenRepository) GetValidCountByUserID(ctx context.Context, userID uint) (int64, error) {
-	if m.getValidCountByUserIDFn == nil {
-		panic("unexpected GetValidCountByUserID call")
-	}
-	return m.getValidCountByUserIDFn(ctx, userID)
-}
-func (m *mockRefreshTokenRepository) DeleteInvalidToken(context.Context) error {
-	panic("unexpected DeleteInvalidToken call")
-}
-func (m *mockRefreshTokenRepository) RevokeAllByUserID(ctx context.Context, userID uint) error {
-	if m.revokeAllByUserIDFn == nil {
-		panic("unexpected RevokeAllByUserID call")
-	}
-	return m.revokeAllByUserIDFn(ctx, userID)
-}
-func (m *mockRefreshTokenRepository) RevokeAllByUserIDExcept(ctx context.Context, userID uint, exceptToken string) error {
-	if m.revokeAllByUserIDExceptFn == nil {
-		panic("unexpected RevokeAllByUserIDExcept call")
-	}
-	return m.revokeAllByUserIDExceptFn(ctx, userID, exceptToken)
-}
-func (m *mockRefreshTokenRepository) RevokeByToken(ctx context.Context, token string) error {
-	if m.revokeByTokenFn == nil {
-		panic("unexpected RevokeByToken call")
-	}
-	return m.revokeByTokenFn(ctx, token)
-}
-func (m *mockRefreshTokenRepository) RevokeByTokenIfActive(ctx context.Context, token string) (bool, error) {
-	if m.revokeByTokenIfActiveFn == nil {
-		panic("unexpected RevokeByTokenIfActive call")
-	}
-	return m.revokeByTokenIfActiveFn(ctx, token)
-}
-func (m *mockRefreshTokenRepository) RevokeOldestActiveByUserID(ctx context.Context, userID uint, n int) error {
-	if m.revokeOldestActiveByUserIDFn == nil {
-		panic("unexpected RevokeOldestActiveByUserID call")
-	}
-	return m.revokeOldestActiveByUserIDFn(ctx, userID, n)
-}
-func (m *mockRefreshTokenRepository) UpdateTokenHashIfActive(ctx context.Context, oldToken, newToken string) (bool, error) {
-	if m.updateTokenHashIfActiveFn == nil {
-		panic("unexpected UpdateTokenHashIfActive call")
-	}
-	return m.updateTokenHashIfActiveFn(ctx, oldToken, newToken)
-}
-
-var _ refreshtokenrepository.RefreshTokenRepository = (*mockRefreshTokenRepository)(nil)
-
-type mockLogRepository struct {
-	createFn func(context.Context, *models.Log) error
-}
-
-func (m *mockLogRepository) Create(ctx context.Context, entity *models.Log) error {
-	if m.createFn == nil {
-		panic("unexpected Create call")
-	}
-	return m.createFn(ctx, entity)
-}
-func (m *mockLogRepository) Update(context.Context, *models.Log) error {
-	panic("unexpected Update call")
-}
-func (m *mockLogRepository) Delete(context.Context, *models.Log) error {
-	panic("unexpected Delete call")
-}
-func (m *mockLogRepository) FindByID(context.Context, uint, ...repository.Association) (*models.Log, error) {
-	panic("unexpected FindByID call")
-}
-func (m *mockLogRepository) FindAll(context.Context, *pagination.Pagination) ([]*models.Log, error) {
-	panic("unexpected FindAll call")
-}
-func (m *mockLogRepository) Count(context.Context, *pagination.Pagination) (int64, error) {
-	panic("unexpected Count call")
-}
-
-var _ logrepository.LogRepository = (*mockLogRepository)(nil)
 
 func setupConfig(t *testing.T) *config.Config {
 	t.Helper()
@@ -227,32 +63,16 @@ func setupLogger(t *testing.T) {
 	})
 }
 
-// passthroughTxManager runs the closure directly without a real transaction —
-// adequate for unit tests whose repositories are mocks (there is nothing to
-// commit or roll back).
-type passthroughTxManager struct{}
-
-func (passthroughTxManager) ExecuteInTransaction(ctx context.Context, fn func(context.Context) error) error {
-	return fn(ctx)
-}
-
-// recordingTxManager reports whether the rotation wrapped its work in a
-// transaction, while still executing the closure.
-type recordingTxManager struct {
-	called bool
-}
-
-func (r *recordingTxManager) ExecuteInTransaction(ctx context.Context, fn func(context.Context) error) error {
-	r.called = true
-	return fn(ctx)
-}
-
 func newAuthJWT(t *testing.T, userRepo userrepository.UserRepository, refreshRepo refreshtokenrepository.RefreshTokenRepository, logRepo logrepository.LogRepository) *AuthJWT {
 	t.Helper()
 	cfg := setupConfig(t)
 	setupLogger(t)
 
-	auth, err := NewAuthJWT(cfg, userRepo, refreshRepo, logRepo, passthroughTxManager{})
+	auth, err := NewAuthJWT(cfg, userRepo, refreshRepo, logRepo, &txmocks.TransactionManagerMock{
+		ExecuteInTransactionFunc: func(ctx context.Context, fn func(context.Context) error) error {
+			return fn(ctx)
+		},
+	})
 	require.NoError(t, err)
 	return auth
 }
@@ -377,8 +197,8 @@ func TestValidateCredentialsUsesEmailAndReturnsUser(t *testing.T) {
 	hashed, err := bcrypt.GenerateFromPassword([]byte("secret123"), bcrypt.MinCost)
 	require.NoError(t, err)
 
-	repo := &mockUserRepository{
-		findByEmailFn: func(ctx context.Context, email string) (*models.User, error) {
+	repo := &usermocks.UserRepositoryMock{
+		FindByEmailFunc: func(ctx context.Context, email string) (*models.User, error) {
 			require.Equal(t, "alice@example.com", email)
 			return &models.User{
 				ID:       1,
@@ -403,8 +223,8 @@ func TestValidateCredentialsRejectsInactiveUser(t *testing.T) {
 	hashed, err := bcrypt.GenerateFromPassword([]byte("secret123"), bcrypt.MinCost)
 	require.NoError(t, err)
 
-	repo := &mockUserRepository{
-		findByUsernameFn: func(context.Context, string) (*models.User, error) {
+	repo := &usermocks.UserRepositoryMock{
+		FindByUsernameFunc: func(context.Context, string) (*models.User, error) {
 			return &models.User{
 				ID:       2,
 				Username: "alice",
@@ -437,8 +257,8 @@ func TestAuthorizerSetsContextValuesForActiveUserWithBoundSession(t *testing.T) 
 
 	adminRoleID := uint(4)
 	sessionID := uuid.New()
-	repo := &mockUserRepository{
-		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
+	repo := &usermocks.UserRepositoryMock{
+		FindByIDFunc: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
 			require.Equal(t, uint(5), id)
 			return &models.User{
 				ID:          5,
@@ -449,8 +269,8 @@ func TestAuthorizerSetsContextValuesForActiveUserWithBoundSession(t *testing.T) 
 			}, nil
 		},
 	}
-	refreshRepo := &mockRefreshTokenRepository{
-		findActiveByIDFn: func(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error) {
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		FindActiveByIDFunc: func(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error) {
 			require.Equal(t, sessionID, id)
 			return &models.RefreshToken{ID: id, UserID: 5}, nil
 		},
@@ -497,13 +317,13 @@ func TestAuthorizerRejectsRevokedSession(t *testing.T) {
 	setupLogger(t)
 
 	sessionID := uuid.New()
-	repo := &mockUserRepository{
-		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
+	repo := &usermocks.UserRepositoryMock{
+		FindByIDFunc: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
 			return &models.User{ID: 5, IsActive: true, Role: models.UserRoleUser}, nil
 		},
 	}
-	refreshRepo := &mockRefreshTokenRepository{
-		findActiveByIDFn: func(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error) {
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		FindActiveByIDFunc: func(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error) {
 			return nil, cerrors.NewNotFoundError("invalid refresh token session")
 		},
 	}
@@ -529,13 +349,13 @@ func TestAuthorizerRejectsUserDeactivatedAfterLogin(t *testing.T) {
 
 	sessionID := uuid.New()
 	sessionLookedUp := false
-	repo := &mockUserRepository{
-		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
+	repo := &usermocks.UserRepositoryMock{
+		FindByIDFunc: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
 			return &models.User{ID: 5, IsActive: false, Role: models.UserRoleUser}, nil
 		},
 	}
-	refreshRepo := &mockRefreshTokenRepository{
-		findActiveByIDFn: func(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error) {
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		FindActiveByIDFunc: func(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error) {
 			sessionLookedUp = true
 			return &models.RefreshToken{ID: id, UserID: 5}, nil
 		},
@@ -559,13 +379,13 @@ func TestAuthorizerRejectsSessionBelongingToDifferentUser(t *testing.T) {
 	setupLogger(t)
 
 	sessionID := uuid.New()
-	repo := &mockUserRepository{
-		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
+	repo := &usermocks.UserRepositoryMock{
+		FindByIDFunc: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
 			return &models.User{ID: 5, IsActive: true, Role: models.UserRoleUser}, nil
 		},
 	}
-	refreshRepo := &mockRefreshTokenRepository{
-		findActiveByIDFn: func(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error) {
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		FindActiveByIDFunc: func(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error) {
 			return &models.RefreshToken{ID: id, UserID: 99}, nil
 		},
 	}
@@ -584,8 +404,8 @@ func TestAuthorizerRejectsSessionBelongingToDifferentUser(t *testing.T) {
 }
 
 func TestGenerateTokensForUserCreatesRefreshToken(t *testing.T) {
-	refreshRepo := &mockRefreshTokenRepository{
-		createFn: func(ctx context.Context, entity *models.RefreshToken) error {
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		CreateFunc: func(ctx context.Context, entity *models.RefreshToken) error {
 			require.NotNil(t, ctx)
 			require.Equal(t, uint(7), entity.UserID)
 			require.NotEmpty(t, entity.Token)
@@ -594,7 +414,7 @@ func TestGenerateTokensForUserCreatesRefreshToken(t *testing.T) {
 		},
 	}
 
-	a := newAuthJWT(t, &mockUserRepository{}, refreshRepo, &mockLogRepository{})
+	a := newAuthJWT(t, &usermocks.UserRepositoryMock{}, refreshRepo, &logmocks.LogRepositoryMock{})
 
 	res, err := a.GenerateTokensForUser(context.Background(), &models.User{ID: 7, Role: models.UserRoleUser})
 
@@ -609,11 +429,11 @@ func TestGenerateTokensForUserCreatesRefreshToken(t *testing.T) {
 // unexpected GetValidCountByUserID / RevokeOldestActiveByUserID call, so the
 // happy path above already proves this; this test makes the contract explicit.
 func TestSessionCapDisabledSkipsCountAndRevocation(t *testing.T) {
-	refreshRepo := &mockRefreshTokenRepository{
-		createFn: func(context.Context, *models.RefreshToken) error { return nil },
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		CreateFunc: func(context.Context, *models.RefreshToken) error { return nil },
 	}
 
-	a := newAuthJWT(t, &mockUserRepository{}, refreshRepo, &mockLogRepository{})
+	a := newAuthJWT(t, &usermocks.UserRepositoryMock{}, refreshRepo, &logmocks.LogRepositoryMock{})
 	a.cfg.JWT.MaxActiveSessions = 0
 
 	_, err := a.GenerateTokensForUser(context.Background(), &models.User{ID: 7, Role: models.UserRoleUser})
@@ -641,25 +461,25 @@ func TestSessionCapRevokesOldestSessionsToFitNewLogin(t *testing.T) {
 			revokedN := 0
 			revokeCalled := false
 			createCalled := false
-			refreshRepo := &mockRefreshTokenRepository{
-				getValidCountByUserIDFn: func(ctx context.Context, userID uint) (int64, error) {
+			refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+				GetValidCountByUserIDFunc: func(ctx context.Context, userID uint) (int64, error) {
 					require.Equal(t, uint(7), userID)
 					return tc.activeCount, nil
 				},
-				revokeOldestActiveByUserIDFn: func(ctx context.Context, userID uint, n int) error {
+				RevokeOldestActiveByUserIDFunc: func(ctx context.Context, userID uint, n int) error {
 					require.Equal(t, uint(7), userID)
 					require.False(t, createCalled, "oldest sessions must be revoked before the new one is created")
 					revokeCalled = true
 					revokedN = n
 					return nil
 				},
-				createFn: func(ctx context.Context, entity *models.RefreshToken) error {
+				CreateFunc: func(ctx context.Context, entity *models.RefreshToken) error {
 					createCalled = true
 					return nil
 				},
 			}
 
-			a := newAuthJWT(t, &mockUserRepository{}, refreshRepo, &mockLogRepository{})
+			a := newAuthJWT(t, &usermocks.UserRepositoryMock{}, refreshRepo, &logmocks.LogRepositoryMock{})
 			a.cfg.JWT.MaxActiveSessions = tc.maxSessions
 
 			res, err := a.GenerateTokensForUser(context.Background(), &models.User{ID: 7, Role: models.UserRoleUser})
@@ -678,13 +498,13 @@ func TestSessionCapRevokesOldestSessionsToFitNewLogin(t *testing.T) {
 // If the cap cannot be enforced (count or revoke fails), token creation must
 // fail rather than silently minting an uncapped session.
 func TestSessionCapFailureBlocksTokenCreation(t *testing.T) {
-	refreshRepo := &mockRefreshTokenRepository{
-		getValidCountByUserIDFn: func(context.Context, uint) (int64, error) {
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		GetValidCountByUserIDFunc: func(context.Context, uint) (int64, error) {
 			return 0, cerrors.NewInternalServerError("count boom", errors.New("boom"))
 		},
 	}
 
-	a := newAuthJWT(t, &mockUserRepository{}, refreshRepo, &mockLogRepository{})
+	a := newAuthJWT(t, &usermocks.UserRepositoryMock{}, refreshRepo, &logmocks.LogRepositoryMock{})
 	a.cfg.JWT.MaxActiveSessions = 2
 
 	res, err := a.GenerateTokensForUser(context.Background(), &models.User{ID: 7, Role: models.UserRoleUser})
@@ -700,19 +520,19 @@ func TestSessionCapFailureBlocksTokenCreation(t *testing.T) {
 // (c) no new row is created (the mock panics on an unexpected Create).
 func TestValidateAndRotateRefreshTokenRotatesInPlace(t *testing.T) {
 	sessionID := uuid.New()
-	userRepo := &mockUserRepository{
-		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
+	userRepo := &usermocks.UserRepositoryMock{
+		FindByIDFunc: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
 			require.Equal(t, uint(11), id)
 			return &models.User{ID: 11, Role: models.UserRoleUser, IsActive: true}, nil
 		},
 	}
 	var rotatedTo string
-	refreshRepo := &mockRefreshTokenRepository{
-		findByTokenFn: func(ctx context.Context, token string) (*models.RefreshToken, error) {
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		FindByTokenFunc: func(ctx context.Context, token string) (*models.RefreshToken, error) {
 			require.Equal(t, "old-token", token)
 			return &models.RefreshToken{ID: sessionID, UserID: 11, Token: token}, nil
 		},
-		updateTokenHashIfActiveFn: func(ctx context.Context, oldToken, newToken string) (bool, error) {
+		UpdateTokenHashIfActiveFunc: func(ctx context.Context, oldToken, newToken string) (bool, error) {
 			require.Equal(t, "old-token", oldToken)
 			require.NotEmpty(t, newToken)
 			rotatedTo = newToken
@@ -720,7 +540,7 @@ func TestValidateAndRotateRefreshTokenRotatesInPlace(t *testing.T) {
 		},
 	}
 
-	a := newAuthJWT(t, userRepo, refreshRepo, &mockLogRepository{})
+	a := newAuthJWT(t, userRepo, refreshRepo, &logmocks.LogRepositoryMock{})
 	res, err := a.ValidateAndRotateRefreshToken(context.Background(), "old-token")
 
 	require.NoError(t, err)
@@ -744,21 +564,21 @@ func TestValidateAndRotateRefreshTokenRotatesInPlace(t *testing.T) {
 // and a fresh token pair was minted anyway, leaving the old refresh token
 // reusable. (Mint = TokenGenerator; the mock panics on an unexpected Create.)
 func TestValidateAndRotateRefreshTokenFailsWhenHashSwapFails(t *testing.T) {
-	userRepo := &mockUserRepository{
-		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
+	userRepo := &usermocks.UserRepositoryMock{
+		FindByIDFunc: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
 			return &models.User{ID: 11, Role: models.UserRoleUser, IsActive: true}, nil
 		},
 	}
-	refreshRepo := &mockRefreshTokenRepository{
-		findByTokenFn: func(ctx context.Context, token string) (*models.RefreshToken, error) {
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		FindByTokenFunc: func(ctx context.Context, token string) (*models.RefreshToken, error) {
 			return &models.RefreshToken{ID: uuid.New(), UserID: 11, Token: token}, nil
 		},
-		updateTokenHashIfActiveFn: func(ctx context.Context, oldToken, newToken string) (bool, error) {
+		UpdateTokenHashIfActiveFunc: func(ctx context.Context, oldToken, newToken string) (bool, error) {
 			return false, cerrors.NewInternalServerError("db boom", errors.New("boom"))
 		},
 	}
 
-	a := newAuthJWT(t, userRepo, refreshRepo, &mockLogRepository{})
+	a := newAuthJWT(t, userRepo, refreshRepo, &logmocks.LogRepositoryMock{})
 	res, err := a.ValidateAndRotateRefreshToken(context.Background(), "old-token")
 
 	require.Error(t, err)
@@ -770,26 +590,26 @@ func TestValidateAndRotateRefreshTokenFailsWhenHashSwapFails(t *testing.T) {
 // refuse AND revoke every session for the user so a replayed stolen token
 // cannot survive.
 func TestValidateAndRotateRefreshTokenDetectsReuse(t *testing.T) {
-	userRepo := &mockUserRepository{
-		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
+	userRepo := &usermocks.UserRepositoryMock{
+		FindByIDFunc: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
 			return &models.User{ID: 11, Role: models.UserRoleUser, IsActive: true}, nil
 		},
 	}
 	revokeAllUser := uint(0)
-	refreshRepo := &mockRefreshTokenRepository{
-		findByTokenFn: func(ctx context.Context, token string) (*models.RefreshToken, error) {
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		FindByTokenFunc: func(ctx context.Context, token string) (*models.RefreshToken, error) {
 			return &models.RefreshToken{ID: uuid.New(), UserID: 11, Token: token}, nil
 		},
-		updateTokenHashIfActiveFn: func(ctx context.Context, oldToken, newToken string) (bool, error) {
+		UpdateTokenHashIfActiveFunc: func(ctx context.Context, oldToken, newToken string) (bool, error) {
 			return false, nil // lost the race: hash already rotated away
 		},
-		revokeAllByUserIDFn: func(ctx context.Context, userID uint) error {
+		RevokeAllByUserIDFunc: func(ctx context.Context, userID uint) error {
 			revokeAllUser = userID
 			return nil
 		},
 	}
 
-	a := newAuthJWT(t, userRepo, refreshRepo, &mockLogRepository{})
+	a := newAuthJWT(t, userRepo, refreshRepo, &logmocks.LogRepositoryMock{})
 	res, err := a.ValidateAndRotateRefreshToken(context.Background(), "old-token")
 
 	require.Error(t, err)
@@ -806,34 +626,40 @@ func TestValidateAndRotateRefreshTokenIsTransactional(t *testing.T) {
 	cfg := setupConfig(t)
 	setupLogger(t)
 
-	userRepo := &mockUserRepository{
-		findByIDFn: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
+	userRepo := &usermocks.UserRepositoryMock{
+		FindByIDFunc: func(ctx context.Context, id uint, _ ...repository.Association) (*models.User, error) {
 			return &models.User{ID: 11, Role: models.UserRoleUser, IsActive: true}, nil
 		},
 	}
-	refreshRepo := &mockRefreshTokenRepository{
-		findByTokenFn: func(ctx context.Context, token string) (*models.RefreshToken, error) {
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		FindByTokenFunc: func(ctx context.Context, token string) (*models.RefreshToken, error) {
 			return &models.RefreshToken{ID: uuid.New(), UserID: 11, Token: token}, nil
 		},
-		updateTokenHashIfActiveFn: func(ctx context.Context, oldToken, newToken string) (bool, error) {
+		UpdateTokenHashIfActiveFunc: func(ctx context.Context, oldToken, newToken string) (bool, error) {
 			return false, errors.New("swap failed") // forces the transaction to unwind
 		},
 	}
 
-	tx := &recordingTxManager{}
-	a, err := NewAuthJWT(cfg, userRepo, refreshRepo, &mockLogRepository{}, tx)
+	txCalled := false
+	tx := &txmocks.TransactionManagerMock{
+		ExecuteInTransactionFunc: func(ctx context.Context, fn func(context.Context) error) error {
+			txCalled = true
+			return fn(ctx)
+		},
+	}
+	a, err := NewAuthJWT(cfg, userRepo, refreshRepo, &logmocks.LogRepositoryMock{}, tx)
 	require.NoError(t, err)
 
 	res, err := a.ValidateAndRotateRefreshToken(context.Background(), "old-token")
 
 	require.Error(t, err)
 	require.Nil(t, res)
-	require.True(t, tx.called, "hash swap + mint must run inside a transaction")
+	require.True(t, txCalled, "hash swap + mint must run inside a transaction")
 }
 
 func TestRevokeRefreshTokenIsIdempotentWhenTokenMissing(t *testing.T) {
-	refreshRepo := &mockRefreshTokenRepository{
-		findByTokenFn: func(context.Context, string) (*models.RefreshToken, error) {
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		FindByTokenFunc: func(context.Context, string) (*models.RefreshToken, error) {
 			return nil, cerrors.NewNotFoundError("missing")
 		},
 	}
@@ -851,8 +677,8 @@ func TestRevokeRefreshTokenIsIdempotentWhenTokenMissing(t *testing.T) {
 func TestRevokeRefreshTokenSilentlyIgnoresOtherUsersToken(t *testing.T) {
 	setupLogger(t)
 
-	refreshRepo := &mockRefreshTokenRepository{
-		findByTokenFn: func(context.Context, string) (*models.RefreshToken, error) {
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		FindByTokenFunc: func(context.Context, string) (*models.RefreshToken, error) {
 			return &models.RefreshToken{UserID: 99}, nil
 		},
 	}
@@ -872,8 +698,8 @@ func TestLoginResponseCreatesAuditLogForPrivilegedRoles(t *testing.T) {
 	for _, role := range []models.UserRole{models.UserRoleAdmin, models.UserRoleRoot} {
 		t.Run(string(role), func(t *testing.T) {
 			created := make(chan *models.Log, 1)
-			a := &AuthJWT{logRepository: &mockLogRepository{
-				createFn: func(_ context.Context, entry *models.Log) error {
+			a := &AuthJWT{logRepository: &logmocks.LogRepositoryMock{
+				CreateFunc: func(_ context.Context, entry *models.Log) error {
 					created <- entry
 					return nil
 				},

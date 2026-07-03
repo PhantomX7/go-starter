@@ -19,6 +19,8 @@ import (
 // ConfigRepository defines the interface for config repository operations.
 // The *Public variants back the unauthenticated /public/config surface and
 // only ever see rows explicitly marked is_public.
+//
+//go:generate go tool moq -out mocks/mock.go -pkg mocks -fmt goimports . ConfigRepository
 type ConfigRepository interface {
 	repository.Repository[models.Config]
 	FindByKey(ctx context.Context, key string) (*models.Config, error)
