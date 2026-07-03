@@ -1,0 +1,30 @@
+name: Vulnerability Scan
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  schedule:
+    # Weekly run so newly-disclosed advisories against pinned deps surface even
+    # when nothing in the tree changes.
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: true
+
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # Go module dependencies. The tree is large (AWS SDK, casbin, bleve, grpc via
+  # spanner), so group non-major bumps into one PR a week to keep review noise
+  # down; majors still open individually since they may need code changes.
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      go-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Keep the pinned action versions in .github/workflows current.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        update-types:
+          - minor
+          - patch

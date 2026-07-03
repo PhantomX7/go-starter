@@ -25,7 +25,7 @@ DATABASE_URL := "$(DATABASE_DRIVER)://$(DATABASE_USERNAME):$(DATABASE_PASSWORD)@
 GENERATOR_FLAGS := $(if $(filter 0 false no,$(model)),-model=false,) $(if $(filter 0 false no,$(dto)),-dto=false,) $(if $(filter 0 false no,$(permissions)),-permissions=false,) $(if $(filter 1 true yes,$(force)),-force,)
 
 .PHONY: dep vendor dev run migrate-create migrate-up migrate-down migrate-status migrate-hash \
-	debug swag swag-format lint lint-fix fmt lint-install hooks-install hooks-uninstall \
+	debug swag swag-format lint lint-fix fmt lint-install vuln hooks-install hooks-uninstall \
 	hooks-run test test-html module generate-module gorm-gen mocks seed build
 
 dep:
@@ -88,6 +88,13 @@ fmt:
 lint-install:
 	@echo "Installing golangci-lint v2.12.2..."
 	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+
+# Scan the dependency tree for known vulnerabilities. govulncheck is path-aware:
+# it only reports advisories that reach code the binary actually calls, so the
+# signal is low-noise. Run via `go run` so nothing needs installing first.
+vuln:
+	@echo "Running govulncheck..."
+	@go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 hooks-install:
 	@echo "Installing lefthook and git hooks..."
