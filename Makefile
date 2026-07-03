@@ -26,7 +26,7 @@ GENERATOR_FLAGS := $(if $(filter 0 false no,$(model)),-model=false,) $(if $(filt
 
 .PHONY: dep vendor dev run migrate-create migrate-up migrate-down migrate-status migrate-hash \
 	debug swag swag-format lint lint-fix fmt lint-install hooks-install hooks-uninstall \
-	hooks-run test test-html module generate-module gorm-gen seed build
+	hooks-run test test-html module generate-module gorm-gen mocks seed build
 
 dep:
 	go mod tidy
@@ -121,6 +121,13 @@ module: generate-module
 gorm-gen:
 	@echo "Generating GORM CLI field helpers..."
 	go generate ./internal/models/...
+
+# Regenerate interface mocks (moq). Runs only the //go:generate directives whose
+# command matches "moq", so it never triggers gorm-gen. moq is a go.mod tool
+# directive (github.com/matryer/moq) — nothing to install.
+mocks:
+	@echo "Generating interface mocks..."
+	go generate -run moq ./...
 
 seed:
 	go run ./database/seeder/main.go

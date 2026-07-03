@@ -8,6 +8,8 @@ import (
 	"gorm.io/gorm"
 )
 
+//go:generate go tool moq -out mocks/mock.go -pkg mocks -fmt goimports . LogRepository
+
 // LogRepository defines the interface for log repository operations
 type LogRepository interface {
 	repository.Repository[models.Log]

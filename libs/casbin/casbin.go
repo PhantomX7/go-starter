@@ -17,6 +17,8 @@ const (
 	PolicyTypePermission = "p" // role -> permission mapping
 )
 
+//go:generate go tool moq -out mocks/mock.go -pkg mocks -fmt goimports . Client
+
 // Client defines the interface for Casbin operations
 type Client interface {
 	// GetEnforcer returns the underlying Casbin enforcer

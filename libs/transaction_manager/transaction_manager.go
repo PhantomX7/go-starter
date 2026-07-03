@@ -9,6 +9,8 @@ import (
 	"gorm.io/gorm"
 )
 
+//go:generate go tool moq -out mocks/mock.go -pkg mocks -fmt goimports . TransactionManager
+
 // TransactionManager runs closures inside a database transaction.
 type TransactionManager interface {
 	ExecuteInTransaction(ctx context.Context, fn func(ctx context.Context) error) error

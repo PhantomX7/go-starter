@@ -18,6 +18,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+//go:generate go tool moq -out mocks/mock.go -pkg mocks -fmt goimports . AdminRoleRepository
+
 // AdminRoleRepository defines the interface for admin role repository operations.
 type AdminRoleRepository interface {
 	repository.Repository[models.AdminRole]

@@ -144,6 +144,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
+	github.com/matryer/moq v0.7.1 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/mattn/go-sqlite3 v1.14.45 // indirect
 	github.com/microsoft/go-mssqldb v1.10.0 // indirect
@@ -213,4 +214,7 @@ require (
 	modernc.org/sqlite v1.52.0 // indirect
 )
 
-tool gorm.io/cli/gorm
+tool (
+	github.com/matryer/moq
+	gorm.io/cli/gorm
+)

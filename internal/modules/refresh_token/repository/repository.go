@@ -30,6 +30,8 @@ func HashRefreshToken(plaintext string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+//go:generate go tool moq -out mocks/mock.go -pkg mocks -fmt goimports . RefreshTokenRepository
+
 // RefreshTokenRepository defines the interface for refresh token repository operations.
 type RefreshTokenRepository interface {
 	repository.Repository[models.RefreshToken]

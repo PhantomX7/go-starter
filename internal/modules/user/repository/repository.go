@@ -17,6 +17,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+//go:generate go tool moq -out mocks/mock.go -pkg mocks -fmt goimports . UserRepository
+
 // UserRepository defines the interface for user repository operations.
 type UserRepository interface {
 	repository.Repository[models.User]
