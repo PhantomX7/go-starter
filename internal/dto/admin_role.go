@@ -11,8 +11,13 @@ type CreateAdminRoleRequest struct {
 }
 
 // UpdateAdminRoleRequest is the payload for updating an admin role.
+//
+// ID is set from the path param by the controller, never from the request body
+// (json/form "-"), and drives the unique self-exclusion so re-sending the role's
+// own unchanged name does not conflict with itself.
 type UpdateAdminRoleRequest struct {
-	Name        *string  `json:"name" form:"name" binding:"omitempty,min=2,max=100,unique=admin_roles.name"`
+	ID          uint     `json:"-" form:"-"`
+	Name        *string  `json:"name" form:"name" binding:"omitempty,min=2,max=100,unique=admin_roles.name.id.ID"`
 	Description *string  `json:"description" form:"description" binding:"omitempty,max=255"`
 	Permissions []string `json:"permissions" form:"permissions[]" binding:"omitempty,dive,required"`
 }

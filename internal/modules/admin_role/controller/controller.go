@@ -139,6 +139,9 @@ func (c *adminRoleController) Update(ctx *gin.Context) {
 	}
 
 	var req dto.UpdateAdminRoleRequest
+	// Set the id from the trusted path param before binding so the unique
+	// self-exclusion sees it. json/form "-" keeps the body from spoofing it.
+	req.ID = roleID
 	if err := ctx.ShouldBind(&req); err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypeBind)
 		return

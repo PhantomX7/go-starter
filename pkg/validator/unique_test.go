@@ -46,6 +46,55 @@ func setupUniqueTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+// TestUnique_SelfExclusion covers the 4-part "table.column.idcolumn.IDField"
+// form used by update DTOs: a row must not conflict with itself, but must still
+// conflict with a different row, and a zero/absent id degrades to plain unique.
+func TestUnique_SelfExclusion(t *testing.T) {
+	db := setupUniqueTestDB(t) // seeds ids 1..3 with existing{1,2,3}@example.com
+	v := validator.New()
+	v.RegisterValidation("unique", New(db).Unique())
+
+	// Email carries the self-excluding tag; ID is the sibling exclusion field.
+	type UpdateReq struct {
+		ID    uint
+		Email string `validate:"unique=unique_test_models.email.id.ID"`
+	}
+
+	cases := []struct {
+		name  string
+		input UpdateReq
+		valid bool
+	}{
+		{"own row, unchanged value passes", UpdateReq{ID: 1, Email: "existing1@example.com"}, true},
+		{"different row with taken value fails", UpdateReq{ID: 2, Email: "existing1@example.com"}, false},
+		{"zero id behaves like create and fails", UpdateReq{ID: 0, Email: "existing1@example.com"}, false},
+		{"own row, brand-new value passes", UpdateReq{ID: 1, Email: "fresh@example.com"}, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := v.Struct(tc.input)
+			if (err == nil) != tc.valid {
+				t.Errorf("validity = %v, want %v (err: %v)", err == nil, tc.valid, err)
+			}
+		})
+	}
+}
+
+// A malformed 3-part tag is a developer error and must fail closed (reject).
+func TestUnique_MalformedTagFailsClosed(t *testing.T) {
+	db := setupUniqueTestDB(t)
+	v := validator.New()
+	v.RegisterValidation("unique", New(db).Unique())
+
+	type BadReq struct {
+		Email string `validate:"unique=unique_test_models.email.id"`
+	}
+	if err := v.Struct(BadReq{Email: "brand-new@example.com"}); err == nil {
+		t.Error("expected a malformed unique tag to fail closed, but validation passed")
+	}
+}
+
 func TestUnique_ValidatorFunction(t *testing.T) {
 	db := setupUniqueTestDB(t)
 	v := validator.New()
