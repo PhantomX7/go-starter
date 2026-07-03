@@ -45,9 +45,5 @@ func seedData(db *gorm.DB, cfg *config.Config) error {
 	}
 
 	log.Println("Seeding configs...")
-	if err := seed.SeedConfigs(db); err != nil {
-		return err
-	}
-
-	return nil
+	return seed.SeedConfigs(db)
 }

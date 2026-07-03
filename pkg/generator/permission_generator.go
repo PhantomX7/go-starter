@@ -70,7 +70,7 @@ func (g *PermissionGenerator) GeneratePermissions(moduleName string) error {
 		return fmt.Errorf("format permissions registry: %w", err)
 	}
 
-	// #nosec G306 -- registryPath points at a source file inside the workspace.
+	// #nosec G306,G703 -- registryPath points at a source file inside the workspace.
 	if err := os.WriteFile(g.registryPath, formatted, 0600); err != nil {
 		return fmt.Errorf("write permissions registry: %w", err)
 	}
