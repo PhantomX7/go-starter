@@ -242,7 +242,8 @@ func (m *mockLogRepository) Count(context.Context, *pagination.Pagination) (int6
 var _ logrepository.LogRepository = (*mockLogRepository)(nil)
 
 type mockCasbinClient struct {
-	getRolePermissionsFn func(uint) []string
+	getRolePermissionsFn      func(uint) []string
+	checkPermissionWithRootFn func(string, *uint, string) (bool, error)
 }
 
 func (m *mockCasbinClient) GetEnforcer() *casbinv2.Enforcer { return nil }
@@ -264,8 +265,11 @@ func (m *mockCasbinClient) GetRolePermissions(roleID uint) []string {
 func (m *mockCasbinClient) CheckPermission(uint, string) (bool, error) {
 	panic("unexpected CheckPermission call")
 }
-func (m *mockCasbinClient) CheckPermissionWithRoot(string, *uint, string) (bool, error) {
-	panic("unexpected CheckPermissionWithRoot call")
+func (m *mockCasbinClient) CheckPermissionWithRoot(role string, adminRoleID *uint, perm string) (bool, error) {
+	if m.checkPermissionWithRootFn == nil {
+		panic("unexpected CheckPermissionWithRoot call")
+	}
+	return m.checkPermissionWithRootFn(role, adminRoleID, perm)
 }
 func (m *mockCasbinClient) DeleteRole(uint) error { panic("unexpected DeleteRole call") }
 
@@ -345,10 +349,16 @@ func TestUserServiceFindByIDHydratesAdminRolePermissions(t *testing.T) {
 			require.Equal(t, roleID, gotRoleID)
 			return []string{permissions.UserRead.String()}
 		},
+		// Mirror the real client: root bypasses permission checks.
+		checkPermissionWithRootFn: func(role string, _ *uint, _ string) (bool, error) {
+			return role == models.UserRoleRoot.ToString(), nil
+		},
 	}
 
 	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, casbinClient, &mockTxManager{}, zap.NewNop())
 	ctx := utils.SetRequestIDToContext(context.Background(), "req-2")
+	// Root caller: bypasses the admin_user:read check for the admin target.
+	ctx = utils.NewContextWithValues(ctx, utils.ContextValues{UserID: 1, UserName: "Root", Role: models.UserRoleRoot.ToString()})
 
 	user, err := svc.FindByID(ctx, 7)
 
@@ -442,6 +452,94 @@ func TestUserServiceCreateFailsWhenRoleMissing(t *testing.T) {
 	require.True(t, errors.Is(err, cerrors.ErrNotFound))
 }
 
+// adminCallerValues returns context values for an admin caller holding admin
+// role 3, so CheckPermissionWithRoot consults the mock instead of bypassing.
+func adminCallerValues() utils.ContextValues {
+	roleID := uint(3)
+	return utils.ContextValues{
+		UserID:      2,
+		UserName:    "Caller",
+		Role:        models.UserRoleAdmin.ToString(),
+		AdminRoleID: &roleID,
+	}
+}
+
+func TestUserServiceUpdateRequiresAdminUserGrantForAdminTargets(t *testing.T) {
+	roleID := uint(5)
+	target := &models.User{ID: 6, Name: "Other Admin", Role: models.UserRoleAdmin, AdminRoleID: &roleID}
+
+	newSvc := func(granted bool, updated *bool) service.UserService {
+		repo := &mockUserRepository{
+			findByIDForUpdateFn: func(context.Context, uint) (*models.User, error) {
+				return target, nil
+			},
+			updateFn: func(context.Context, *models.User) error {
+				*updated = true
+				return nil
+			},
+		}
+		casbinClient := &mockCasbinClient{
+			checkPermissionWithRootFn: func(role string, adminRoleID *uint, perm string) (bool, error) {
+				require.Equal(t, models.UserRoleAdmin.ToString(), role)
+				require.Equal(t, permissions.AdminUserUpdate.String(), perm)
+				return granted, nil
+			},
+		}
+		logRepo := &mockLogRepository{createFn: func(context.Context, *models.Log) error { return nil }}
+		return service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, logRepo, casbinClient, passthroughTxManager(), zap.NewNop())
+	}
+
+	t.Run("denied without admin_user:update", func(t *testing.T) {
+		updated := false
+		svc := newSvc(false, &updated)
+		ctx := utils.NewContextWithValues(context.Background(), adminCallerValues())
+
+		name := "renamed"
+		user, err := svc.Update(ctx, 6, &dto.UserUpdateRequest{Name: &name})
+
+		require.Nil(t, user)
+		require.True(t, errors.Is(err, cerrors.ErrForbidden))
+		require.False(t, updated, "the row must not be written when the grant is missing")
+	})
+
+	t.Run("allowed with admin_user:update", func(t *testing.T) {
+		updated := false
+		svc := newSvc(true, &updated)
+		ctx := utils.NewContextWithValues(context.Background(), adminCallerValues())
+
+		name := "renamed"
+		user, err := svc.Update(ctx, 6, &dto.UserUpdateRequest{Name: &name})
+
+		require.NoError(t, err)
+		require.NotNil(t, user)
+		require.True(t, updated)
+	})
+}
+
+func TestUserServiceFindByIDRequiresAdminUserGrantForAdminTargets(t *testing.T) {
+	roleID := uint(5)
+	repo := &mockUserRepository{
+		findByIDFn: func(context.Context, uint, ...repository.Association) (*models.User, error) {
+			return &models.User{ID: 6, Role: models.UserRoleAdmin, AdminRoleID: &roleID}, nil
+		},
+	}
+	casbinClient := &mockCasbinClient{
+		checkPermissionWithRootFn: func(_ string, _ *uint, perm string) (bool, error) {
+			require.Equal(t, permissions.AdminUserRead.String(), perm)
+			return false, nil
+		},
+	}
+
+	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, &mockLogRepository{}, casbinClient, &mockTxManager{}, zap.NewNop())
+	ctx := utils.NewContextWithValues(context.Background(), adminCallerValues())
+
+	user, err := svc.FindByID(ctx, 6)
+
+	require.Nil(t, user)
+	require.True(t, errors.Is(err, cerrors.ErrForbidden),
+		"an admin target must be hidden from callers without admin_user:read")
+}
+
 func TestUserServiceUpdateRejectsRootUser(t *testing.T) {
 	repo := &mockUserRepository{
 		findByIDForUpdateFn: func(context.Context, uint) (*models.User, error) {
@@ -492,8 +590,15 @@ func TestUserServiceUpdateAppliesPatchSemanticsInTransaction(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, logRepo, &mockCasbinClient{}, txManager, zap.NewNop())
-	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{UserID: 1, UserName: "Root"})
+	casbinClient := &mockCasbinClient{
+		// Mirror the real client: root bypasses permission checks.
+		checkPermissionWithRootFn: func(role string, _ *uint, _ string) (bool, error) {
+			return role == models.UserRoleRoot.ToString(), nil
+		},
+	}
+	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, logRepo, casbinClient, txManager, zap.NewNop())
+	// Root caller: bypasses the admin_user:update check for the admin target.
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{UserID: 1, UserName: "Root", Role: models.UserRoleRoot.ToString()})
 
 	name := "New Name"
 	user, err := svc.Update(ctx, 6, &dto.UserUpdateRequest{Name: &name})
@@ -533,8 +638,15 @@ func TestUserServiceUpdateDemotionClearsAdminRoleID(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, logRepo, &mockCasbinClient{}, passthroughTxManager(), zap.NewNop())
-	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{UserID: 1, UserName: "Root"})
+	casbinClient := &mockCasbinClient{
+		// Mirror the real client: root bypasses permission checks (the target
+		// is an admin, so demotion requires the admin_user:update grant).
+		checkPermissionWithRootFn: func(role string, _ *uint, _ string) (bool, error) {
+			return role == models.UserRoleRoot.ToString(), nil
+		},
+	}
+	svc := service.NewUserService(repo, &mockAdminRoleRepository{}, &mockRefreshTokenRepository{}, logRepo, casbinClient, passthroughTxManager(), zap.NewNop())
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{UserID: 1, UserName: "Root", Role: models.UserRoleRoot.ToString()})
 
 	role := "user"
 	user, err := svc.Update(ctx, 6, &dto.UserUpdateRequest{Role: &role})

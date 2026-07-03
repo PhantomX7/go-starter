@@ -17,11 +17,13 @@ import (
 	"github.com/PhantomX7/athleton/internal/modules/user/repository"
 	"github.com/PhantomX7/athleton/libs/casbin"
 	"github.com/PhantomX7/athleton/libs/transaction_manager"
+	"github.com/PhantomX7/athleton/pkg/constants/permissions"
 	"github.com/PhantomX7/athleton/pkg/constants/security"
 	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
+	"github.com/PhantomX7/athleton/pkg/utils"
 
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
@@ -70,8 +72,52 @@ func NewUserService(
 	}
 }
 
+// callerHasPermission reports whether the authenticated caller holds perm.
+// Root bypasses; a context without auth values counts as holding nothing
+// (fail closed) — the /admin group middleware guarantees values in practice.
+func (s *userService) callerHasPermission(ctx context.Context, perm permissions.Permission) (bool, error) {
+	values, err := utils.ValuesFromContext(ctx)
+	if err != nil {
+		// Deliberately swallow the error: a context without auth values means
+		// "no grants", not an infrastructure failure.
+		return false, nil //nolint:nilerr // fail closed on missing auth context
+	}
+	return s.casbinClient.CheckPermissionWithRoot(values.Role, values.AdminRoleID, perm.String())
+}
+
+// requireAdminUserGrant enforces the stronger admin_user:* grant when the
+// operation targets an admin-type account: managing admin accounts is more
+// privileged than managing regular users, so user:* alone is not enough.
+func (s *userService) requireAdminUserGrant(ctx context.Context, target *models.User, perm permissions.Permission) error {
+	if !target.Role.IsAdminType() {
+		return nil
+	}
+	allowed, err := s.callerHasPermission(ctx, perm)
+	if err != nil {
+		return cerrors.NewInternalServerError("failed to verify permissions", err)
+	}
+	if !allowed {
+		logger.CtxWith(ctx, s.log, zap.Uint("target_user_id", target.ID), zap.String("permission", perm.String())).
+			Warn("Denied admin-account access without admin_user grant")
+		return cerrors.NewForbiddenError("insufficient permissions to manage admin accounts")
+	}
+	return nil
+}
+
 // Index implements UserService.
 func (s *userService) Index(ctx context.Context, pg *pagination.Pagination) ([]*models.User, response.Meta, error) {
+	// Callers without admin_user:read only see regular accounts: admin and
+	// root rows are filtered out of the listing entirely.
+	canSeeAdmins, err := s.callerHasPermission(ctx, permissions.AdminUserRead)
+	if err != nil {
+		return nil, response.Meta{}, cerrors.NewInternalServerError("failed to verify permissions", err)
+	}
+	if !canSeeAdmins {
+		pg.AddCustomScope(func(db *gorm.DB) *gorm.DB {
+			return db.Where("role = ?", models.UserRoleUser.ToString())
+		})
+	}
+
 	// Add preloads
 	pg.AddCustomScope(func(db *gorm.DB) *gorm.DB {
 		return db.Preload("AdminRole")
@@ -158,6 +204,11 @@ func (s *userService) Update(ctx context.Context, userID uint, req *dto.UserUpda
 			return cerrors.NewForbiddenError("cannot modify root user")
 		}
 
+		// Modifying another admin account requires the stronger grant.
+		if err := s.requireAdminUserGrant(txCtx, user, permissions.AdminUserUpdate); err != nil {
+			return err
+		}
+
 		// Pointer fields: an omitted field (nil) keeps its current value — PATCH semantics.
 		if req.Name != nil {
 			user.Name = *req.Name
@@ -187,7 +238,12 @@ func (s *userService) Update(ctx context.Context, userID uint, req *dto.UserUpda
 func (s *userService) FindByID(ctx context.Context, userID uint) (*models.User, error) {
 	user, err := s.userRepository.FindByID(ctx, userID, generated.User.AdminRole)
 	if err != nil {
-		return user, err
+		return nil, err
+	}
+
+	// Admin and root accounts are only visible with the stronger grant.
+	if err := s.requireAdminUserGrant(ctx, user, permissions.AdminUserRead); err != nil {
+		return nil, err
 	}
 
 	if user.AdminRole != nil {
