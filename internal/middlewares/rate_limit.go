@@ -8,58 +8,45 @@ import (
 	"github.com/PhantomX7/athleton/pkg/response"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	"golang.org/x/time/rate"
 )
 
-type ipLimiter struct {
-	limiter  *rate.Limiter
-	lastSeen time.Time
-}
+// maxTrackedIPs caps how many distinct client IPs a single limiter holds at
+// once. The plain map this replaced had no ceiling — under IP churn it grew
+// with every unique address seen within a TTL window. The LRU gives a hard
+// bound: once full, the least-recently-seen IP is evicted. Actively-hammering
+// IPs stay "recently used" and keep their bucket, so throttling is unaffected;
+// only idle IPs are dropped early, and their bucket is recreated on return.
+const maxTrackedIPs = 8192
 
 type ipRateLimiter struct {
+	// mu makes the get-or-create below atomic: the expirable cache is itself
+	// thread-safe, but a bare Get-then-Add would let two concurrent first hits
+	// for the same new IP each mint a limiter, discarding one bucket's state.
 	mu       sync.Mutex
-	visitors map[string]*ipLimiter
+	visitors *expirable.LRU[string, *rate.Limiter]
 	rate     rate.Limit
 	burst    int
-	ttl      time.Duration
 }
 
 func newIPRateLimiter(r rate.Limit, burst int, ttl time.Duration) *ipRateLimiter {
-	l := &ipRateLimiter{
-		visitors: make(map[string]*ipLimiter),
+	return &ipRateLimiter{
+		visitors: expirable.NewLRU[string, *rate.Limiter](maxTrackedIPs, nil, ttl),
 		rate:     r,
 		burst:    burst,
-		ttl:      ttl,
 	}
-	go l.cleanupLoop()
-	return l
 }
 
 func (l *ipRateLimiter) allow(ip string) bool {
 	l.mu.Lock()
-	v, ok := l.visitors[ip]
+	limiter, ok := l.visitors.Get(ip)
 	if !ok {
-		v = &ipLimiter{limiter: rate.NewLimiter(l.rate, l.burst)}
-		l.visitors[ip] = v
+		limiter = rate.NewLimiter(l.rate, l.burst)
+		l.visitors.Add(ip, limiter)
 	}
-	v.lastSeen = time.Now()
 	l.mu.Unlock()
-	return v.limiter.Allow()
-}
-
-func (l *ipRateLimiter) cleanupLoop() {
-	ticker := time.NewTicker(l.ttl)
-	defer ticker.Stop()
-	for range ticker.C {
-		cutoff := time.Now().Add(-l.ttl)
-		l.mu.Lock()
-		for ip, v := range l.visitors {
-			if v.lastSeen.Before(cutoff) {
-				delete(l.visitors, ip)
-			}
-		}
-		l.mu.Unlock()
-	}
+	return limiter.Allow()
 }
 
 // rateLimitHandler wraps an ipRateLimiter in the shared reject-or-continue
