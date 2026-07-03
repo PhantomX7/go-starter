@@ -35,6 +35,7 @@ const (
 // ADMIN USER PERMISSIONS
 // ============================================================================
 const (
+	AdminUserCreate         Permission = "admin_user:create"
 	AdminUserRead           Permission = "admin_user:read"
 	AdminUserUpdate         Permission = "admin_user:update"
 	AdminUserChangePassword Permission = "admin_user:change_password"
@@ -90,6 +91,7 @@ type PermissionInfo struct {
 // AllPermissions maps resources to their available permissions with descriptions
 var AllPermissions = map[string][]PermissionInfo{
 	ResourceAdminUser: {
+		{AdminUserCreate, ResourceAdminUser, ActionCreate, "Create admin users"},
 		{AdminUserRead, ResourceAdminUser, ActionRead, "View admin users"},
 		{AdminUserUpdate, ResourceAdminUser, ActionUpdate, "Update admin users"},
 		{AdminUserChangePassword, ResourceAdminUser, "change_password", "Change admin user password"},

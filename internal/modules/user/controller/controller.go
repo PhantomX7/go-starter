@@ -59,6 +59,7 @@ func NewUserPagination(conditions map[string][]string) *pagination.Pagination {
 // UserController defines the interface for user controller operations
 type UserController interface {
 	Index(ctx *gin.Context)
+	Create(ctx *gin.Context)
 	Update(ctx *gin.Context)
 	FindByID(ctx *gin.Context)
 	AssignAdminRole(ctx *gin.Context)
@@ -89,6 +90,31 @@ func (c *userController) Index(ctx *gin.Context) {
 	}
 	ctx.JSON(http.StatusOK,
 		response.BuildPaginationResponse(users, meta))
+}
+
+// @Summary		Create an admin user
+// @Description	Create a new admin account with an assigned admin role; the account must rotate its password on first login
+// @Tags			user
+// @Accept			json
+// @Produce		json
+// @Param			user	body		dto.AdminUserCreateRequest	true	"Admin User Create Request"
+// @Success		201		{object}	response.Response{data=dto.UserResponse}
+// @Failure		400		{object}	response.Response
+// @Failure		500		{object}	response.Response
+// @Router			/user [post]
+func (c *userController) Create(ctx *gin.Context) {
+	var req dto.AdminUserCreateRequest
+	if err := ctx.ShouldBind(&req); err != nil {
+		_ = ctx.Error(err).SetType(gin.ErrorTypeBind)
+		return
+	}
+
+	user, err := c.userService.Create(ctx.Request.Context(), &req)
+	if err != nil {
+		_ = ctx.Error(err)
+		return
+	}
+	ctx.JSON(http.StatusCreated, response.BuildResponseSuccess("Admin user created successfully", user.ToResponse()))
 }
 
 // @Summary		Update a user

@@ -17,6 +17,22 @@ type UserUpdateRequest struct {
 	Name *string `json:"name" form:"name"`
 }
 
+// AdminUserCreateRequest is the payload for an admin creating a new admin
+// account directly (as opposed to self-registration + promotion).
+//
+// There is deliberately no role field: the created account is always "admin"
+// — root can never be created through the API. The initial password is chosen
+// by the creator, so the service leaves PasswordChangedAt nil and the
+// must-change-default-password gate forces a rotation on first login.
+type AdminUserCreateRequest struct {
+	Username    string `json:"username" form:"username" binding:"required,min=3,max=255,unique=users.username"`
+	Name        string `json:"name" form:"name" binding:"required,max=255"`
+	Email       string `json:"email" form:"email" binding:"required,email,max=255,unique=users.email"`
+	Phone       string `json:"phone" form:"phone" binding:"required,max=255"`
+	Password    string `json:"password" form:"password" binding:"required,min=8,max=72" minLength:"8" maxLength:"72"`
+	AdminRoleID uint   `json:"admin_role_id" form:"admin_role_id" binding:"required,exist=admin_roles.id"`
+}
+
 // UserAssignAdminRoleRequest defines the structure for assigning admin role
 type UserAssignAdminRoleRequest struct {
 	AdminRoleID uint `json:"admin_role_id" form:"admin_role_id" binding:"required,exist=admin_roles.id"`

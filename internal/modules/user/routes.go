@@ -20,6 +20,7 @@ func NewRoutes(controller controller.UserController) routes.Registrar {
 func (r *routeRegistrar) RegisterRoutes(ctx *routes.Context) {
 	userRoute := ctx.Admin.Group("/user")
 	userRoute.GET("", ctx.MW.RequirePermission(permissions.UserRead), r.controller.Index)
+	userRoute.POST("", ctx.MW.RequirePermission(permissions.AdminUserCreate), r.controller.Create)
 	userRoute.GET("/:id", ctx.MW.RequirePermission(permissions.UserRead), r.controller.FindByID)
 	userRoute.PATCH("/:id", ctx.MW.RequirePermission(permissions.UserUpdate), r.controller.Update)
 	userRoute.POST("/:id/admin-role", ctx.MW.RequirePermission(permissions.UserAssignRole), r.controller.AssignAdminRole)

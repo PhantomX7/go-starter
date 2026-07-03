@@ -40,7 +40,10 @@ import (
 	logrepository "github.com/PhantomX7/athleton/internal/modules/log/repository"
 	logservice "github.com/PhantomX7/athleton/internal/modules/log/service"
 	rtokenrepository "github.com/PhantomX7/athleton/internal/modules/refresh_token/repository"
+	usermodule "github.com/PhantomX7/athleton/internal/modules/user"
+	usercontroller "github.com/PhantomX7/athleton/internal/modules/user/controller"
 	userrepository "github.com/PhantomX7/athleton/internal/modules/user/repository"
+	userservice "github.com/PhantomX7/athleton/internal/modules/user/service"
 	"github.com/PhantomX7/athleton/internal/routes"
 	"github.com/PhantomX7/athleton/libs/casbin"
 	"github.com/PhantomX7/athleton/libs/transaction_manager"
@@ -185,6 +188,7 @@ func newTestApp(t *testing.T) *testApp {
 	adminRoleService := adminroleservice.NewAdminRoleService(adminRoleRepo, logRepo, casbinClient, txManager)
 	configService := configservice.NewConfigService(configRepo, logRepo)
 	logService := logservice.NewLogService(logRepo)
+	userService := userservice.NewUserService(userRepo, adminRoleRepo, refreshTokenRepo, logRepo, casbinClient, txManager, zap.NewNop())
 
 	// Mirror routes.RegisterRoutes: shared /api/v1 groups with the same
 	// middleware stack (rate limiting before auth on /admin, then the
@@ -205,6 +209,7 @@ func newTestApp(t *testing.T) *testApp {
 	// rejects plain users even when a route carries no permission guard.
 	routeCtx.Admin.GET("/__probe", func(c *gin.Context) { c.Status(http.StatusOK) })
 	authmodule.NewRoutes(authcontroller.NewAuthController(authService)).RegisterRoutes(routeCtx)
+	usermodule.NewRoutes(usercontroller.NewUserController(userService)).RegisterRoutes(routeCtx)
 	adminrolemodule.NewRoutes(adminrolecontroller.NewAdminRoleController(adminRoleService)).RegisterRoutes(routeCtx)
 	configController := configcontroller.NewConfigController(configService)
 	configmodule.NewAdminRoutes(configController).RegisterRoutes(routeCtx)

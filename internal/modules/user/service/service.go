@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/PhantomX7/athleton/internal/audit"
@@ -30,6 +31,7 @@ import (
 // UserService defines the interface for user service operations
 type UserService interface {
 	Index(ctx context.Context, req *pagination.Pagination) ([]*models.User, response.Meta, error)
+	Create(ctx context.Context, req *dto.AdminUserCreateRequest) (*models.User, error)
 	Update(ctx context.Context, userID uint, req *dto.UserUpdateRequest) (*models.User, error)
 	FindByID(ctx context.Context, userID uint) (*models.User, error)
 	AssignAdminRole(ctx context.Context, userID uint, req *dto.UserAssignAdminRoleRequest) (*models.User, error)
@@ -90,6 +92,48 @@ func (s *userService) Index(ctx context.Context, pg *pagination.Pagination) ([]*
 		Offset: pg.Offset,
 		Limit:  pg.Limit,
 	}, nil
+}
+
+// Create implements UserService: an admin (holding admin_user:create) creates
+// a new admin account directly. The role is hardcoded to "admin" — no request
+// field can produce a root account — and PasswordChangedAt stays nil so the
+// must-change-default-password gate forces the new admin to rotate the
+// creator-chosen password on first login.
+func (s *userService) Create(ctx context.Context, req *dto.AdminUserCreateRequest) (*models.User, error) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), security.BcryptCost)
+	if err != nil {
+		return nil, cerrors.NewInternalServerError("failed to process password", err)
+	}
+
+	user := &models.User{
+		Username:    req.Username,
+		Name:        req.Name,
+		Email:       strings.ToLower(strings.TrimSpace(req.Email)),
+		Phone:       strings.TrimSpace(req.Phone),
+		IsActive:    true,
+		Role:        models.UserRoleAdmin,
+		AdminRoleID: &req.AdminRoleID,
+		Password:    string(hashedPassword),
+	}
+
+	err = s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
+		// Lock the target admin-role row: this serializes with the role-delete
+		// flow (which locks the same row before its "no users assigned" check)
+		// and re-verifies the role exists inside the transaction instead of
+		// trusting the request-validation lookup that ran outside it.
+		if _, err := s.adminRoleRepo.FindByIDForUpdate(txCtx, req.AdminRoleID); err != nil {
+			return err
+		}
+
+		return s.userRepository.Create(txCtx, user)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	s.createLog(ctx, models.LogActionCreate, user.ID, user.Name)
+
+	return user, nil
 }
 
 // Update implements UserService.

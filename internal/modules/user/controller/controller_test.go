@@ -36,10 +36,18 @@ func init() {
 
 type mockUserService struct {
 	indexFn           func(context.Context, *pagination.Pagination) ([]*models.User, response.Meta, error)
+	createFn          func(context.Context, *dto.AdminUserCreateRequest) (*models.User, error)
 	updateFn          func(context.Context, uint, *dto.UserUpdateRequest) (*models.User, error)
 	findByIDFn        func(context.Context, uint) (*models.User, error)
 	assignAdminRoleFn func(context.Context, uint, *dto.UserAssignAdminRoleRequest) (*models.User, error)
 	changePasswordFn  func(context.Context, uint, *dto.ChangeAdminPasswordRequest) error
+}
+
+func (m *mockUserService) Create(ctx context.Context, req *dto.AdminUserCreateRequest) (*models.User, error) {
+	if m.createFn == nil {
+		panic("unexpected Create call")
+	}
+	return m.createFn(ctx, req)
 }
 
 func (m *mockUserService) Index(ctx context.Context, pg *pagination.Pagination) ([]*models.User, response.Meta, error) {
@@ -110,6 +118,61 @@ func TestUserControllerIndexReturnsPaginatedResponse(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	require.Equal(t, true, body["status"])
 	require.Equal(t, "Success", body["message"])
+}
+
+func TestUserControllerCreateReturnsCreated(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := &mockUserService{
+		createFn: func(ctx context.Context, req *dto.AdminUserCreateRequest) (*models.User, error) {
+			require.NotNil(t, ctx)
+			require.Equal(t, "new-admin", req.Username)
+			require.Equal(t, uint(3), req.AdminRoleID)
+			return &models.User{
+				ID:       9,
+				Username: "new-admin",
+				Name:     "New Admin",
+				Email:    "new.admin@test.local",
+				Phone:    "083",
+				Role:     models.UserRoleAdmin,
+			}, nil
+		},
+	}
+
+	ctrl := controller.NewUserController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/user", bytes.NewBufferString(
+		`{"username":"new-admin","name":"New Admin","email":"new.admin@test.local","phone":"083","password":"initial-pass-123","admin_role_id":3}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	ctrl.Create(ctx)
+
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, "Admin user created successfully", body["message"])
+}
+
+func TestUserControllerCreateRejectsInvalidBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := &mockUserService{
+		createFn: func(context.Context, *dto.AdminUserCreateRequest) (*models.User, error) {
+			t.Fatal("Create should not be called when binding fails")
+			return nil, nil
+		},
+	}
+
+	ctrl := controller.NewUserController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/user", bytes.NewBufferString(`{}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	ctrl.Create(ctx)
+
+	require.NotEmpty(t, ctx.Errors, "an empty body must record a binding error")
 }
 
 func TestUserControllerUpdateReturnsSuccessResponse(t *testing.T) {

@@ -30,6 +30,7 @@ import (
 )
 
 type mockUserRepository struct {
+	createFn            func(context.Context, *models.User) error
 	findAllFn           func(context.Context, *pagination.Pagination) ([]*models.User, error)
 	countFn             func(context.Context, *pagination.Pagination) (int64, error)
 	findByIDFn          func(context.Context, uint, ...repository.Association) (*models.User, error)
@@ -39,8 +40,11 @@ type mockUserRepository struct {
 	findByEmailFn       func(context.Context, string) (*models.User, error)
 }
 
-func (m *mockUserRepository) Create(context.Context, *models.User) error {
-	panic("unexpected Create call")
+func (m *mockUserRepository) Create(ctx context.Context, entity *models.User) error {
+	if m.createFn == nil {
+		panic("unexpected Create call")
+	}
+	return m.createFn(ctx, entity)
 }
 
 func (m *mockUserRepository) Update(ctx context.Context, entity *models.User) error {
@@ -351,6 +355,91 @@ func TestUserServiceFindByIDHydratesAdminRolePermissions(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, user.AdminRole)
 	require.Equal(t, []string{permissions.UserRead.String()}, user.AdminRole.Permissions)
+}
+
+func TestUserServiceCreateCreatesAdminAccount(t *testing.T) {
+	logCh := make(chan *models.Log, 1)
+	roleID := uint(5)
+
+	roleLocked := false
+	adminRoleRepo := &mockAdminRoleRepository{
+		findByIDForUpdateFn: func(_ context.Context, id uint) (*models.AdminRole, error) {
+			require.Equal(t, roleID, id)
+			roleLocked = true
+			return &models.AdminRole{ID: roleID, Name: "Manager"}, nil
+		},
+	}
+	repo := &mockUserRepository{
+		createFn: func(_ context.Context, entity *models.User) error {
+			require.True(t, roleLocked, "the admin-role row must be locked before the user insert")
+			// The created account is always a plain admin — role is never
+			// taken from the request, so root can never be created.
+			require.Equal(t, models.UserRoleAdmin, entity.Role)
+			require.Equal(t, &roleID, entity.AdminRoleID)
+			require.True(t, entity.IsActive)
+			require.Equal(t, "new.admin@test.local", entity.Email, "email must be normalized to lowercase")
+			require.Equal(t, "new-admin", entity.Username)
+			// The password was chosen by the creator, not the account owner:
+			// leave PasswordChangedAt nil so the must-change-default-password
+			// gate forces a rotation on first login.
+			require.Nil(t, entity.PasswordChangedAt)
+			require.NoError(t, bcrypt.CompareHashAndPassword([]byte(entity.Password), []byte("initial-pass-123")))
+			entity.ID = 9
+			return nil
+		},
+	}
+	logRepo := &mockLogRepository{
+		createFn: func(_ context.Context, entry *models.Log) error {
+			logCh <- entry
+			return nil
+		},
+	}
+
+	svc := service.NewUserService(repo, adminRoleRepo, &mockRefreshTokenRepository{}, logRepo, &mockCasbinClient{}, passthroughTxManager(), zap.NewNop())
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{UserID: 1, UserName: "Root"})
+
+	user, err := svc.Create(ctx, &dto.AdminUserCreateRequest{
+		Username:    "new-admin",
+		Name:        "New Admin",
+		Email:       "  New.Admin@Test.Local ",
+		Phone:       "+620000000007",
+		Password:    "initial-pass-123",
+		AdminRoleID: roleID,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, uint(9), user.ID)
+
+	select {
+	case entry := <-logCh:
+		require.Equal(t, models.LogActionCreate, entry.Action)
+		require.Equal(t, models.LogEntityTypeUser, entry.EntityType)
+		require.Equal(t, uint(9), entry.EntityID)
+	case <-time.After(2 * time.Second):
+		t.Fatal("creating an admin account must produce an audit log")
+	}
+}
+
+func TestUserServiceCreateFailsWhenRoleMissing(t *testing.T) {
+	adminRoleRepo := &mockAdminRoleRepository{
+		findByIDForUpdateFn: func(context.Context, uint) (*models.AdminRole, error) {
+			return nil, cerrors.NewNotFoundError("admin role not found")
+		},
+	}
+
+	svc := service.NewUserService(&mockUserRepository{}, adminRoleRepo, &mockRefreshTokenRepository{}, &mockLogRepository{}, &mockCasbinClient{}, passthroughTxManager(), zap.NewNop())
+
+	user, err := svc.Create(context.Background(), &dto.AdminUserCreateRequest{
+		Username:    "new-admin",
+		Name:        "New Admin",
+		Email:       "new.admin@test.local",
+		Phone:       "+620000000007",
+		Password:    "initial-pass-123",
+		AdminRoleID: 99,
+	})
+
+	require.Nil(t, user)
+	require.True(t, errors.Is(err, cerrors.ErrNotFound))
 }
 
 func TestUserServiceUpdateRejectsRootUser(t *testing.T) {
