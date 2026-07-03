@@ -49,10 +49,5 @@ func seedData(db *gorm.DB, cfg *config.Config) error {
 		return err
 	}
 
-	if cfg.IsDevelopment() {
-		log.Println("Seeding brands...")
-
-	}
-
 	return nil
 }

@@ -23,4 +23,6 @@ jobs:
           cache: true
 
       - name: Run tests
-        run: go test ./... -count=1
+        # -race backs the concurrency guarantees the libs advertise (casbin
+        # client, audit writers); CI is the one place it always runs.
+        run: go test ./... -count=1 -race

@@ -119,14 +119,18 @@ func TestCronServiceClearRefreshTokenReturnsRepositoryError(t *testing.T) {
 	require.ErrorIs(t, err, expectedErr)
 }
 
-func TestCronServiceRunAllCleanupJobsContinuesAfterError(t *testing.T) {
+func TestCronServiceRunAllCleanupJobsReportsJobFailures(t *testing.T) {
 	setupLogger(t)
 
+	// Jobs keep running after an individual failure, but the aggregate error
+	// must surface so the scheduler (and any job monitoring) observes it
+	// instead of a false success.
 	callCount := 0
+	jobErr := errors.New("cleanup failed")
 	repo := &mockRefreshTokenRepository{
 		deleteInvalidTokenFn: func(context.Context) error {
 			callCount++
-			return errors.New("cleanup failed")
+			return jobErr
 		},
 	}
 
@@ -134,6 +138,18 @@ func TestCronServiceRunAllCleanupJobsContinuesAfterError(t *testing.T) {
 
 	err := svc.RunAllCleanupJobs(context.Background())
 
-	require.NoError(t, err)
+	require.ErrorIs(t, err, jobErr)
 	require.Equal(t, 1, callCount)
+}
+
+func TestCronServiceRunAllCleanupJobsSucceedsWhenJobsSucceed(t *testing.T) {
+	setupLogger(t)
+
+	repo := &mockRefreshTokenRepository{
+		deleteInvalidTokenFn: func(context.Context) error { return nil },
+	}
+
+	svc := service.NewCronService(repo)
+
+	require.NoError(t, svc.RunAllCleanupJobs(context.Background()))
 }

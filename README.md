@@ -12,7 +12,7 @@ Go API service built on [gin](https://github.com/gin-gonic/gin), [GORM](https://
 Dev tooling installed via Make targets:
 
 ```bash
-make lint-install    # golangci-lint v2.11.0
+make lint-install    # golangci-lint v2.12.2
 make hooks-install   # lefthook + git hooks (pre-commit, pre-push)
 ```
 
@@ -124,7 +124,7 @@ make test         # all packages with coverage
 make test-html    # HTML report from cp.out
 ```
 
-Tests run through `lefthook` on `pre-push` with `-race`. To skip hooks temporarily: `git push --no-verify` (prefer fixing the failure).
+Tests run through `lefthook` on `pre-push`; CI additionally runs them with `-race` (the race detector needs a C toolchain, which not every dev machine has). To skip hooks temporarily: `git push --no-verify` (prefer fixing the failure).
 
 ## Migrations
 

@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/PhantomX7/athleton/internal/modules/refresh_token/repository"
@@ -51,20 +52,25 @@ func (s *cronService) ClearRefreshToken(ctx context.Context) error {
 	return nil
 }
 
-// RunAllCleanupJobs runs all cleanup jobs in sequence
+// RunAllCleanupJobs runs all cleanup jobs in sequence. A failing job does not
+// stop the remaining jobs, but every failure is joined into the returned
+// error so the scheduler observes the run's real outcome.
 func (s *cronService) RunAllCleanupJobs(ctx context.Context) error {
 	startTime := time.Now()
 	logger.Info("Starting all cleanup jobs")
 
+	var errs []error
+
 	// Run cleanup for invalid tokens
 	if err := s.ClearRefreshToken(ctx); err != nil {
 		logger.Error("Invalid token cleanup failed", zap.Error(err))
-		// Continue to next cleanup even if this fails
+		// Continue to the next cleanup even if this one fails.
+		errs = append(errs, err)
 	}
 
 	logger.Info("All cleanup jobs completed",
 		zap.Duration("total_duration", time.Since(startTime)),
 	)
 
-	return nil
+	return errors.Join(errs...)
 }

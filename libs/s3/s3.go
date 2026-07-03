@@ -341,7 +341,7 @@ func (s3c *s3Client) shouldCompressImage(file *multipart.FileHeader) bool {
 
 // DeleteImage deletes a single image from S3
 func (s3c *s3Client) DeleteImage(ctx context.Context, key string) error {
-	if key == "" || key == "example.jpg" {
+	if key == "" {
 		return nil
 	}
 
@@ -513,10 +513,10 @@ func (s3c *s3Client) DeleteImages(ctx context.Context, keys []string) error {
 
 	requestID := utils.GetRequestIDFromContext(ctx)
 
-	// Prepare delete request, filtering out "example.jpg" and empty strings
+	// Prepare delete request, filtering out empty strings
 	var objects []types.ObjectIdentifier
 	for _, key := range keys {
-		if key == "" || key == "example.jpg" {
+		if key == "" {
 			continue
 		}
 		objects = append(objects, types.ObjectIdentifier{Key: aws.String(key)})

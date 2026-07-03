@@ -289,16 +289,15 @@ func TestUploadImageReturnsServerError(t *testing.T) {
 	require.ErrorContains(t, err, "failed to upload to S3")
 }
 
-func TestDeleteImageSkipsPlaceholderKeys(t *testing.T) {
+func TestDeleteImageSkipsEmptyKey(t *testing.T) {
 	setTestEnv(t)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Fatal("no request should be sent for placeholder keys")
+		t.Fatal("no request should be sent for an empty key")
 	})
 	c := newTestClient(t, handler)
 
 	require.NoError(t, c.DeleteImage(context.Background(), ""))
-	require.NoError(t, c.DeleteImage(context.Background(), "example.jpg"))
 }
 
 func TestDeleteImageSuccess(t *testing.T) {
@@ -379,7 +378,7 @@ func TestDeleteImagesNoValidKeys(t *testing.T) {
 	c := newTestClient(t, handler)
 
 	require.NoError(t, c.DeleteImages(context.Background(), nil))
-	require.NoError(t, c.DeleteImages(context.Background(), []string{"", "example.jpg"}))
+	require.NoError(t, c.DeleteImages(context.Background(), []string{"", ""}))
 }
 
 func TestUploadImagesParallel(t *testing.T) {

@@ -4,9 +4,36 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: read
+
+# One deploy at a time; queued pushes wait instead of interleaving tar
+# extraction, migrations, and pm2 restarts on the same target directory.
+concurrency:
+  group: vps-deploy
+  cancel-in-progress: false
+
 jobs:
+  test:
+    name: gate on tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: true
+
+      - name: Run tests
+        run: go test ./... -count=1
+
   build-and-deploy:
     runs-on: ubuntu-latest
+    # A commit with failing tests must never reach the VPS.
+    needs: test
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
