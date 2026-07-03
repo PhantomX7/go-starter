@@ -1,4 +1,8 @@
-package integration_test
+// Package harness assembles the real application stack for integration tests:
+// the Gin engine built by bootstrap.SetupServer, the full middleware chain,
+// and real services/repositories against an in-memory SQLite database. Test
+// packages under internal/integration/* import it as their shared fixture.
+package harness
 
 import (
 	"bytes"
@@ -7,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -53,27 +58,37 @@ import (
 )
 
 const (
-	// testPassword is the plaintext password for every seeded user.
-	testPassword = "integration-pass-1"
-	// testNewPassword is used by the change-password flow.
-	testNewPassword = "integration-pass-2"
+	// TestPassword is the plaintext password for every seeded user.
+	TestPassword = "integration-pass-1"
+	// TestNewPassword is used by the change-password flows.
+	TestNewPassword = "integration-pass-2"
 
-	rootUsername   = "root"
-	adminUsername  = "admin"
-	memberUsername = "member"
+	// RootUsername identifies the seeded root fixture account.
+	RootUsername = "root"
+	// AdminUsername identifies the seeded admin fixture account.
+	AdminUsername = "admin"
+	// MemberUsername identifies the seeded regular-user fixture account.
+	MemberUsername = "member"
 
-	testMaxBodyBytes = int64(10 << 20) // mirrors production default (10 MiB)
+	// TestMaxBodyBytes mirrors the production default (10 MiB).
+	TestMaxBodyBytes = int64(10 << 20)
 )
 
-// testPasswordHash is computed once per process. bcrypt.MinCost keeps seeding
+// passwordHash is computed once per process. bcrypt.MinCost keeps seeding
 // fast; login still exercises the real bcrypt comparison path.
-var testPasswordHash = sync.OnceValue(func() string {
-	hash, err := bcrypt.GenerateFromPassword([]byte(testPassword), bcrypt.MinCost)
+var passwordHash = sync.OnceValue(func() string {
+	hash, err := bcrypt.GenerateFromPassword([]byte(TestPassword), bcrypt.MinCost)
 	if err != nil {
 		panic(err)
 	}
 	return string(hash)
 })
+
+// PasswordHash returns the shared bcrypt hash of TestPassword for tests that
+// seed additional users.
+func PasswordHash() string {
+	return passwordHash()
+}
 
 // testConfig returns a complete, valid configuration equivalent to what
 // config.Load would produce in development.
@@ -86,7 +101,7 @@ func testConfig() *config.Config {
 			WriteTimeout:   30 * time.Second,
 			IdleTimeout:    120 * time.Second,
 			RequestTimeout: 30 * time.Second,
-			MaxBodyBytes:   testMaxBodyBytes,
+			MaxBodyBytes:   TestMaxBodyBytes,
 		},
 		Database: config.DatabaseConfig{
 			Driver: "sqlite",
@@ -123,23 +138,23 @@ func testConfig() *config.Config {
 	}
 }
 
-// testApp bundles the assembled application and its seeded fixtures.
-type testApp struct {
-	engine       *gin.Engine
-	db           *gorm.DB
-	casbinClient casbin.Client
+// App bundles the assembled application and its seeded fixtures.
+type App struct {
+	Engine *gin.Engine
+	DB     *gorm.DB
+	Casbin casbin.Client
 
-	rootUser   models.User
-	adminUser  models.User
-	memberUser models.User
-	adminRole  models.AdminRole
+	RootUser   models.User
+	AdminUser  models.User
+	MemberUser models.User
+	AdminRole  models.AdminRole
 }
 
-// newTestApp hand-wires the real application stack (no fx): in-memory SQLite,
+// New hand-wires the real application stack (no fx): in-memory SQLite,
 // repositories -> services -> controllers -> route registrars, the production
-// middleware bundle, and the engine built by bootstrap.SetupServer. The /api/v1
-// groups are created exactly like routes.RegisterRoutes does.
-func newTestApp(t *testing.T) *testApp {
+// middleware bundle, and the engine built by bootstrap.SetupServer. The
+// /api/v1 groups are created exactly like routes.RegisterRoutes does.
+func New(t *testing.T) *App {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
@@ -191,8 +206,8 @@ func newTestApp(t *testing.T) *testApp {
 	userService := userservice.NewUserService(userRepo, adminRoleRepo, refreshTokenRepo, logRepo, casbinClient, txManager, zap.NewNop())
 
 	// Mirror routes.RegisterRoutes: shared /api/v1 groups with the same
-	// middleware stack (rate limiting before auth on /admin, then the
-	// must-change-default-password gate).
+	// middleware stack (rate limiting before auth on /admin, the admin role
+	// boundary, then the must-change-default-password gate).
 	root := engine.Group("/api/v1")
 	routeCtx := &routes.Context{
 		Root:   root,
@@ -208,6 +223,7 @@ func newTestApp(t *testing.T) *testApp {
 	// Unguarded probe route: proves the group-level RequireRole boundary
 	// rejects plain users even when a route carries no permission guard.
 	routeCtx.Admin.GET("/__probe", func(c *gin.Context) { c.Status(http.StatusOK) })
+
 	authmodule.NewRoutes(authcontroller.NewAuthController(authService)).RegisterRoutes(routeCtx)
 	usermodule.NewRoutes(usercontroller.NewUserController(userService)).RegisterRoutes(routeCtx)
 	adminrolemodule.NewRoutes(adminrolecontroller.NewAdminRoleController(adminRoleService)).RegisterRoutes(routeCtx)
@@ -216,10 +232,10 @@ func newTestApp(t *testing.T) *testApp {
 	configmodule.NewPublicRoutes(configController).RegisterRoutes(routeCtx)
 	logmodule.NewRoutes(logcontroller.NewLogController(logService)).RegisterRoutes(routeCtx)
 
-	app := &testApp{
-		engine:       engine,
-		db:           db,
-		casbinClient: casbinClient,
+	app := &App{
+		Engine: engine,
+		DB:     db,
+		Casbin: casbinClient,
 	}
 	app.seed(t)
 	return app
@@ -227,23 +243,23 @@ func newTestApp(t *testing.T) *testApp {
 
 // seed inserts a deterministic fixture set: an admin role plus one user per
 // role (root, admin with the role assigned, plain user).
-func (a *testApp) seed(t *testing.T) {
+func (a *App) seed(t *testing.T) {
 	t.Helper()
 
-	a.adminRole = models.AdminRole{
+	a.AdminRole = models.AdminRole{
 		Name:        "Editor",
 		Description: "integration test role",
 		IsActive:    true,
 	}
-	require.NoError(t, a.db.Create(&a.adminRole).Error)
+	require.NoError(t, a.DB.Create(&a.AdminRole).Error)
 
-	hash := testPasswordHash()
+	hash := passwordHash()
 	// The fixture users already "changed" their password so the
 	// RequirePasswordChanged gate on /admin stays out of the way for the rest
-	// of the suite; the gate itself is covered by password_gate_test.go.
+	// of the suite; the gate itself is covered by the auth package tests.
 	passwordChangedAt := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	a.rootUser = models.User{
-		Username:          rootUsername,
+	a.RootUser = models.User{
+		Username:          RootUsername,
 		Name:              "Root User",
 		Email:             "root@test.local",
 		Phone:             "+620000000001",
@@ -252,19 +268,19 @@ func (a *testApp) seed(t *testing.T) {
 		Password:          hash,
 		PasswordChangedAt: &passwordChangedAt,
 	}
-	a.adminUser = models.User{
-		Username:          adminUsername,
+	a.AdminUser = models.User{
+		Username:          AdminUsername,
 		Name:              "Admin User",
 		Email:             "admin@test.local",
 		Phone:             "+620000000002",
 		IsActive:          true,
 		Role:              models.UserRoleAdmin,
-		AdminRoleID:       &a.adminRole.ID,
+		AdminRoleID:       &a.AdminRole.ID,
 		Password:          hash,
 		PasswordChangedAt: &passwordChangedAt,
 	}
-	a.memberUser = models.User{
-		Username: memberUsername,
+	a.MemberUser = models.User{
+		Username: MemberUsername,
 		Name:     "Member User",
 		Email:    "member@test.local",
 		Phone:    "+620000000003",
@@ -272,34 +288,37 @@ func (a *testApp) seed(t *testing.T) {
 		Role:     models.UserRoleUser,
 		Password: hash,
 	}
-	require.NoError(t, a.db.Create(&a.rootUser).Error)
-	require.NoError(t, a.db.Create(&a.adminUser).Error)
-	require.NoError(t, a.db.Create(&a.memberUser).Error)
+	require.NoError(t, a.DB.Create(&a.RootUser).Error)
+	require.NoError(t, a.DB.Create(&a.AdminUser).Error)
+	require.NoError(t, a.DB.Create(&a.MemberUser).Error)
 }
 
-// envelope mirrors pkg/response.Response with raw payloads for re-decoding.
-type envelope struct {
+// EnvelopeMeta is the pagination metadata inside a list response.
+type EnvelopeMeta struct {
+	Limit  int   `json:"limit"`
+	Offset int   `json:"offset"`
+	Total  int64 `json:"total"`
+}
+
+// Envelope mirrors pkg/response.Response with raw payloads for re-decoding.
+type Envelope struct {
 	Status  bool            `json:"status"`
 	Message string          `json:"message"`
 	Error   json.RawMessage `json:"error"`
 	Data    json.RawMessage `json:"data"`
-	Meta    *struct {
-		Limit  int   `json:"limit"`
-		Offset int   `json:"offset"`
-		Total  int64 `json:"total"`
-	} `json:"meta"`
+	Meta    *EnvelopeMeta   `json:"meta"`
 }
 
-// tokenPair is the auth payload inside a login/refresh/register response.
-type tokenPair struct {
+// TokenPair is the auth payload inside a login/refresh/register response.
+type TokenPair struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	TokenType    string `json:"token_type"`
 }
 
-// request performs an HTTP request against the assembled engine. body may be
+// Request performs an HTTP request against the assembled engine. body may be
 // nil, a raw string/[]byte, or any JSON-marshalable value.
-func (a *testApp) request(t *testing.T, method, path string, body any, token string) *httptest.ResponseRecorder {
+func (a *App) Request(t *testing.T, method, path string, body any, token string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	var reader io.Reader
@@ -325,65 +344,65 @@ func (a *testApp) request(t *testing.T, method, path string, body any, token str
 	}
 
 	rec := httptest.NewRecorder()
-	a.engine.ServeHTTP(rec, req)
+	a.Engine.ServeHTTP(rec, req)
 	return rec
 }
 
-// decodeEnvelope parses the standard JSON response envelope.
-func decodeEnvelope(t *testing.T, rec *httptest.ResponseRecorder) envelope {
+// DecodeEnvelope parses the standard JSON response envelope.
+func DecodeEnvelope(t *testing.T, rec *httptest.ResponseRecorder) Envelope {
 	t.Helper()
-	var env envelope
+	var env Envelope
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &env), "body: %s", rec.Body.String())
 	return env
 }
 
-// decodeData unmarshals the envelope's data payload into out.
-func decodeData(t *testing.T, env envelope, out any) {
+// DecodeData unmarshals the envelope's data payload into out.
+func DecodeData(t *testing.T, env Envelope, out any) {
 	t.Helper()
 	require.NotEmpty(t, env.Data, "envelope has no data payload")
 	require.NoError(t, json.Unmarshal(env.Data, out))
 }
 
-// loginAs authenticates the given seeded user via the real login endpoint and
+// LoginAs authenticates the given seeded user via the real login endpoint and
 // returns the issued token pair.
-func (a *testApp) loginAs(t *testing.T, username, password string) tokenPair {
+func (a *App) LoginAs(t *testing.T, username, password string) TokenPair {
 	t.Helper()
 
-	rec := a.request(t, http.MethodPost, "/api/v1/auth/login", map[string]string{
+	rec := a.Request(t, http.MethodPost, "/api/v1/auth/login", map[string]string{
 		"username": username,
 		"password": password,
 	}, "")
 	require.Equal(t, http.StatusOK, rec.Code, "login failed: %s", rec.Body.String())
 
-	env := decodeEnvelope(t, rec)
+	env := DecodeEnvelope(t, rec)
 	require.True(t, env.Status)
 
-	var tokens tokenPair
-	decodeData(t, env, &tokens)
+	var tokens TokenPair
+	DecodeData(t, env, &tokens)
 	require.NotEmpty(t, tokens.AccessToken)
 	require.NotEmpty(t, tokens.RefreshToken)
 	require.Equal(t, "Bearer", tokens.TokenType)
 	return tokens
 }
 
-// newRequestWithHeader builds a bare request plus recorder for cases that need
-// a custom header on an otherwise body-less request.
-func newRequestWithHeader(t *testing.T, method, path, header, value string) (*http.Request, *httptest.ResponseRecorder) {
+// NewRequestWithHeader builds a bare request plus recorder for cases that
+// need a custom header on an otherwise body-less request.
+func NewRequestWithHeader(t *testing.T, method, path, header, value string) (*http.Request, *httptest.ResponseRecorder) {
 	t.Helper()
 	req := httptest.NewRequestWithContext(context.Background(), method, path, nil)
 	req.Header.Set(header, value)
 	return req, httptest.NewRecorder()
 }
 
-// waitForAuditLog polls (with a deadline, no fixed sleeps for correctness)
+// WaitForAuditLog polls (with a deadline, no fixed sleeps for correctness)
 // until an audit log row matching action and entityID appears.
-func (a *testApp) waitForAuditLog(t *testing.T, action models.LogAction, entityID uint) models.Log {
+func (a *App) WaitForAuditLog(t *testing.T, action models.LogAction, entityID uint) models.Log {
 	t.Helper()
 
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		var row models.Log
-		err := a.db.
+		err := a.DB.
 			Where("action = ? AND entity_id = ?", string(action), entityID).
 			First(&row).Error
 		if err == nil {
@@ -394,4 +413,9 @@ func (a *testApp) waitForAuditLog(t *testing.T, action models.LogAction, entityI
 			"timed out waiting for audit log action=%s entity_id=%d", action, entityID)
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// Itoa formats a uint for building URL paths.
+func Itoa(v uint) string {
+	return strconv.FormatUint(uint64(v), 10)
 }

@@ -1,10 +1,12 @@
-package integration_test
+package auth_test
 
 import (
 	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PhantomX7/athleton/internal/integration/harness"
 
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/pkg/constants/permissions"
@@ -17,7 +19,7 @@ import (
 // hatches (me, change-password, logout), and regains /admin access after
 // rotating the password.
 func TestSeededAdminMustChangeDefaultPassword(t *testing.T) {
-	app := newTestApp(t)
+	app := harness.New(t)
 
 	// Seed an admin exactly like database/seeder/seed/user.go does: default
 	// password, PasswordChangedAt left nil. The role carries log:read so that
@@ -29,52 +31,52 @@ func TestSeededAdminMustChangeDefaultPassword(t *testing.T) {
 		Phone:       "+620000000004",
 		IsActive:    true,
 		Role:        models.UserRoleAdmin,
-		AdminRoleID: &app.adminRole.ID,
-		Password:    testPasswordHash(),
+		AdminRoleID: &app.AdminRole.ID,
+		Password:    harness.PasswordHash(),
 	}
-	require.NoError(t, app.db.Create(&seededAdmin).Error)
-	require.NoError(t, app.casbinClient.AddRolePermissions(
-		app.adminRole.ID, []string{permissions.LogRead.String()},
+	require.NoError(t, app.DB.Create(&seededAdmin).Error)
+	require.NoError(t, app.Casbin.AddRolePermissions(
+		app.AdminRole.ID, []string{permissions.LogRead.String()},
 	))
 
-	tokens := app.loginAs(t, "seeded-admin", testPassword)
+	tokens := app.LoginAs(t, "seeded-admin", harness.TestPassword)
 
 	// Gated: every /admin endpoint answers 403 with the canonical envelope.
-	rec := app.request(t, http.MethodGet, "/api/v1/admin/log", nil, tokens.AccessToken)
+	rec := app.Request(t, http.MethodGet, "/api/v1/admin/log", nil, tokens.AccessToken)
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
-	env := decodeEnvelope(t, rec)
+	env := harness.DecodeEnvelope(t, rec)
 	require.False(t, env.Status)
 	require.Equal(t, "password change required", env.Message)
 
 	// The ungated /auth endpoints stay reachable so the account is not bricked.
-	rec = app.request(t, http.MethodGet, "/api/v1/auth/me", nil, tokens.AccessToken)
+	rec = app.Request(t, http.MethodGet, "/api/v1/auth/me", nil, tokens.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// Change the password via the escape hatch.
-	rec = app.request(t, http.MethodPost, "/api/v1/auth/change-password", map[string]string{
-		"old_password": testPassword,
-		"new_password": testNewPassword,
+	rec = app.Request(t, http.MethodPost, "/api/v1/auth/change-password", map[string]string{
+		"old_password": harness.TestPassword,
+		"new_password": harness.TestNewPassword,
 		"except_token": tokens.RefreshToken,
 	}, tokens.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// The change is persisted: PasswordChangedAt is now set.
 	var updated models.User
-	require.NoError(t, app.db.First(&updated, seededAdmin.ID).Error)
+	require.NoError(t, app.DB.First(&updated, seededAdmin.ID).Error)
 	require.NotNil(t, updated.PasswordChangedAt)
 
 	// The current session was excepted from revocation, so the same access
 	// token now clears the gate and reaches /admin.
-	rec = app.request(t, http.MethodGet, "/api/v1/admin/log", nil, tokens.AccessToken)
+	rec = app.Request(t, http.MethodGet, "/api/v1/admin/log", nil, tokens.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// A fresh login with the new password also works against /admin.
-	fresh := app.loginAs(t, "seeded-admin", testNewPassword)
-	rec = app.request(t, http.MethodGet, "/api/v1/admin/log", nil, fresh.AccessToken)
+	fresh := app.LoginAs(t, "seeded-admin", harness.TestNewPassword)
+	rec = app.Request(t, http.MethodGet, "/api/v1/admin/log", nil, fresh.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// Logout (the other escape hatch) keeps working for completeness.
-	rec = app.request(t, http.MethodPost, "/api/v1/auth/logout", map[string]string{
+	rec = app.Request(t, http.MethodPost, "/api/v1/auth/logout", map[string]string{
 		"refresh_token": fresh.RefreshToken,
 	}, fresh.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -85,7 +87,7 @@ func TestSeededAdminMustChangeDefaultPassword(t *testing.T) {
 // regular user with a nil PasswordChangedAt is not affected by the gate at all
 // (their /admin access already fails on role semantics, not the gate message).
 func TestSeededRootMustChangeDefaultPassword(t *testing.T) {
-	app := newTestApp(t)
+	app := harness.New(t)
 
 	seededRoot := models.User{
 		Username: "seeded-root",
@@ -94,25 +96,25 @@ func TestSeededRootMustChangeDefaultPassword(t *testing.T) {
 		Phone:    "+620000000005",
 		IsActive: true,
 		Role:     models.UserRoleRoot,
-		Password: testPasswordHash(),
+		Password: harness.PasswordHash(),
 	}
-	require.NoError(t, app.db.Create(&seededRoot).Error)
+	require.NoError(t, app.DB.Create(&seededRoot).Error)
 
-	tokens := app.loginAs(t, "seeded-root", testPassword)
+	tokens := app.LoginAs(t, "seeded-root", harness.TestPassword)
 
-	rec := app.request(t, http.MethodGet, "/api/v1/admin/log", nil, tokens.AccessToken)
+	rec := app.Request(t, http.MethodGet, "/api/v1/admin/log", nil, tokens.AccessToken)
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
-	env := decodeEnvelope(t, rec)
+	env := harness.DecodeEnvelope(t, rec)
 	require.False(t, env.Status)
 	require.Equal(t, "password change required", env.Message)
 
-	rec = app.request(t, http.MethodPost, "/api/v1/auth/change-password", map[string]string{
-		"old_password": testPassword,
-		"new_password": testNewPassword,
+	rec = app.Request(t, http.MethodPost, "/api/v1/auth/change-password", map[string]string{
+		"old_password": harness.TestPassword,
+		"new_password": harness.TestNewPassword,
 		"except_token": tokens.RefreshToken,
 	}, tokens.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
-	rec = app.request(t, http.MethodGet, "/api/v1/admin/log", nil, tokens.AccessToken)
+	rec = app.Request(t, http.MethodGet, "/api/v1/admin/log", nil, tokens.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 }

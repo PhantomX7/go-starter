@@ -1,4 +1,4 @@
-package integration_test
+package platform_test
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PhantomX7/athleton/internal/integration/harness"
 
 	"github.com/PhantomX7/athleton/internal/audit"
 	"github.com/PhantomX7/athleton/internal/models"
@@ -24,15 +26,15 @@ func drainAudit(t *testing.T) {
 // an audit log row. The login log is written by a detached goroutine (not
 // tracked by audit.Drain), so the assertion polls with a deadline.
 func TestAdminLoginWritesAuditLog(t *testing.T) {
-	app := newTestApp(t)
+	app := harness.New(t)
 
-	app.loginAs(t, adminUsername, testPassword)
+	app.LoginAs(t, harness.AdminUsername, harness.TestPassword)
 
-	row := app.waitForAuditLog(t, models.LogActionLogin, app.adminUser.ID)
+	row := app.WaitForAuditLog(t, models.LogActionLogin, app.AdminUser.ID)
 	require.Equal(t, models.LogEntityTypeUser, row.EntityType)
 	require.NotNil(t, row.UserID)
-	require.Equal(t, app.adminUser.ID, *row.UserID)
-	require.Contains(t, row.Message, app.adminUser.Name)
+	require.Equal(t, app.AdminUser.ID, *row.UserID)
+	require.Contains(t, row.Message, app.AdminUser.Name)
 }
 
 // TestChangePasswordWritesAuditLogAndRevokesOtherSessions covers the admin
@@ -40,33 +42,33 @@ func TestAdminLoginWritesAuditLog(t *testing.T) {
 // audit.Record (waited on via audit.Drain), every other session is revoked
 // while the excepted one survives, and the new password becomes effective.
 func TestChangePasswordWritesAuditLogAndRevokesOtherSessions(t *testing.T) {
-	app := newTestApp(t)
+	app := harness.New(t)
 
-	keep := app.loginAs(t, adminUsername, testPassword)
-	other := app.loginAs(t, adminUsername, testPassword)
+	keep := app.LoginAs(t, harness.AdminUsername, harness.TestPassword)
+	other := app.LoginAs(t, harness.AdminUsername, harness.TestPassword)
 
-	rec := app.request(t, http.MethodPost, "/api/v1/auth/change-password", map[string]string{
-		"old_password": testPassword,
-		"new_password": testNewPassword,
+	rec := app.Request(t, http.MethodPost, "/api/v1/auth/change-password", map[string]string{
+		"old_password": harness.TestPassword,
+		"new_password": harness.TestNewPassword,
 		"except_token": keep.RefreshToken,
 	}, keep.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// The audit write is async via audit.Record; Drain waits for it.
 	drainAudit(t)
-	row := app.waitForAuditLog(t, models.LogActionChangePassword, app.adminUser.ID)
+	row := app.WaitForAuditLog(t, models.LogActionChangePassword, app.AdminUser.ID)
 	require.Equal(t, models.LogEntityTypeUser, row.EntityType)
 	require.Contains(t, row.Message, "changed password")
 
 	// The excepted session is still alive...
-	rec = app.request(t, http.MethodGet, "/api/v1/auth/me", nil, keep.AccessToken)
+	rec = app.Request(t, http.MethodGet, "/api/v1/auth/me", nil, keep.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// ...while the other session's access token was killed via jti binding
 	// (gin-jwt reports an authorizer denial as 403).
-	rec = app.request(t, http.MethodGet, "/api/v1/auth/me", nil, other.AccessToken)
+	rec = app.Request(t, http.MethodGet, "/api/v1/auth/me", nil, other.AccessToken)
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 
 	// The new password is effective immediately.
-	app.loginAs(t, adminUsername, testNewPassword)
+	app.LoginAs(t, harness.AdminUsername, harness.TestNewPassword)
 }
