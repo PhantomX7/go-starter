@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/PhantomX7/athleton/pkg/config"
@@ -29,8 +28,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
-	"github.com/panjf2000/ants/v2"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 // Client exposes the S3 operations used by the application.
@@ -413,75 +412,54 @@ func (s3c *s3Client) UploadImagesParallel(
 		zap.Int("concurrency", maxConcurrency),
 	)
 
-	// Create worker pool
-	pool, err := ants.NewPool(maxConcurrency)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create worker pool: %w", err)
-	}
-	defer pool.Release()
-
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
+	// Each upload writes only its own results[i] slot, so distinct indices are
+	// race-free without a mutex. A nil slot after Wait means that file failed;
+	// errgroup limits concurrency and waits for every upload to finish.
 	results := make([]*S3UploadResult, len(files))
-	var uploadErrors []error
 
-	// Submit upload tasks
+	var g errgroup.Group
+	g.SetLimit(maxConcurrency)
+
 	for i, file := range files {
-		wg.Add(1)
-		idx := i
-		currentFile := file
-
-		err := pool.Submit(func() {
-			defer wg.Done()
-
-			// Check context cancellation
+		g.Go(func() error {
+			// Skip if the request was already cancelled; the nil slot below is
+			// counted as a failure so the whole batch rolls back.
 			if ctx.Err() != nil {
-				mu.Lock()
-				uploadErrors = append(uploadErrors, fmt.Errorf("upload cancelled for file %d", idx))
-				mu.Unlock()
-				return
+				return nil
 			}
-
-			// Upload file
-			result, err := s3c.UploadImage(ctx, currentFile, folder)
-
-			mu.Lock()
+			// UploadImage logs its own failures; a nil slot signals the error.
+			result, err := s3c.UploadImage(ctx, file, folder)
 			if err != nil {
-				uploadErrors = append(uploadErrors, fmt.Errorf("file %d: %w", idx, err))
-			} else {
-				results[idx] = result
+				return nil
 			}
-			mu.Unlock()
+			results[i] = result
+			return nil
 		})
+	}
+	_ = g.Wait()
 
-		if err != nil {
-			wg.Done()
-			mu.Lock()
-			uploadErrors = append(uploadErrors, fmt.Errorf("failed to submit file %d: %w", i, err))
-			mu.Unlock()
+	// Collect the objects that made it and count the ones that did not.
+	var uploadedKeys []string
+	failedCount := 0
+	for _, r := range results {
+		if r == nil {
+			failedCount++
+			continue
 		}
+		uploadedKeys = append(uploadedKeys, r.Key)
 	}
 
-	wg.Wait()
-
-	// Handle errors: roll back the uploads that did succeed so no orphaned
-	// objects are left behind, then fail the whole batch.
-	if len(uploadErrors) > 0 {
-		successCount := len(files) - len(uploadErrors)
+	// All-or-nothing: if anything failed, roll back the uploads that succeeded
+	// so no orphaned objects are left behind, then fail the whole batch.
+	if failedCount > 0 {
+		successCount := len(files) - failedCount
 		logger.Error("Parallel upload completed with errors",
 			zap.String("request_id", requestID),
 			zap.Int("total", len(files)),
 			zap.Int("success", successCount),
-			zap.Int("failed", len(uploadErrors)),
+			zap.Int("failed", failedCount),
 		)
 
-		var uploadedKeys []string
-		for _, r := range results {
-			if r != nil {
-				uploadedKeys = append(uploadedKeys, r.Key)
-			}
-		}
 		if len(uploadedKeys) > 0 {
 			// Best-effort cleanup. Use a context detached from cancellation so
 			// a cancelled request cannot also abort the rollback.
@@ -494,7 +472,7 @@ func (s3c *s3Client) UploadImagesParallel(
 			}
 		}
 
-		return nil, fmt.Errorf("upload failed for %d files", len(uploadErrors))
+		return nil, fmt.Errorf("upload failed for %d files", failedCount)
 	}
 
 	logger.Info("Parallel upload completed successfully",
