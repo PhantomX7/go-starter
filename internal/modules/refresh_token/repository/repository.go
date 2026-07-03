@@ -36,6 +36,7 @@ func HashRefreshToken(plaintext string) string {
 type RefreshTokenRepository interface {
 	repository.Repository[models.RefreshToken]
 	FindByToken(ctx context.Context, token string) (*models.RefreshToken, error)
+	FindByPreviousToken(ctx context.Context, token string) (*models.RefreshToken, error)
 	FindActiveByID(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error)
 	GetValidCountByUserID(ctx context.Context, userID uint) (int64, error)
 	DeleteInvalidToken(ctx context.Context) error
@@ -100,6 +101,26 @@ func (r *refreshTokenRepository) FindByToken(ctx context.Context, token string) 
 		// hashes are not secret but they are still session identifiers and
 		// should not be sprayed into logs.
 		return nil, cerrors.NewInternalServerError("failed to find refresh token record", err)
+	}
+	return &rt, nil
+}
+
+// FindByPreviousToken returns the row whose previous_token_hash matches the
+// given plaintext value — i.e. a token that has already been rotated away.
+// Presenting such a token is refresh-token reuse (a superseded value replayed),
+// so the caller must revoke the whole session family. The row is returned
+// regardless of its revoked/expired state because it is only used to identify
+// the owning user; a NotFound means the token was never a predecessor here.
+func (r *refreshTokenRepository) FindByPreviousToken(ctx context.Context, token string) (*models.RefreshToken, error) {
+	hashed := HashRefreshToken(token)
+	rt, err := gorm.G[models.RefreshToken](r.GetDB(ctx)).
+		Where(generated.RefreshToken.PreviousTokenHash.Eq(hashed)).
+		First(ctx)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, cerrors.NewNotFoundError("refresh token not found")
+		}
+		return nil, cerrors.NewInternalServerError("failed to look up superseded refresh token", err)
 	}
 	return &rt, nil
 }
@@ -282,7 +303,13 @@ func (r *refreshTokenRepository) UpdateTokenHashIfActive(ctx context.Context, ol
 	rows, err := gorm.G[models.RefreshToken](r.GetDB(ctx)).
 		Where(generated.RefreshToken.Token.Eq(oldHash)).
 		Where(generated.RefreshToken.RevokedAt.IsNull()).
-		Set(generated.RefreshToken.Token.Set(newHash)).
+		// Also record the hash we just rotated away from so a later replay of the
+		// old token is recognized as reuse (see FindByPreviousToken) rather than a
+		// generic invalid-token error.
+		Set(
+			generated.RefreshToken.Token.Set(newHash),
+			generated.RefreshToken.PreviousTokenHash.Set(oldHash),
+		).
 		Update(ctx)
 	if err != nil {
 		return false, cerrors.NewInternalServerError("failed to rotate refresh token hash", err)

@@ -45,6 +45,9 @@ var _ refreshtokenrepository.RefreshTokenRepository = &RefreshTokenRepositoryMoc
 //			FindByIDFunc: func(ctx context.Context, id uint, preloads ...pkgrepository.Association) (*models.RefreshToken, error) {
 //				panic("mock out the FindByID method")
 //			},
+//			FindByPreviousTokenFunc: func(ctx context.Context, token string) (*models.RefreshToken, error) {
+//				panic("mock out the FindByPreviousToken method")
+//			},
 //			FindByTokenFunc: func(ctx context.Context, token string) (*models.RefreshToken, error) {
 //				panic("mock out the FindByToken method")
 //			},
@@ -99,6 +102,9 @@ type RefreshTokenRepositoryMock struct {
 
 	// FindByIDFunc mocks the FindByID method.
 	FindByIDFunc func(ctx context.Context, id uint, preloads ...pkgrepository.Association) (*models.RefreshToken, error)
+
+	// FindByPreviousTokenFunc mocks the FindByPreviousToken method.
+	FindByPreviousTokenFunc func(ctx context.Context, token string) (*models.RefreshToken, error)
 
 	// FindByTokenFunc mocks the FindByToken method.
 	FindByTokenFunc func(ctx context.Context, token string) (*models.RefreshToken, error)
@@ -178,6 +184,13 @@ type RefreshTokenRepositoryMock struct {
 			// Preloads is the preloads argument value.
 			Preloads []pkgrepository.Association
 		}
+		// FindByPreviousToken holds details about calls to the FindByPreviousToken method.
+		FindByPreviousToken []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Token is the token argument value.
+			Token string
+		}
 		// FindByToken holds details about calls to the FindByToken method.
 		FindByToken []struct {
 			// Ctx is the ctx argument value.
@@ -255,6 +268,7 @@ type RefreshTokenRepositoryMock struct {
 	lockFindActiveByID             sync.RWMutex
 	lockFindAll                    sync.RWMutex
 	lockFindByID                   sync.RWMutex
+	lockFindByPreviousToken        sync.RWMutex
 	lockFindByToken                sync.RWMutex
 	lockGetValidCountByUserID      sync.RWMutex
 	lockRevokeAllByUserID          sync.RWMutex
@@ -515,6 +529,42 @@ func (mock *RefreshTokenRepositoryMock) FindByIDCalls() []struct {
 	mock.lockFindByID.RLock()
 	calls = mock.calls.FindByID
 	mock.lockFindByID.RUnlock()
+	return calls
+}
+
+// FindByPreviousToken calls FindByPreviousTokenFunc.
+func (mock *RefreshTokenRepositoryMock) FindByPreviousToken(ctx context.Context, token string) (*models.RefreshToken, error) {
+	if mock.FindByPreviousTokenFunc == nil {
+		panic("RefreshTokenRepositoryMock.FindByPreviousTokenFunc: method is nil but RefreshTokenRepository.FindByPreviousToken was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Token string
+	}{
+		Ctx:   ctx,
+		Token: token,
+	}
+	mock.lockFindByPreviousToken.Lock()
+	mock.calls.FindByPreviousToken = append(mock.calls.FindByPreviousToken, callInfo)
+	mock.lockFindByPreviousToken.Unlock()
+	return mock.FindByPreviousTokenFunc(ctx, token)
+}
+
+// FindByPreviousTokenCalls gets all the calls that were made to FindByPreviousToken.
+// Check the length with:
+//
+//	len(mockedRefreshTokenRepository.FindByPreviousTokenCalls())
+func (mock *RefreshTokenRepositoryMock) FindByPreviousTokenCalls() []struct {
+	Ctx   context.Context
+	Token string
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Token string
+	}
+	mock.lockFindByPreviousToken.RLock()
+	calls = mock.calls.FindByPreviousToken
+	mock.lockFindByPreviousToken.RUnlock()
 	return calls
 }
 

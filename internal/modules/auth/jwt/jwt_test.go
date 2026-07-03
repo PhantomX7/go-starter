@@ -617,6 +617,66 @@ func TestValidateAndRotateRefreshTokenDetectsReuse(t *testing.T) {
 	require.Equal(t, uint(11), revokeAllUser, "must revoke all sessions for the user on reuse")
 }
 
+// A stolen token replayed AFTER it was rotated away no longer matches any
+// active row (FindByToken fails), but its hash was recorded as the current
+// row's predecessor. Rotation must recognize the replay as reuse via the
+// previous-token lookup and revoke every session for the owning user — this is
+// the sequential steal-then-rotate case the in-place rotation could not catch
+// before, where the attacker who rotated first would otherwise keep a live
+// session and the victim would just see a generic invalid-token error.
+func TestValidateAndRotateRefreshTokenDetectsSupersededReuse(t *testing.T) {
+	revokeAllUser := uint(0)
+	prevLookedUp := ""
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		FindByTokenFunc: func(ctx context.Context, token string) (*models.RefreshToken, error) {
+			return nil, cerrors.NewNotFoundError("invalid refresh token")
+		},
+		FindByPreviousTokenFunc: func(ctx context.Context, token string) (*models.RefreshToken, error) {
+			prevLookedUp = token
+			return &models.RefreshToken{ID: uuid.New(), UserID: 11}, nil
+		},
+		RevokeAllByUserIDFunc: func(ctx context.Context, userID uint) error {
+			revokeAllUser = userID
+			return nil
+		},
+	}
+
+	a := newAuthJWT(t, &usermocks.UserRepositoryMock{}, refreshRepo, &logmocks.LogRepositoryMock{})
+	res, err := a.ValidateAndRotateRefreshToken(context.Background(), "stolen-old-token")
+
+	require.Error(t, err)
+	require.Nil(t, res, "must not hand out new tokens on reuse")
+	require.Equal(t, "stolen-old-token", prevLookedUp)
+	require.Equal(t, uint(11), revokeAllUser, "a superseded-token replay must revoke all of the user's sessions")
+}
+
+// A token that is neither active nor a recorded predecessor is just an unknown
+// value (expired-and-purged, garbage, wrong user). It must be rejected WITHOUT
+// revoking anyone's sessions, so a stranger poking random tokens can't force a
+// legitimate user to be logged out.
+func TestValidateAndRotateRefreshTokenIgnoresUnknownToken(t *testing.T) {
+	revokeCalled := false
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		FindByTokenFunc: func(ctx context.Context, token string) (*models.RefreshToken, error) {
+			return nil, cerrors.NewNotFoundError("invalid refresh token")
+		},
+		FindByPreviousTokenFunc: func(ctx context.Context, token string) (*models.RefreshToken, error) {
+			return nil, cerrors.NewNotFoundError("refresh token not found")
+		},
+		RevokeAllByUserIDFunc: func(ctx context.Context, userID uint) error {
+			revokeCalled = true
+			return nil
+		},
+	}
+
+	a := newAuthJWT(t, &usermocks.UserRepositoryMock{}, refreshRepo, &logmocks.LogRepositoryMock{})
+	res, err := a.ValidateAndRotateRefreshToken(context.Background(), "random-garbage")
+
+	require.Error(t, err)
+	require.Nil(t, res)
+	require.False(t, revokeCalled, "an unknown token must not trigger a family-wide revocation")
+}
+
 // Rotation must wrap the hash-swap + access-token mint in a single transaction
 // so the two commit or roll back together (a mint failure after a committed
 // swap would leave the client with a dead old token and no replacement). This

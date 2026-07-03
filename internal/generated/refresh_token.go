@@ -9,21 +9,23 @@ import (
 )
 
 var RefreshToken = struct {
-	ID        field.Field[uuid.UUID]
-	UserID    field.Number[uint]
-	Token     field.String
-	ExpiresAt field.Time
-	CreatedAt field.Time
-	UpdatedAt field.Time
-	RevokedAt field.Time
-	User      field.Struct[models.User]
+	ID                field.Field[uuid.UUID]
+	UserID            field.Number[uint]
+	Token             field.String
+	PreviousTokenHash field.String
+	ExpiresAt         field.Time
+	CreatedAt         field.Time
+	UpdatedAt         field.Time
+	RevokedAt         field.Time
+	User              field.Struct[models.User]
 }{
-	ID:        field.Field[uuid.UUID]{}.WithColumn("id"),
-	UserID:    field.Number[uint]{}.WithColumn("user_id"),
-	Token:     field.String{}.WithColumn("token"),
-	ExpiresAt: field.Time{}.WithColumn("expires_at"),
-	CreatedAt: field.Time{}.WithColumn("created_at"),
-	UpdatedAt: field.Time{}.WithColumn("updated_at"),
-	RevokedAt: field.Time{}.WithColumn("revoked_at"),
-	User:      field.Struct[models.User]{}.WithName("User"),
+	ID:                field.Field[uuid.UUID]{}.WithColumn("id"),
+	UserID:            field.Number[uint]{}.WithColumn("user_id"),
+	Token:             field.String{}.WithColumn("token"),
+	PreviousTokenHash: field.String{}.WithColumn("previous_token_hash"),
+	ExpiresAt:         field.Time{}.WithColumn("expires_at"),
+	CreatedAt:         field.Time{}.WithColumn("created_at"),
+	UpdatedAt:         field.Time{}.WithColumn("updated_at"),
+	RevokedAt:         field.Time{}.WithColumn("revoked_at"),
+	User:              field.Struct[models.User]{}.WithName("User"),
 }

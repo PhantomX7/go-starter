@@ -338,6 +338,21 @@ func (a *AuthJWT) GenerateTokensForUser(ctx context.Context, user *models.User) 
 func (a *AuthJWT) ValidateAndRotateRefreshToken(ctx context.Context, oldToken string) (*dto.AuthResponse, error) {
 	tokenRecord, err := a.refreshTokenRepo.FindByToken(ctx, oldToken)
 	if err != nil {
+		// The token isn't active. Before rejecting it as merely invalid, check
+		// whether it is a value we already rotated away: presenting a superseded
+		// token is refresh-token reuse (a stolen token replayed after the
+		// legitimate client — or the attacker — rotated it). Rotation overwrites
+		// the token hash in place, so this predecessor lookup is the only thing
+		// that can catch a sequential steal-then-rotate; without it the replay is
+		// indistinguishable from a random invalid token and the family survives.
+		if superseded, ferr := a.refreshTokenRepo.FindByPreviousToken(ctx, oldToken); ferr == nil {
+			logger.Warn("Refresh-token reuse detected (superseded token replayed); revoking all sessions",
+				zap.Uint("user_id", superseded.UserID))
+			if rerr := a.refreshTokenRepo.RevokeAllByUserID(ctx, superseded.UserID); rerr != nil {
+				logger.Error("Failed to revoke sessions after refresh-token reuse",
+					zap.Uint("user_id", superseded.UserID), zap.Error(rerr))
+			}
+		}
 		return nil, cerrors.NewBadRequestError("invalid or expired refresh token")
 	}
 

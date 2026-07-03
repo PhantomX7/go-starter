@@ -304,6 +304,37 @@ func TestRefreshTokenRepositoryUpdateTokenHashIfActiveRotatesInPlace(t *testing.
 	require.Error(t, err)
 }
 
+// Rotation records the hash it replaced in previous_token_hash so a later
+// replay of the old token can be recognized as reuse, and FindByPreviousToken
+// resolves that superseded value back to the owning row.
+func TestRefreshTokenRepositoryRotationRecordsPreviousHashForReuseDetection(t *testing.T) {
+	db := setupDB(t)
+	repo := refreshtokenrepository.NewRefreshTokenRepository(db)
+	user := seedUser(t, db, "mona")
+	seed := seedToken(t, db, user.ID, "gen-1", time.Now().Add(time.Hour), nil)
+
+	updated, err := repo.UpdateTokenHashIfActive(context.Background(), "gen-1", "gen-2")
+	require.NoError(t, err)
+	require.True(t, updated)
+
+	// The rotated-away hash is stored on the row.
+	var stored models.RefreshToken
+	require.NoError(t, db.First(&stored, "id = ?", seed.ID).Error)
+	require.NotNil(t, stored.PreviousTokenHash)
+	require.Equal(t, refreshtokenrepository.HashRefreshToken("gen-1"), *stored.PreviousTokenHash)
+
+	// Replaying the superseded token resolves to the owning row via the
+	// previous-token lookup — this is what turns a replay into a reuse signal.
+	superseded, err := repo.FindByPreviousToken(context.Background(), "gen-1")
+	require.NoError(t, err)
+	require.Equal(t, seed.ID, superseded.ID)
+	require.Equal(t, user.ID, superseded.UserID)
+
+	// A token that was never anyone's predecessor is not found.
+	_, err = repo.FindByPreviousToken(context.Background(), "never-seen")
+	require.ErrorIs(t, err, cerrors.ErrNotFound)
+}
+
 func TestRefreshTokenRepositoryUpdateTokenHashIfActiveReportsReuse(t *testing.T) {
 	db := setupDB(t)
 	repo := refreshtokenrepository.NewRefreshTokenRepository(db)
