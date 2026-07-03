@@ -4,7 +4,7 @@ Go API service built on [gin](https://github.com/gin-gonic/gin), [GORM](https://
 
 ## Prerequisites
 
-- **Go** 1.24+ (toolchain pinned to 1.24.7 in `go.mod`)
+- **Go** 1.26+ (toolchain pinned to 1.26.4 in `go.mod`)
 - **PostgreSQL** 14+ (configurable via `DATABASE_DRIVER`)
 - **Atlas CLI** — `curl -sSf https://atlasgo.sh | sh` (used by `make migrate-*`)
 - **swag** (optional, for regenerating API docs) — `go install github.com/swaggo/swag/cmd/swag@latest`
@@ -22,7 +22,7 @@ make hooks-install   # lefthook + git hooks (pre-commit, pre-push)
 cp .env.example .env          # fill in DB + S3 + JWT values
 make dep                      # go mod tidy
 make migrate-up               # apply schema
-make seed                     # optional: seed admin user + roles
+make seed                     # seed the root + admin users (uses ADMIN_* env vars)
 make run                      # start on SERVER_PORT (default 8080)
 ```
 
@@ -41,14 +41,17 @@ database/
   seeder/           Seed runner + per-domain seeds
 internal/         Application code (not importable by other modules)
   bootstrap/        fx providers wiring config, DB, logger, S3, bleve, etc.
-  middlewares/      auth, has_role, request logging, recovery
+  middlewares/      auth/role/permission guards, rate limit, body limit,
+                    request ID, logging, timeout, recovery, error handler
   models/           GORM entities (source of truth for schema)
   modules/          Vertical slices — one folder per domain
-                    (auth, user, admin_role, config, cron, log, post, refresh_token)
+                    (auth, user, admin_role, config, cron, log, refresh_token)
                     Each module has controller/ service/ repository/ + routes.go.
-  routes/           Route registration per module
+  routes/           Route registration + the shared /admin middleware stack
   dto/              Shared request/response DTOs
   audit/            Audit log helpers
+  integration/      End-to-end tests: a shared harness/ package boots the real
+                    app, one sub-package per domain (auth, authz, user, …)
   generated/        gorm-cli field helpers (regenerated, do not edit)
 libs/             Third-party adapters
   bleve/            Search index + pagination helpers
@@ -64,19 +67,26 @@ docs/             Swagger output (swagger.json / swagger.yaml / docs.go)
 ### Adding a new module
 
 ```bash
-make module module_name=widget                    # module + model + DTO (default)
-make module module_name=widget model=0 dto=0      # module only (model/DTO already exist)
-make module module_name=widget force=1            # overwrite an existing module
+make module module_name=widget                        # module + model + DTO + permissions (default)
+make module module_name=widget model=0 dto=0          # module only (model/DTO already exist)
+make module module_name=widget permissions=0          # skip permission registration
+make module module_name=widget force=1                # overwrite an existing module
 ```
 
-The scaffolder wires everything automatically: registers the module in
-[internal/modules/modules.go](internal/modules/modules.go), mounts admin CRUD
-routes via the module's `routes.go`, and refreshes the typed field helpers in
-[internal/generated/](internal/generated/) (`make gorm-gen`). Existing files are
-never overwritten unless `force=1` is passed. After scaffolding: fill in the
-business logic, create a migration (`make migrate-create`), and replace the
-placeholder tests. See [cmd/generate/README_GENERATOR.md](cmd/generate/README_GENERATOR.md)
-for details.
+The scaffolder wires everything automatically:
+
+- registers the module in [internal/modules/modules.go](internal/modules/modules.go)
+- mounts **permission-guarded** admin CRUD routes via the module's `routes.go`
+- registers `widget:create/read/update/delete` in
+  [pkg/constants/permissions/permissions.go](pkg/constants/permissions/permissions.go)
+  so the generated routes compile and the permissions are assignable to roles
+- refreshes the typed field helpers in [internal/generated/](internal/generated/) (`make gorm-gen`)
+
+Existing files are never overwritten unless `force=1` is passed. After
+scaffolding: fill in the business logic, create a migration
+(`make migrate-create`), assign the new permissions to admin roles, and grow
+the generated tests. See
+[cmd/generate/README_GENERATOR.md](cmd/generate/README_GENERATOR.md) for details.
 
 ## Make targets
 
@@ -114,7 +124,7 @@ for details.
 | Target | Description |
 | --- | --- |
 | `make swag` | Regenerate Swagger docs |
-| `make module module_name=foo [model=0] [dto=0] [force=1]` | Scaffold a new module (+ model + DTO by default) |
+| `make module module_name=foo [model=0] [dto=0] [permissions=0] [force=1]` | Scaffold a new module (+ model + DTO + permissions by default) |
 | `make gorm-gen` | Regenerate GORM CLI field helpers |
 
 ## Testing
@@ -142,6 +152,41 @@ Migration files live in [database/migrations/](database/migrations/) in `golang-
 
 Swagger annotations live alongside controllers. Regenerate with `make swag` whenever a handler signature, tag, or response type changes. Committed outputs are `docs/swagger.json`, `docs/swagger.yaml`, and `docs/docs.go`.
 
+## Authorization & roles
+
+Every user row carries one of three roles:
+
+| Role | How it's created | Access |
+| --- | --- | --- |
+| `user` | Self-registration (`POST /auth/register`) | Public endpoints only |
+| `admin` | Created by an admin (`POST /admin/user`) or promoted from a user (`POST /admin/user/:id/admin-role`) | `/admin` routes, gated per-permission by the assigned admin role |
+| `root` | Seeder only — never via the API | Bypasses all permission checks |
+
+**Root is protected by construction.** No request field can produce a `root`
+account (registration hardcodes `user`, admin-create hardcodes `admin`), and
+every mutating user endpoint refuses a root target — update, role assignment,
+and password change all return 403, and there is no user-delete route. Root
+rotates its own password only through the self-service `/auth/change-password`.
+
+**The `/admin` surface is defended in depth.** The group middleware runs
+`RequireAuth → RequireRole(admin, root) → RequirePasswordChanged` before any
+handler, so a plain user is rejected even if a route forgets its per-route
+guard. Individual routes then authorize admins with fine-grained
+`resource:action` permissions enforced via [Casbin](libs/casbin/); the registry
+lives in [pkg/constants/permissions](pkg/constants/permissions/). Managing
+*admin* accounts requires the stronger `admin_user:*` grants — `user:*` governs
+regular accounts only.
+
+**Seeded admin/root accounts must rotate their password.** An account whose
+password it did not choose itself (seeded, or created by another admin) has a
+null `PasswordChangedAt` and is blocked from `/admin` by the
+must-change-default-password gate until it rotates via `/auth/change-password`.
+
+**Public config is opt-in.** The unauthenticated `/public/config` surface only
+serves rows explicitly marked `is_public`; everything else is admin-only, so the
+config table can safely hold secrets. Toggle visibility with the `is_public`
+field on the admin config update.
+
 ## Configuration
 
 All config is loaded from `.env` via [pkg/config](pkg/config/). See [.env.example](.env.example) for the full list. Key sections:
@@ -158,4 +203,4 @@ All config is loaded from `.env` via [pkg/config](pkg/config/). See [.env.exampl
 `make hooks-install` wires up [lefthook.yml](lefthook.yml):
 
 - **pre-commit** — `golangci-lint fmt` on staged files (auto-staged), `go vet`, `golangci-lint run --fast-only`
-- **pre-push** — `go test -race ./...`
+- **pre-push** — `go test ./...` (CI runs the same suite with `-race`)
