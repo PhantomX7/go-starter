@@ -64,8 +64,9 @@ func (m *Middleware) Logger() gin.HandlerFunc {
 		case statusCode >= 300:
 			logger.Info("Redirection", fields...)
 		default:
-			// Use Debug for normal successful requests to reduce noise
-			logger.Debug("Request completed", fields...)
+			// Normal successful requests: log at Info so accessed endpoints are
+			// visible at the default LOG_LEVEL, not hidden behind LOG_LEVEL=debug.
+			logger.Info("Request completed", fields...)
 		}
 	}
 }
