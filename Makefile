@@ -68,7 +68,7 @@ debug:
 
 swag:
 	swag fmt
-	swag init -g cmd/main.go
+	swag init -g cmd/main.go -q
 
 swag-format:
 	swag fmt
