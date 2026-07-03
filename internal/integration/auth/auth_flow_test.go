@@ -31,8 +31,9 @@ func TestAuthLoginRefreshLogoutFlow(t *testing.T) {
 
 	// Refresh swaps the refresh-token hash on the same session row. The new
 	// access token reuses the session's jti, so it can be byte-identical to
-	// the first one when minted within the same second â€” only the refresh
-	// token is guaranteed to change.
+	// the first one when minted within the same second — only the refresh
+	// token is guaranteed to change. No reuse is triggered here (the old token
+	// is never replayed); see TestRefreshTokenReuseRevokesSessionFamily.
 	rec = app.Request(t, http.MethodPost, "/api/v1/auth/refresh", map[string]string{
 		"refresh_token": first.RefreshToken,
 	}, "")
@@ -43,16 +44,8 @@ func TestAuthLoginRefreshLogoutFlow(t *testing.T) {
 	require.NotEmpty(t, second.RefreshToken)
 	require.NotEqual(t, first.RefreshToken, second.RefreshToken)
 
-	// The old refresh token was invalidated by rotation and is rejected on
-	// reuse.
-	rec = app.Request(t, http.MethodPost, "/api/v1/auth/refresh", map[string]string{
-		"refresh_token": first.RefreshToken,
-	}, "")
-	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
-	require.False(t, harness.DecodeEnvelope(t, rec).Status)
-
 	// Rotation keeps the session row (and its jti) alive, so access tokens
-	// minted before the refresh keep working until they expire â€” parallel
+	// minted before the refresh keep working until they expire — parallel
 	// requests no longer race the refresh.
 	rec = app.Request(t, http.MethodGet, "/api/v1/admin/log", nil, first.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -75,6 +68,46 @@ func TestAuthLoginRefreshLogoutFlow(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 
 	// And the logged-out refresh token cannot be used to mint new tokens.
+	rec = app.Request(t, http.MethodPost, "/api/v1/auth/refresh", map[string]string{
+		"refresh_token": second.RefreshToken,
+	}, "")
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+}
+
+// TestRefreshTokenReuseRevokesSessionFamily covers refresh-token reuse
+// detection: replaying a token that was already rotated away is treated as a
+// breach — the request is rejected AND every session for the user is revoked,
+// so a stolen-then-rotated token cannot outlive detection. (This is the
+// behavior change introduced with previous_token_hash tracking; before it, a
+// replayed superseded token returned a bare 400 and the session survived.)
+func TestRefreshTokenReuseRevokesSessionFamily(t *testing.T) {
+	app := harness.New(t)
+
+	first := app.LoginAs(t, harness.RootUsername, harness.TestPassword)
+
+	// Rotate: first.RefreshToken becomes the superseded predecessor of second.
+	rec := app.Request(t, http.MethodPost, "/api/v1/auth/refresh", map[string]string{
+		"refresh_token": first.RefreshToken,
+	}, "")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var second harness.TokenPair
+	harness.DecodeData(t, harness.DecodeEnvelope(t, rec), &second)
+
+	// The rotated session is live: the freshly minted access token works.
+	rec = app.Request(t, http.MethodGet, "/api/v1/admin/log", nil, second.AccessToken)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	// Replay the superseded token — rejected as reuse.
+	rec = app.Request(t, http.MethodPost, "/api/v1/auth/refresh", map[string]string{
+		"refresh_token": first.RefreshToken,
+	}, "")
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	require.False(t, harness.DecodeEnvelope(t, rec).Status)
+
+	// The whole family is now revoked: the previously-live access token is
+	// rejected, and the current refresh token can no longer mint new tokens.
+	rec = app.Request(t, http.MethodGet, "/api/v1/admin/log", nil, second.AccessToken)
+	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 	rec = app.Request(t, http.MethodPost, "/api/v1/auth/refresh", map[string]string{
 		"refresh_token": second.RefreshToken,
 	}, "")
