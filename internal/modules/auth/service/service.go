@@ -84,7 +84,10 @@ func (s *authService) GetMe(ctx context.Context) (*dto.MeResponse, error) {
 		user.AdminRole.Permissions = s.casbinClient.GetRolePermissions(*user.AdminRoleID)
 	}
 
-	return &dto.MeResponse{UserResponse: *user.ToResponse()}, nil
+	return &dto.MeResponse{
+		UserResponse:       *user.ToResponse(),
+		MustChangePassword: user.MustChangePassword(),
+	}, nil
 }
 
 // Register creates a new user account

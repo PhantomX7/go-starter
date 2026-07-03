@@ -297,9 +297,10 @@ func (a *AuthJWT) loginResponse(c *gin.Context, token *core.Token) {
 	}
 
 	c.JSON(http.StatusOK, response.BuildResponseSuccess("login success", dto.AuthResponse{
-		AccessToken:  token.AccessToken,
-		RefreshToken: refreshToken,
-		TokenType:    "Bearer",
+		AccessToken:        token.AccessToken,
+		RefreshToken:       refreshToken,
+		TokenType:          "Bearer",
+		MustChangePassword: user.MustChangePassword(),
 	}))
 }
 
@@ -323,9 +324,10 @@ func (a *AuthJWT) GenerateTokensForUser(ctx context.Context, user *models.User) 
 	}
 
 	return &dto.AuthResponse{
-		AccessToken:  token.AccessToken,
-		RefreshToken: refreshTokenStr,
-		TokenType:    "Bearer",
+		AccessToken:        token.AccessToken,
+		RefreshToken:       refreshTokenStr,
+		TokenType:          "Bearer",
+		MustChangePassword: user.MustChangePassword(),
 	}, nil
 }
 
@@ -411,9 +413,10 @@ func (a *AuthJWT) ValidateAndRotateRefreshToken(ctx context.Context, oldToken st
 		}
 
 		resp = &dto.AuthResponse{
-			AccessToken:  token.AccessToken,
-			RefreshToken: newToken,
-			TokenType:    "Bearer",
+			AccessToken:        token.AccessToken,
+			RefreshToken:       newToken,
+			TokenType:          "Bearer",
+			MustChangePassword: user.MustChangePassword(),
 		}
 		return nil
 	})

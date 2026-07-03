@@ -311,9 +311,10 @@ type Envelope struct {
 
 // TokenPair is the auth payload inside a login/refresh/register response.
 type TokenPair struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	TokenType    string `json:"token_type"`
+	AccessToken        string `json:"access_token"`
+	RefreshToken       string `json:"refresh_token"`
+	TokenType          string `json:"token_type"`
+	MustChangePassword bool   `json:"must_change_password"`
 }
 
 // Request performs an HTTP request against the assembled engine. body may be

@@ -58,6 +58,15 @@ type User struct {
 	Logs []Log `json:"-" gorm:"polymorphic:Entity;polymorphicValue:user"`
 }
 
+// MustChangePassword reports whether this account still uses a password it did
+// not choose itself — an admin/root seeded with the default. It mirrors the
+// RequirePasswordChanged middleware gate (which enforces it) and drives the API
+// hint of the same name, so the frontend can route to the change-password
+// screen proactively instead of waiting for a 403 on the first /admin call.
+func (u User) MustChangePassword() bool {
+	return u.Role.IsAdminType() && u.PasswordChangedAt == nil
+}
+
 // ToResponse converts a User into its response DTO.
 func (u User) ToResponse() *dto.UserResponse {
 	response := dto.UserResponse{

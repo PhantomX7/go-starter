@@ -1753,6 +1753,10 @@ const docTemplate = `{
                 "access_token": {
                     "type": "string"
                 },
+                "must_change_password": {
+                    "description": "MustChangePassword is true when the account (admin/root) still uses the\nseeded default password and is blocked from /admin until it rotates it.\nA hint only — the RequirePasswordChanged middleware is what enforces it.",
+                    "type": "boolean"
+                },
                 "refresh_token": {
                     "type": "string"
                 },
@@ -1946,6 +1950,10 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "is_active": {
+                    "type": "boolean"
+                },
+                "must_change_password": {
+                    "description": "MustChangePassword mirrors the flag on AuthResponse; see it for details.",
                     "type": "boolean"
                 },
                 "name": {

@@ -42,9 +42,15 @@ type AuthResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	TokenType    string `json:"token_type"`
+	// MustChangePassword is true when the account (admin/root) still uses the
+	// seeded default password and is blocked from /admin until it rotates it.
+	// A hint only — the RequirePasswordChanged middleware is what enforces it.
+	MustChangePassword bool `json:"must_change_password"`
 }
 
 // MeResponse is the profile payload returned for the authenticated user.
 type MeResponse struct {
 	UserResponse
+	// MustChangePassword mirrors the flag on AuthResponse; see it for details.
+	MustChangePassword bool `json:"must_change_password"`
 }

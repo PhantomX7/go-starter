@@ -41,6 +41,10 @@ func TestSeededAdminMustChangeDefaultPassword(t *testing.T) {
 
 	tokens := app.LoginAs(t, "seeded-admin", harness.TestPassword)
 
+	// The login response hints the frontend that a rotation is required, so it
+	// can route to the change-password screen without waiting for the 403.
+	require.True(t, tokens.MustChangePassword, "seeded admin login must flag must_change_password")
+
 	// Gated: every /admin endpoint answers 403 with the canonical envelope.
 	rec := app.Request(t, http.MethodGet, "/api/v1/admin/log", nil, tokens.AccessToken)
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
@@ -70,8 +74,10 @@ func TestSeededAdminMustChangeDefaultPassword(t *testing.T) {
 	rec = app.Request(t, http.MethodGet, "/api/v1/admin/log", nil, tokens.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
-	// A fresh login with the new password also works against /admin.
+	// A fresh login with the new password also works against /admin, and the
+	// hint has cleared now that the password was rotated.
 	fresh := app.LoginAs(t, "seeded-admin", harness.TestNewPassword)
+	require.False(t, fresh.MustChangePassword, "after rotation the login hint must clear")
 	rec = app.Request(t, http.MethodGet, "/api/v1/admin/log", nil, fresh.AccessToken)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 

@@ -22,6 +22,30 @@ func TestUserRoleToString(t *testing.T) {
 	require.Equal(t, "root", models.UserRoleRoot.ToString())
 }
 
+func TestUserMustChangePassword(t *testing.T) {
+	changed := time.Now()
+
+	cases := []struct {
+		name string
+		user models.User
+		want bool
+	}{
+		{"admin with default password", models.User{Role: models.UserRoleAdmin}, true},
+		{"root with default password", models.User{Role: models.UserRoleRoot}, true},
+		{"admin who rotated", models.User{Role: models.UserRoleAdmin, PasswordChangedAt: &changed}, false},
+		{"root who rotated", models.User{Role: models.UserRoleRoot, PasswordChangedAt: &changed}, false},
+		// Regular users are never seeded with a default, so the gate never applies.
+		{"regular user, never changed", models.User{Role: models.UserRoleUser}, false},
+		{"regular user who rotated", models.User{Role: models.UserRoleUser, PasswordChangedAt: &changed}, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.user.MustChangePassword())
+		})
+	}
+}
+
 func TestUserRoleIsAdminType(t *testing.T) {
 	require.False(t, models.UserRoleUser.IsAdminType())
 	require.True(t, models.UserRoleAdmin.IsAdminType())
