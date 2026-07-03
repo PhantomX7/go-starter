@@ -1399,6 +1399,37 @@ func (suite *PaginationTestSuite) TestLikeWildcardEscapingMultiField() {
 	suite.Equal(uint(102), users[0].ID)
 }
 
+// TestCommaInScalarValueIsNotSplit — a comma inside an eq/like value is part
+// of the value. Before the fix the value was split on commas, the resulting
+// two-element list failed the single-value check, and the filter was silently
+// dropped — returning every row instead of the matching one.
+func (suite *PaginationTestSuite) TestCommaInScalarValueIsNotSplit() {
+	suite.db.Create(&User{ID: 103, Name: "Smith, John", Email: "smith@x.com", Status: "active", IsActive: true, Role: "user"})
+	defer suite.db.Unscoped().Delete(&User{}, 103)
+
+	filterDef := pagination.NewFilterDefinition().
+		AddFilter("name", pagination.FilterConfig{Field: "name", Type: pagination.FilterTypeString})
+
+	pg := pagination.NewPagination(
+		map[string][]string{"name": {"eq:Smith, John"}},
+		filterDef, pagination.PaginationOptions{},
+	)
+	var users []User
+	suite.NoError(pg.Apply(suite.db).Find(&users).Error)
+	suite.Equal(1, len(users), "eq value containing a comma must filter by the literal value, not be dropped")
+	if len(users) == 1 {
+		suite.Equal(uint(103), users[0].ID)
+	}
+
+	pg2 := pagination.NewPagination(
+		map[string][]string{"name": {"like:Smith, J"}},
+		filterDef, pagination.PaginationOptions{},
+	)
+	var users2 []User
+	suite.NoError(pg2.Apply(suite.db).Find(&users2).Error)
+	suite.Equal(1, len(users2), "like value containing a comma must keep filtering")
+}
+
 // TestColonInValueIsNotMisparsedAsOperator — values that legitimately contain
 // a colon (URLs, namespaced keys) must not have the prefix stripped as if it
 // were an operator.

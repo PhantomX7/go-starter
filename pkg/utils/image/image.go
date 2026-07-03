@@ -200,6 +200,9 @@ func (ic *ImageCompressor) CreateThumbnail(reader io.Reader, width, height int) 
 
 	// Fallback to JPEG
 	if format == "" {
+		// A failed WebP encode may have already streamed partial bytes into
+		// buf; reset so the JPEG output is not appended to a WebP prefix.
+		buf.Reset()
 		if err = jpeg.Encode(buf, thumbnail, &jpeg.Options{Quality: 85}); err != nil {
 			return nil, fmt.Errorf("failed to encode thumbnail: %w", err)
 		}

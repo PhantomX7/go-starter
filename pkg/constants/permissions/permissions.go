@@ -1,6 +1,11 @@
 // Package permissions defines the permission registry used by authorization checks.
 package permissions
 
+import (
+	"slices"
+	"sort"
+)
+
 // Permission represents a single permission string (format: "resource:action")
 type Permission string
 
@@ -315,9 +320,9 @@ var AllPermissions = map[string][]PermissionInfo{
 		{ProductUpdate, ResourceProduct, ActionUpdate, "Update products"},
 		{ProductDelete, ResourceProduct, ActionDelete, "Delete products"},
 		{ProductExport, ResourceProduct, "export", "Export products to Excel"},
-		// {ProductExportAll, ResourceProduct, "export_all", "Export all products to Excel"},
+		{ProductExportAll, ResourceProduct, "export_all", "Export all products to Excel"},
 		{ProductImport, ResourceProduct, "import", "Import products from Excel"},
-		// {ProductValidateImport, ResourceProduct, "validate_import", "Validate product import file"},
+		{ProductValidateImport, ResourceProduct, "validate_import", "Validate product import file"},
 		// {ProductManage, ResourceProduct, ActionManage, "Full access to products"},
 	},
 	ResourceSpecDefinition: {
@@ -374,17 +379,20 @@ func IsValidPermission(perm string) bool {
 	return permissionSet[perm]
 }
 
-// GetResourceActions returns all valid actions for a resource (excluding "manage")
+// GetResourceActions returns all valid actions for a resource (excluding
+// "manage"). The slice is a copy so callers cannot mutate the registry.
 func GetResourceActions(resource string) []string {
-	return resourceActions[resource]
+	return slices.Clone(resourceActions[resource])
 }
 
-// GetAllPermissionsList returns a flat list of all permission strings
+// GetAllPermissionsList returns a flat, sorted list of all permission strings.
+// Sorting keeps seeding and diffing deterministic across process restarts.
 func GetAllPermissionsList() []string {
 	result := make([]string, 0, len(permissionSet))
 	for perm := range permissionSet {
 		result = append(result, perm)
 	}
+	sort.Strings(result)
 	return result
 }
 

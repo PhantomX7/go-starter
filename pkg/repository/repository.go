@@ -280,6 +280,11 @@ func (r *BaseRepository[T]) logSlow(ctx context.Context, operation string, durat
 	if duration <= threshold {
 		return
 	}
+	// Guard the mutable global like pkg/validator does: a slow query before
+	// logger.Init must not panic inside a repository call.
+	if logger.Log == nil {
+		return
+	}
 	logger.Warn("Slow query detected",
 		zap.String("request_id", utils.GetRequestIDFromContext(ctx)),
 		zap.String("entity_type", r.entityName),

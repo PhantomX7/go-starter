@@ -8,9 +8,11 @@
 package config
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 )
 
@@ -55,6 +57,42 @@ func TestValidateAcceptsValidConfig(t *testing.T) {
 	t.Parallel()
 
 	require.NoError(t, validConfig().validate())
+}
+
+// TestSetDefaultsCoversEveryConfigKey — with viper, a key that has no
+// registered default is invisible to Unmarshal when it is set only as an OS
+// env var (env vars are not enumerable), so a missing setDefaults entry
+// silently drops that setting in .env-less deployments. Walk every
+// mapstructure tag in Config and require a registered default.
+func TestSetDefaultsCoversEveryConfigKey(t *testing.T) {
+	t.Parallel()
+
+	v := viper.New()
+	setDefaults(v)
+
+	var keys []string
+	collectMapstructureKeys(reflect.TypeOf(Config{}), &keys)
+	require.NotEmpty(t, keys)
+
+	for _, key := range keys {
+		require.True(t, v.IsSet(key),
+			"config key %s has no default in setDefaults; an env-only deployment silently drops it", key)
+	}
+}
+
+// collectMapstructureKeys walks nested config structs and gathers the flat
+// viper keys from mapstructure tags.
+func collectMapstructureKeys(tp reflect.Type, out *[]string) {
+	for i := 0; i < tp.NumField(); i++ {
+		field := tp.Field(i)
+		if field.Type.Kind() == reflect.Struct {
+			collectMapstructureKeys(field.Type, out)
+			continue
+		}
+		if tag := field.Tag.Get("mapstructure"); tag != "" && tag != "-" {
+			*out = append(*out, tag)
+		}
+	}
 }
 
 func TestValidateServer(t *testing.T) {

@@ -160,9 +160,15 @@ func Panic(msg string, fields ...zap.Field) {
 	Log.Panic(msg, fields...)
 }
 
-// With creates a child logger with the provided fields
+// With creates a child logger with the provided fields. Like Ctx, the
+// returned logger is used directly (log.Info(...)), so the +1 caller skip the
+// global carries for the package-level helpers must be undone — otherwise
+// file:line points at the caller's caller.
 func With(fields ...zap.Field) *zap.Logger {
-	return Log.With(fields...)
+	if Log == nil {
+		return zap.NewNop()
+	}
+	return Log.WithOptions(zap.AddCallerSkip(-1)).With(fields...)
 }
 
 // Ctx returns a logger pre-bound with request-scoped fields (request_id,

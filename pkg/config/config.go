@@ -200,6 +200,7 @@ func setDefaults(v *viper.Viper) {
 		"S3_BUCKET":            "bucket",
 		"S3_REGION":            "ap-southeast-1",
 		"S3_ENDPOINT":          "",
+		"S3_CDN_URL":           "",
 		"S3_ACCESS_KEY_ID":     "",
 		"S3_SECRET_ACCESS_KEY": "",
 		"S3_UPLOAD_ACL":        "public-read",

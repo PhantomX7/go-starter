@@ -24,10 +24,16 @@ func NewTransactionManager(db *gorm.DB) TransactionManager {
 }
 
 func (tm *transactionManager) ExecuteInTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
-	err := tm.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		ctxWithTx := utils.SetTxToContext(ctx, tx)
-		return fn(ctxWithTx)
-	})
+	// Join an ambient transaction when one is already in the context: composed
+	// services (A in a tx calling B which also wants a tx) must share one
+	// transaction, so B sees A's uncommitted writes and rolls back with A.
+	// Opening a second independent transaction here would commit B's writes
+	// even when A later fails.
+	if utils.GetTxFromContext(ctx) != nil {
+		return fn(ctx)
+	}
 
-	return err
+	return tm.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return fn(utils.SetTxToContext(ctx, tx))
+	})
 }

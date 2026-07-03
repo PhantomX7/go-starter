@@ -89,6 +89,21 @@ func TestCtxAttachesRequestScopedFields(t *testing.T) {
 	require.Equal(t, "value", fields["extra"])
 }
 
+func TestWithReportsCallerOfCallSite(t *testing.T) {
+	core, logs := observer.New(zap.InfoLevel)
+	// Mirror Init: the global logger carries +1 caller skip to compensate for
+	// the package-level helper wrappers (logger.Info, logger.Warn, ...).
+	swapGlobalLogger(t, zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)))
+
+	logger.With(zap.String("k", "v")).Info("hello")
+
+	entries := logs.All()
+	require.Len(t, entries, 1)
+	require.True(t, entries[0].Caller.Defined)
+	require.Contains(t, entries[0].Caller.File, "logger_test.go",
+		"With must compensate the +1 helper caller skip like Ctx does, otherwise file:line points at the caller's caller")
+}
+
 func TestCtxWithPlainContextAddsOnlyCallerFields(t *testing.T) {
 	core, logs := observer.New(zap.InfoLevel)
 	swapGlobalLogger(t, zap.New(core))

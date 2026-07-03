@@ -71,6 +71,41 @@ func TestExecuteInTransactionRollsBackOnError(t *testing.T) {
 	require.Zero(t, count)
 }
 
+// TestExecuteInTransactionJoinsAmbientTransaction — a nested call must join
+// the caller's transaction, not open an independent one: the inner scope has
+// to see the outer's uncommitted writes and roll back together with it.
+func TestExecuteInTransactionJoinsAmbientTransaction(t *testing.T) {
+	db := setupDB(t)
+	tm := transaction_manager.NewTransactionManager(db)
+
+	sentinel := errors.New("outer failure")
+	err := tm.ExecuteInTransaction(context.Background(), func(outerCtx context.Context) error {
+		outerTx := utils.GetTxFromContext(outerCtx)
+		require.NoError(t, outerTx.Create(&txRecord{Name: "outer"}).Error)
+
+		require.NoError(t, tm.ExecuteInTransaction(outerCtx, func(innerCtx context.Context) error {
+			innerTx := utils.GetTxFromContext(innerCtx)
+			require.NotNil(t, innerTx)
+
+			// The inner scope must observe the outer, uncommitted write.
+			var count int64
+			require.NoError(t, innerTx.Model(&txRecord{}).Count(&count).Error)
+			require.EqualValues(t, 1, count, "nested call must join the ambient transaction")
+
+			return innerTx.Create(&txRecord{Name: "inner"}).Error
+		}))
+
+		// The outer transaction fails after the nested call succeeded.
+		return sentinel
+	})
+	require.ErrorIs(t, err, sentinel)
+
+	// Both writes must be rolled back together.
+	var count int64
+	require.NoError(t, db.Model(&txRecord{}).Count(&count).Error)
+	require.Zero(t, count, "inner writes must roll back with the outer transaction")
+}
+
 func TestExecuteInTransactionContextCarriesTx(t *testing.T) {
 	db := setupDB(t)
 	tm := transaction_manager.NewTransactionManager(db)

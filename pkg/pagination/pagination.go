@@ -629,15 +629,23 @@ func parseFilterOperation(value string) FilterOperation {
 			if op == OperatorIsNull || op == OperatorIsNotNull {
 				return FilterOperation{Operator: op}
 			}
-			// Cap the value list to bound parse/allocation cost. A request
-			// over the limit is flagged overflow so buildFilterScope can fail
-			// closed instead of dropping the filter (which would widen the
-			// result set to every row — the opposite of fail-closed).
-			values := strings.Split(rest, ",")
-			if len(values) > maxFilterValues {
-				return FilterOperation{Operator: op, overflow: true}
+			// Only list operators take comma-separated values. For scalar
+			// operators (eq/like/gt/...) a comma is part of the value —
+			// splitting "eq:Smith, John" would fail the single-value check
+			// and silently drop the filter, widening the result to every row.
+			switch op {
+			case OperatorIn, OperatorNotIn, OperatorBetween:
+				// Cap the value list to bound parse/allocation cost. A request
+				// over the limit is flagged overflow so buildFilterScope can
+				// fail closed instead of dropping the filter.
+				values := strings.Split(rest, ",")
+				if len(values) > maxFilterValues {
+					return FilterOperation{Operator: op, overflow: true}
+				}
+				return FilterOperation{Operator: op, Values: values}
+			default:
+				return FilterOperation{Operator: op, Values: []string{rest}}
 			}
-			return FilterOperation{Operator: op, Values: values}
 		}
 	}
 
