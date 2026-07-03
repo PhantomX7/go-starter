@@ -35,24 +35,21 @@
 package validator
 
 import (
-	"errors"
-	"io"
 	"mime/multipart"
-	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/gabriel-vasile/mimetype"
 	"github.com/go-playground/validator/v10"
 )
 
-// sniffLen is how many leading bytes http.DetectContentType inspects.
-const sniffLen = 512
-
-// DetectContentType sniffs the MIME type of an uploaded file from its content
-// (first 512 bytes) using http.DetectContentType, independently of the
-// filename or the client-supplied Content-Type header. The multipart file is
-// opened on its own handle, so the caller's readers are unaffected.
+// DetectContentType sniffs the MIME type of an uploaded file from its content,
+// independently of the filename or the client-supplied Content-Type header.
+// It uses gabriel-vasile/mimetype, which recognizes far more signatures than
+// the stdlib sniffer and falls back to "application/octet-stream" when the
+// content is unrecognized. The multipart file is opened on its own handle, so
+// the caller's readers are unaffected.
 //
 // Shared by the filemime validator and libs/s3's upload content-type detection.
 func DetectContentType(file *multipart.FileHeader) (string, error) {
@@ -64,13 +61,12 @@ func DetectContentType(file *multipart.FileHeader) (string, error) {
 		_ = src.Close()
 	}()
 
-	buffer := make([]byte, sniffLen)
-	n, err := src.Read(buffer)
-	if err != nil && !errors.Is(err, io.EOF) {
+	mtype, err := mimetype.DetectReader(src)
+	if err != nil {
 		return "", err
 	}
 
-	return http.DetectContentType(buffer[:n]), nil
+	return mtype.String(), nil
 }
 
 // FileSize validates the size of an uploaded file against a maximum size limit.
@@ -189,9 +185,9 @@ func (cv customValidator) FileExtension() validator.Func {
 // of allowed MIME types.
 //
 // Unlike FileExtension, which trusts the filename, this validator reads the
-// first 512 bytes of the file and detects the MIME type with
-// http.DetectContentType — so a renamed executable cannot masquerade as an
-// image (content-based detection prevents file spoofing).
+// file's leading bytes and detects the MIME type from its content — so a
+// renamed executable cannot masquerade as an image (content-based detection
+// prevents file spoofing).
 //
 // Parameters:
 //   - Required parameter specifying allowed MIME types separated by ampersand (&) characters
