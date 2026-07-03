@@ -58,6 +58,7 @@ func newConfigPagination(conditions map[string][]string) *pagination.Pagination 
 // @Tags			config
 // @Accept			json
 // @Produce		json
+// @Security		BearerAuth
 // @Param			limit	query		int		false	"Limit"
 // @Param			offset	query		int		false	"Offset"
 // @Param			sort	query		string	false	"Sort"
@@ -66,7 +67,7 @@ func newConfigPagination(conditions map[string][]string) *pagination.Pagination 
 // @Success		200		{object}	response.Response{data=[]dto.ConfigResponse,meta=response.Meta}
 // @Failure		400		{object}	response.Response
 // @Failure		500		{object}	response.Response
-// @Router			/config [get]
+// @Router			/admin/config [get]
 func (c *configController) Index(ctx *gin.Context) {
 	configs, meta, err := c.configService.Index(
 		ctx.Request.Context(),
@@ -110,13 +111,14 @@ func (c *configController) PublicIndex(ctx *gin.Context) {
 // @Tags			config
 // @Accept			json
 // @Produce		json
+// @Security		BearerAuth
 // @Param			id		path		uint					true	"Config ID"
 // @Param			config	body		dto.ConfigUpdateRequest	true	"Config Update Request"
 // @Success		200		{object}	response.Response{data=dto.ConfigResponse}
 // @Failure		400		{object}	response.Response
 // @Failure		404		{object}	response.Response
 // @Failure		500		{object}	response.Response
-// @Router			/config/{id} [put]
+// @Router			/admin/config/{id} [patch]
 func (c *configController) Update(ctx *gin.Context) {
 	configID, ok := ginx.ParseUintParam(ctx, "id")
 	if !ok {
@@ -143,12 +145,13 @@ func (c *configController) Update(ctx *gin.Context) {
 // @Tags			config
 // @Accept			json
 // @Produce		json
+// @Security		BearerAuth
 // @Param			key	path		string	true	"Config Key"
 // @Success		200	{object}	response.Response{data=dto.ConfigResponse}
 // @Failure		400	{object}	response.Response
 // @Failure		404	{object}	response.Response
 // @Failure		500	{object}	response.Response
-// @Router			/config/key/{key} [get]
+// @Router			/admin/config/key/{key} [get]
 func (c *configController) FindByKey(ctx *gin.Context) {
 	config, err := c.configService.FindByKey(ctx.Request.Context(), ctx.Param("key"))
 	if err != nil {

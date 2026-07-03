@@ -78,7 +78,22 @@ func NewUserController(userService service.UserService) UserController {
 	}
 }
 
-// Index handles the listing of users with pagination
+// @Summary		List users
+// @Description	Get a paginated list of users
+// @Tags			user
+// @Accept			json
+// @Produce		json
+// @Security		BearerAuth
+// @Param			limit		query		int		false	"Limit"
+// @Param			offset		query		int		false	"Offset"
+// @Param			sort		query		string	false	"Sort"
+// @Param			username	query		string	false	"Filter by username"
+// @Param			email		query		string	false	"Filter by email"
+// @Param			role		query		string	false	"Filter by role"
+// @Success		200			{object}	response.Response{data=[]dto.UserResponse,meta=response.Meta}
+// @Failure		400			{object}	response.Response
+// @Failure		500			{object}	response.Response
+// @Router			/admin/user [get]
 func (c *userController) Index(ctx *gin.Context) {
 	users, meta, err := c.userService.Index(
 		ctx.Request.Context(),
@@ -97,11 +112,12 @@ func (c *userController) Index(ctx *gin.Context) {
 // @Tags			user
 // @Accept			json
 // @Produce		json
+// @Security		BearerAuth
 // @Param			user	body		dto.AdminUserCreateRequest	true	"Admin User Create Request"
 // @Success		201		{object}	response.Response{data=dto.UserResponse}
 // @Failure		400		{object}	response.Response
 // @Failure		500		{object}	response.Response
-// @Router			/user [post]
+// @Router			/admin/user [post]
 func (c *userController) Create(ctx *gin.Context) {
 	var req dto.AdminUserCreateRequest
 	if err := ctx.ShouldBind(&req); err != nil {
@@ -122,12 +138,13 @@ func (c *userController) Create(ctx *gin.Context) {
 // @Tags			user
 // @Accept			json
 // @Produce		json
+// @Security		BearerAuth
 // @Param			id		path		uint					true	"User ID"
 // @Param			user	body		dto.UserUpdateRequest	true	"User Update Request"
 // @Success		200		{object}	response.Response{data=dto.UserResponse}
 // @Failure		400		{object}	response.Response
 // @Failure		500		{object}	response.Response
-// @Router			/user/{id} [put]
+// @Router			/admin/user/{id} [patch]
 func (c *userController) Update(ctx *gin.Context) {
 	userID, ok := ginx.ParseUintParam(ctx, "id")
 	if !ok {
@@ -154,11 +171,12 @@ func (c *userController) Update(ctx *gin.Context) {
 // @Tags			user
 // @Accept			json
 // @Produce		json
+// @Security		BearerAuth
 // @Param			id	path		uint	true	"User ID"
 // @Success		200	{object}	response.Response{data=dto.UserResponse}
 // @Failure		400	{object}	response.Response
 // @Failure		500	{object}	response.Response
-// @Router			/user/{id} [get]
+// @Router			/admin/user/{id} [get]
 func (c *userController) FindByID(ctx *gin.Context) {
 	userID, ok := ginx.ParseUintParam(ctx, "id")
 	if !ok {
@@ -180,6 +198,7 @@ func (c *userController) FindByID(ctx *gin.Context) {
 //	@Tags			user
 //	@Accept			json
 //	@Produce		json
+//	@Security		BearerAuth
 //	@Param			id		path		uint							true	"User ID"
 //	@Param			body	body		dto.UserAssignAdminRoleRequest	true	"Assign Admin Role Request"
 //	@Success		200		{object}	response.Response{data=dto.UserResponse}
@@ -209,6 +228,20 @@ func (c *userController) AssignAdminRole(ctx *gin.Context) {
 }
 
 // ChangePassword handles root changing an admin's password
+//
+//	@Summary		Change an admin's password
+//	@Description	Root sets a new password for an admin account
+//	@Tags			user
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id		path		uint							true	"User ID"
+//	@Param			body	body		dto.ChangeAdminPasswordRequest	true	"Change Admin Password Request"
+//	@Success		200		{object}	response.Response
+//	@Failure		400		{object}	response.Response
+//	@Failure		404		{object}	response.Response
+//	@Failure		500		{object}	response.Response
+//	@Router			/admin/user/{id}/change-password [post]
 func (c *userController) ChangePassword(ctx *gin.Context) {
 	userID, ok := ginx.ParseUintParam(ctx, "id")
 	if !ok {

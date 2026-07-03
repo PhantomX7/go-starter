@@ -75,6 +75,25 @@ func newLogPagination(conditions map[string][]string) *pagination.Pagination {
 // Index handles the listing of logs with pagination.
 // BuildPaginationResponse maps each models.Log through ToResponse, so Index
 // and FindByID both return the dto.LogResponse shape.
+//
+//	@Summary		List logs
+//	@Description	Get a paginated list of audit logs
+//	@Tags			log
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			limit		query		int		false	"Limit"
+//	@Param			offset		query		int		false	"Offset"
+//	@Param			sort		query		string	false	"Sort"
+//	@Param			user_id		query		int		false	"Filter by user ID"
+//	@Param			action		query		string	false	"Filter by action"
+//	@Param			entity_id	query		int		false	"Filter by entity ID"
+//	@Param			entity_type	query		string	false	"Filter by entity type"
+//	@Param			message		query		string	false	"Filter by message"
+//	@Success		200			{object}	response.Response{data=[]dto.LogResponse,meta=response.Meta}
+//	@Failure		400			{object}	response.Response
+//	@Failure		500			{object}	response.Response
+//	@Router			/admin/log [get]
 func (c *logController) Index(ctx *gin.Context) {
 	logs, meta, err := c.logService.Index(
 		ctx.Request.Context(),
@@ -93,11 +112,12 @@ func (c *logController) Index(ctx *gin.Context) {
 // @Tags			log
 // @Accept			json
 // @Produce		json
+// @Security		BearerAuth
 // @Param			id	path		uint	true	"Log ID"
 // @Success		200	{object}	response.Response{data=dto.LogResponse}
 // @Failure		400	{object}	response.Response
 // @Failure		500	{object}	response.Response
-// @Router			/log/{id} [get]
+// @Router			/admin/log/{id} [get]
 func (c *logController) FindByID(ctx *gin.Context) {
 	logID, ok := ginx.ParseUintParam(ctx, "id")
 	if !ok {

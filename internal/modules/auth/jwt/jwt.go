@@ -263,6 +263,18 @@ func (a *AuthJWT) unauthorized(c *gin.Context, code int, message string) {
 	c.JSON(code, response.BuildResponseFailed(message))
 }
 
+// loginResponse writes the token payload after gin-jwt authenticates the user.
+//
+//	@Summary		Login
+//	@Description	Authenticate with username and password and return auth tokens
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		dto.LoginRequest	true	"Login Request"
+//	@Success		200		{object}	response.Response{data=dto.AuthResponse}
+//	@Failure		400		{object}	response.Response
+//	@Failure		401		{object}	response.Response
+//	@Router			/auth/login [post]
 func (a *AuthJWT) loginResponse(c *gin.Context, token *core.Token) {
 	userData, _ := c.Get(AuthUserKey)
 	user, ok := userData.(*models.User)

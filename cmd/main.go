@@ -19,12 +19,18 @@ import (
 	"go.uber.org/zap"
 )
 
+//	@title			Athleton API
+//	@version		1.0
+//	@description	REST API for the Athleton platform.
+
 //	@contact.name	Lezenda
 //	@contact.url	https://github.com/PhantomX7
 //	@contact.email	tester@lezenda.com
 
 //	@license.name	Apache 2.0
 //	@license.url	http://www.apache.org/licenses/LICENSE-2.0.html
+
+//	@BasePath	/api/v1
 
 // @securityDefinitions.apikey	BearerAuth
 // @in							header
