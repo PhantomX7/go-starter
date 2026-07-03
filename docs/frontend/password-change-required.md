@@ -46,9 +46,40 @@ returns tokens; the block appears on the **first** `/admin/*` call.
 
 ## Detecting it
 
-`403` is overloaded: a permission denial also returns `403`, but with a
-different message (`"you don't have permission to access this resource"`).
-**Distinguish by the `message` field**, not by status alone.
+### Preferred: the `must_change_password` flag
+
+The `login`, `refresh`, `register` (`AuthResponse`) and `/auth/me` (`MeResponse`)
+payloads include a boolean hint:
+
+```json
+{
+  "access_token": "...",
+  "refresh_token": "...",
+  "token_type": "Bearer",
+  "must_change_password": true
+}
+```
+
+Check it right after login and route straight to the change-password screen —
+no failed request, no message parsing:
+
+```ts
+const { data } = await api.post("/api/v1/auth/login", creds);
+if (data.data.must_change_password) {
+  router.push("/change-password?reason=forced");
+}
+```
+
+> The flag is a **hint** for UX. The server still enforces the rule with the 403
+> below on every `/admin/*` request, so a client that ignores the flag is not a
+> security hole — it just gets a worse error experience.
+
+### Fallback / safety net: the 403 response
+
+Also handle the 403 (for any gated request that slips through, e.g. a deep link
+straight into `/admin`). `403` is overloaded: a permission denial also returns
+`403`, but with a different message (`"you don't have permission to access this
+resource"`). **Distinguish by the `message` field**, not by status alone.
 
 ```ts
 const PASSWORD_CHANGE_REQUIRED = "password change required";
@@ -57,10 +88,6 @@ function isPasswordChangeRequired(res: { status: number }, body: { message?: str
   return res.status === 403 && body?.message === PASSWORD_CHANGE_REQUIRED;
 }
 ```
-
-> There is no flag on the login or `/auth/me` response that pre-announces this
-> state (`password_changed_at` is not exposed). The only signal is the 403 above,
-> so react to it in your response handler / interceptor.
 
 ### Example: axios interceptor
 
