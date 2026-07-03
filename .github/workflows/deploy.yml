@@ -19,10 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: '1.26.4'
           cache: true
@@ -34,12 +34,19 @@ jobs:
     runs-on: ubuntu-latest
     # A commit with failing tests must never reach the VPS.
     needs: test
+    env:
+      # Directory on the VPS to deploy into. Point this at a NON-ROOT deploy
+      # user's home (e.g. /home/deploy/athleton) and set the SSH_USER secret to
+      # that user: running migrations and pm2 as root is unnecessary privilege.
+      # Left at /root/athleton so existing deployments keep working until the
+      # non-root user is provisioned.
+      DEPLOY_DIR: /root/athleton
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: '1.26.4'
           cache: true
@@ -58,23 +65,23 @@ jobs:
           tar -czf deploy.tar.gz bin/ Makefile database/ atlas.hcl
 
       - name: Copy to VPS via SCP
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "deploy.tar.gz"
-          target: "/root/athleton"
+          target: ${{ env.DEPLOY_DIR }}
 
       - name: Extract, Migrate and Restart PM2
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /root/athleton
-            
+            cd ${{ env.DEPLOY_DIR }}
+
             # Extract the new build
             tar -xzf deploy.tar.gz
             rm deploy.tar.gz
@@ -95,5 +102,5 @@ jobs:
             
             # Restart the app with PM2
             pm2 delete api || true
-            pm2 start ./bin/athleton --name "api" --cwd "/root/athleton" -i 1 --max-memory-restart 500M
+            pm2 start ./bin/athleton --name "api" --cwd "${{ env.DEPLOY_DIR }}" -i 1 --max-memory-restart 500M
             pm2 save
