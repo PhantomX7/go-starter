@@ -1,5 +1,5 @@
 -- create enum type "user_role"
-CREATE TYPE "user_role" AS ENUM ('user', 'admin', 'writer', 'reseller', 'root');
+CREATE TYPE "user_role" AS ENUM ('user', 'admin', 'root');
 -- create "admin_roles" table
 CREATE TABLE "admin_roles" (
   "id" bigserial NOT NULL,
@@ -14,7 +14,7 @@ CREATE TABLE "admin_roles" (
 -- create index "idx_admin_roles_deleted_at" to table: "admin_roles"
 CREATE INDEX "idx_admin_roles_deleted_at" ON "admin_roles" ("deleted_at");
 -- create index "idx_admin_roles_name" to table: "admin_roles"
-CREATE UNIQUE INDEX "idx_admin_roles_name" ON "admin_roles" ("name");
+CREATE UNIQUE INDEX "idx_admin_roles_name" ON "admin_roles" ("name") WHERE (deleted_at IS NULL);
 -- create "configs" table
 CREATE TABLE "configs" (
   "id" bigserial NOT NULL,
@@ -23,10 +23,13 @@ CREATE TABLE "configs" (
   "deleted_at" timestamptz NULL,
   "key" character varying(255) NOT NULL,
   "value" text NOT NULL,
+  "is_public" boolean NOT NULL DEFAULT false,
   PRIMARY KEY ("id")
 );
 -- create index "idx_configs_deleted_at" to table: "configs"
 CREATE INDEX "idx_configs_deleted_at" ON "configs" ("deleted_at");
+-- create index "idx_configs_key" to table: "configs"
+CREATE UNIQUE INDEX "idx_configs_key" ON "configs" ("key") WHERE (deleted_at IS NULL);
 -- create "users" table
 CREATE TABLE "users" (
   "id" bigserial NOT NULL,
@@ -50,6 +53,10 @@ CREATE TABLE "users" (
 CREATE INDEX "idx_users_admin_role_id" ON "users" ("admin_role_id");
 -- create index "idx_users_deleted_at" to table: "users"
 CREATE INDEX "idx_users_deleted_at" ON "users" ("deleted_at");
+-- create index "idx_users_email" to table: "users"
+CREATE UNIQUE INDEX "idx_users_email" ON "users" ("email") WHERE (deleted_at IS NULL);
+-- create index "idx_users_username" to table: "users"
+CREATE UNIQUE INDEX "idx_users_username" ON "users" ("username") WHERE (deleted_at IS NULL);
 -- create "logs" table
 CREATE TABLE "logs" (
   "id" bigserial NOT NULL,
@@ -77,6 +84,7 @@ CREATE TABLE "refresh_tokens" (
   "id" text NOT NULL,
   "user_id" bigint NOT NULL,
   "token" text NOT NULL,
+  "previous_token_hash" text NULL,
   "expires_at" timestamptz NOT NULL,
   "created_at" timestamptz NOT NULL,
   "updated_at" timestamptz NOT NULL,
@@ -84,3 +92,9 @@ CREATE TABLE "refresh_tokens" (
   PRIMARY KEY ("id"),
   CONSTRAINT "fk_refresh_tokens_user" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION
 );
+-- create index "idx_refresh_tokens_previous_token_hash" to table: "refresh_tokens"
+CREATE INDEX "idx_refresh_tokens_previous_token_hash" ON "refresh_tokens" ("previous_token_hash");
+-- create index "idx_refresh_tokens_token" to table: "refresh_tokens"
+CREATE UNIQUE INDEX "idx_refresh_tokens_token" ON "refresh_tokens" ("token");
+-- create index "idx_refresh_tokens_user_id" to table: "refresh_tokens"
+CREATE INDEX "idx_refresh_tokens_user_id" ON "refresh_tokens" ("user_id");

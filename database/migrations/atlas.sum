@@ -1,5 +1,2 @@
-h1:Ev6oHBfHTVRltV66seTCUk1V15gj5buc5gPAt/teSJs=
-20260611094511_create_default_tables.up.sql h1:mAfkm/FpxgrJtJiErRdkLAOW+lINM75UiP/CchiUVcs=
-20260702093000_add_unique_indexes.up.sql h1:MVVEyLUp0M9cmzfvTeOUfwyUVrta74z25MKgtLb9DFY=
-20260703090000_add_configs_is_public.up.sql h1:coSa2ZGyN+isUscpaegYpjGnoluzKx3fUDe0s19Vx6w=
-20260703131202_add_previous_refresh_token.up.sql h1:p1f7hjr7tN6B0Dkr9KkvFIJ4X4GVlRudMfoT2nGO0nY=
+h1:6nDrLr7elgaGvKXibvSoxAvw8Pk9bnlldbZWbtiW9NA=
+20260703134944_create_initial_tables.up.sql h1:G9nnPf600cZFSvuZTD5fy1DWFO7Ykn+ek3xJlKD70GU=
