@@ -15,9 +15,6 @@ var Log = struct {
 	EntityID   field.Number[uint]
 	Message    field.String
 	User       field.Struct[models.User]
-	AdminRole  field.Struct[models.AdminRole]
-	Config     field.Struct[models.Config]
-	TargetUser field.Struct[models.User]
 }{
 	ID:         field.Number[uint]{}.WithColumn("id"),
 	UserID:     field.Number[uint]{}.WithColumn("user_id"),
@@ -26,7 +23,4 @@ var Log = struct {
 	EntityID:   field.Number[uint]{}.WithColumn("entity_id"),
 	Message:    field.String{}.WithColumn("message"),
 	User:       field.Struct[models.User]{}.WithName("User"),
-	AdminRole:  field.Struct[models.AdminRole]{}.WithName("AdminRole"),
-	Config:     field.Struct[models.Config]{}.WithName("Config"),
-	TargetUser: field.Struct[models.User]{}.WithName("TargetUser"),
 }

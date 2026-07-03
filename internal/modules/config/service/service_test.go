@@ -23,11 +23,14 @@ import (
 )
 
 type mockConfigRepository struct {
-	findAllFn   func(context.Context, *pagination.Pagination) ([]*models.Config, error)
-	countFn     func(context.Context, *pagination.Pagination) (int64, error)
-	findByIDFn  func(context.Context, uint, ...repository.Association) (*models.Config, error)
-	updateFn    func(context.Context, *models.Config) error
-	findByKeyFn func(context.Context, string) (*models.Config, error)
+	findAllFn         func(context.Context, *pagination.Pagination) ([]*models.Config, error)
+	countFn           func(context.Context, *pagination.Pagination) (int64, error)
+	findByIDFn        func(context.Context, uint, ...repository.Association) (*models.Config, error)
+	updateFn          func(context.Context, *models.Config) error
+	findByKeyFn       func(context.Context, string) (*models.Config, error)
+	findAllPublicFn   func(context.Context, *pagination.Pagination) ([]*models.Config, error)
+	countPublicFn     func(context.Context, *pagination.Pagination) (int64, error)
+	findPublicByKeyFn func(context.Context, string) (*models.Config, error)
 }
 
 func (m *mockConfigRepository) Create(context.Context, *models.Config) error {
@@ -71,6 +74,27 @@ func (m *mockConfigRepository) FindByKey(ctx context.Context, key string) (*mode
 		panic("unexpected FindByKey call")
 	}
 	return m.findByKeyFn(ctx, key)
+}
+
+func (m *mockConfigRepository) FindAllPublic(ctx context.Context, pg *pagination.Pagination) ([]*models.Config, error) {
+	if m.findAllPublicFn == nil {
+		panic("unexpected FindAllPublic call")
+	}
+	return m.findAllPublicFn(ctx, pg)
+}
+
+func (m *mockConfigRepository) CountPublic(ctx context.Context, pg *pagination.Pagination) (int64, error) {
+	if m.countPublicFn == nil {
+		panic("unexpected CountPublic call")
+	}
+	return m.countPublicFn(ctx, pg)
+}
+
+func (m *mockConfigRepository) FindPublicByKey(ctx context.Context, key string) (*models.Config, error) {
+	if m.findPublicByKeyFn == nil {
+		panic("unexpected FindPublicByKey call")
+	}
+	return m.findPublicByKeyFn(ctx, key)
 }
 
 var _ configrepository.ConfigRepository = (*mockConfigRepository)(nil)
@@ -154,6 +178,66 @@ func TestConfigServiceIndexReturnsConfigsAndMeta(t *testing.T) {
 	require.Equal(t, int64(15), meta.Total)
 	require.Equal(t, 4, meta.Offset)
 	require.Equal(t, 2, meta.Limit)
+}
+
+func TestConfigServiceUpdateTogglesVisibilityOnlyWhenProvided(t *testing.T) {
+	setupLogger(t)
+
+	current := &models.Config{
+		Model:    gorm.Model{ID: 7},
+		Key:      "site_name",
+		Value:    "v",
+		IsPublic: false,
+	}
+	repo := &mockConfigRepository{
+		findByIDFn: func(context.Context, uint, ...repository.Association) (*models.Config, error) {
+			return current, nil
+		},
+		updateFn: func(context.Context, *models.Config) error { return nil },
+	}
+	logRepo := &mockLogRepository{
+		createFn: func(context.Context, *models.Log) error { return nil },
+	}
+	svc := service.NewConfigService(repo, logRepo)
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{UserID: 1, UserName: "Root"})
+
+	// Omitted is_public keeps the current visibility.
+	_, err := svc.Update(ctx, 7, &dto.ConfigUpdateRequest{Value: "v2"})
+	require.NoError(t, err)
+	require.False(t, current.IsPublic)
+
+	// An explicit true flips it.
+	public := true
+	_, err = svc.Update(ctx, 7, &dto.ConfigUpdateRequest{Value: "v3", IsPublic: &public})
+	require.NoError(t, err)
+	require.True(t, current.IsPublic)
+
+	// An explicit false flips it back.
+	private := false
+	_, err = svc.Update(ctx, 7, &dto.ConfigUpdateRequest{Value: "v4", IsPublic: &private})
+	require.NoError(t, err)
+	require.False(t, current.IsPublic)
+}
+
+func TestConfigServicePublicIndexUsesPublicRepositoryVariants(t *testing.T) {
+	setupLogger(t)
+
+	repo := &mockConfigRepository{
+		findAllPublicFn: func(_ context.Context, pg *pagination.Pagination) ([]*models.Config, error) {
+			return []*models.Config{{Key: "site_name", Value: "Athleton", IsPublic: true}}, nil
+		},
+		countPublicFn: func(context.Context, *pagination.Pagination) (int64, error) {
+			return 1, nil
+		},
+	}
+	svc := service.NewConfigService(repo, &mockLogRepository{})
+
+	pg := pagination.NewPagination(nil, nil, pagination.PaginationOptions{DefaultLimit: 20})
+	configs, meta, err := svc.PublicIndex(context.Background(), pg)
+
+	require.NoError(t, err)
+	require.Len(t, configs, 1)
+	require.EqualValues(t, 1, meta.Total)
 }
 
 func TestConfigServiceUpdateUpdatesConfigAndCreatesAuditLog(t *testing.T) {

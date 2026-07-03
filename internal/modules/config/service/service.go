@@ -14,11 +14,15 @@ import (
 	"github.com/PhantomX7/athleton/pkg/response"
 )
 
-// ConfigService exposes the config use cases used by handlers.
+// ConfigService exposes the config use cases used by handlers. The *Public
+// variants back the unauthenticated surface and only see rows explicitly
+// marked is_public.
 type ConfigService interface {
 	Index(ctx context.Context, req *pagination.Pagination) ([]*models.Config, response.Meta, error)
+	PublicIndex(ctx context.Context, req *pagination.Pagination) ([]*models.Config, response.Meta, error)
 	Update(ctx context.Context, configID uint, req *dto.ConfigUpdateRequest) (*models.Config, error)
 	FindByKey(ctx context.Context, configKey string) (*models.Config, error)
+	FindPublicByKey(ctx context.Context, configKey string) (*models.Config, error)
 }
 
 type configService struct {
@@ -56,6 +60,25 @@ func (s *configService) Index(ctx context.Context, pg *pagination.Pagination) ([
 	}, nil
 }
 
+// PublicIndex implements ConfigService for the unauthenticated listing.
+func (s *configService) PublicIndex(ctx context.Context, pg *pagination.Pagination) ([]*models.Config, response.Meta, error) {
+	configs, err := s.configRepository.FindAllPublic(ctx, pg)
+	if err != nil {
+		return nil, response.Meta{}, err
+	}
+
+	count, err := s.configRepository.CountPublic(ctx, pg)
+	if err != nil {
+		return nil, response.Meta{}, err
+	}
+
+	return configs, response.Meta{
+		Total:  count,
+		Offset: pg.Offset,
+		Limit:  pg.Limit,
+	}, nil
+}
+
 // Update implements ConfigService.
 func (s *configService) Update(ctx context.Context, configID uint, req *dto.ConfigUpdateRequest) (*models.Config, error) {
 	config, err := s.configRepository.FindByID(ctx, configID)
@@ -64,6 +87,10 @@ func (s *configService) Update(ctx context.Context, configID uint, req *dto.Conf
 	}
 
 	config.Value = req.Value
+	// nil pointer = field omitted: keep the current visibility.
+	if req.IsPublic != nil {
+		config.IsPublic = *req.IsPublic
+	}
 
 	if err := s.configRepository.Update(ctx, config); err != nil {
 		return nil, err
@@ -83,6 +110,12 @@ func (s *configService) FindByKey(ctx context.Context, configKey string) (*model
 	}
 
 	return config, nil
+}
+
+// FindPublicByKey implements ConfigService: private keys are indistinguishable
+// from missing ones (both not-found).
+func (s *configService) FindPublicByKey(ctx context.Context, configKey string) (*models.Config, error) {
+	return s.configRepository.FindPublicByKey(ctx, configKey)
 }
 
 // createLog creates an audit log entry for config operations

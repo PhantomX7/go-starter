@@ -15,6 +15,7 @@ var Config = struct {
 	DeletedAt field.Field[gorm.DeletedAt]
 	Key       field.String
 	Value     field.String
+	IsPublic  field.Bool
 	Logs      field.Slice[models.Log]
 }{
 	ID:        field.Number[uint]{}.WithColumn("id"),
@@ -23,5 +24,6 @@ var Config = struct {
 	DeletedAt: field.Field[gorm.DeletedAt]{}.WithColumn("deleted_at"),
 	Key:       field.String{}.WithColumn("key"),
 	Value:     field.String{}.WithColumn("value"),
+	IsPublic:  field.Bool{}.WithColumn("is_public"),
 	Logs:      field.Slice[models.Log]{}.WithName("Logs"),
 }

@@ -35,9 +35,11 @@ func NewPublicRoutes(controller controller.ConfigController) routes.Registrar {
 	return &publicRoutes{controller: controller}
 }
 
-// RegisterRoutes mounts the public read-only configuration endpoints.
+// RegisterRoutes mounts the public read-only configuration endpoints. Only
+// rows explicitly marked is_public are served here — the config table
+// naturally accumulates values that must not be world-readable.
 func (r *publicRoutes) RegisterRoutes(ctx *routes.Context) {
 	cfg := ctx.Public.Group("/config")
-	cfg.GET("", r.controller.Index)
-	cfg.GET("/key/:key", r.controller.FindByKey)
+	cfg.GET("", r.controller.PublicIndex)
+	cfg.GET("/key/:key", r.controller.PublicFindByKey)
 }

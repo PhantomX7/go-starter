@@ -22,6 +22,8 @@ definitions:
     properties:
       id:
         type: integer
+      is_public:
+        type: boolean
       key:
         type: string
       value:
@@ -29,6 +31,8 @@ definitions:
     type: object
   dto.ConfigUpdateRequest:
     properties:
+      is_public:
+        type: boolean
       value:
         type: string
     required:
@@ -588,6 +592,85 @@ paths:
       summary: Find a log by ID
       tags:
       - log
+  /public/config:
+    get:
+      consumes:
+      - application/json
+      description: Get a paginated list of publicly visible configs
+      parameters:
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      - description: Offset
+        in: query
+        name: offset
+        type: integer
+      - description: Sort
+        in: query
+        name: sort
+        type: string
+      - description: Filter by key
+        in: query
+        name: key
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/dto.ConfigResponse'
+                  type: array
+                meta:
+                  $ref: '#/definitions/response.Meta'
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: List public configs
+      tags:
+      - config
+  /public/config/key/{key}:
+    get:
+      consumes:
+      - application/json
+      description: Find a publicly visible config by key; private keys 404
+      parameters:
+      - description: Config Key
+        in: path
+        name: key
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.ConfigResponse'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Find a public config by key
+      tags:
+      - config
   /user/{id}:
     get:
       consumes:

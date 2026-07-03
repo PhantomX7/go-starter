@@ -14,11 +14,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ConfigController exposes HTTP handlers for configuration resources.
+// ConfigController exposes HTTP handlers for configuration resources. The
+// Public* handlers serve the unauthenticated surface and only ever return
+// rows explicitly marked public.
 type ConfigController interface {
 	Index(ctx *gin.Context)
+	PublicIndex(ctx *gin.Context)
 	Update(ctx *gin.Context)
 	FindByKey(ctx *gin.Context)
+	PublicFindByKey(ctx *gin.Context)
 }
 
 type configController struct {
@@ -76,6 +80,31 @@ func (c *configController) Index(ctx *gin.Context) {
 		response.BuildPaginationResponse(configs, meta))
 }
 
+// @Summary		List public configs
+// @Description	Get a paginated list of publicly visible configs
+// @Tags			config
+// @Accept			json
+// @Produce		json
+// @Param			limit	query		int		false	"Limit"
+// @Param			offset	query		int		false	"Offset"
+// @Param			sort	query		string	false	"Sort"
+// @Param			key		query		string	false	"Filter by key"
+// @Success		200		{object}	response.Response{data=[]dto.ConfigResponse,meta=response.Meta}
+// @Failure		500		{object}	response.Response
+// @Router			/public/config [get]
+func (c *configController) PublicIndex(ctx *gin.Context) {
+	configs, meta, err := c.configService.PublicIndex(
+		ctx.Request.Context(),
+		newConfigPagination(ctx.Request.URL.Query()),
+	)
+	if err != nil {
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		return
+	}
+	ctx.JSON(http.StatusOK,
+		response.BuildPaginationResponse(configs, meta))
+}
+
 // @Summary		Update a config
 // @Description	Update a config with the provided details
 // @Tags			config
@@ -122,6 +151,26 @@ func (c *configController) Update(ctx *gin.Context) {
 // @Router			/config/key/{key} [get]
 func (c *configController) FindByKey(ctx *gin.Context) {
 	config, err := c.configService.FindByKey(ctx.Request.Context(), ctx.Param("key"))
+	if err != nil {
+		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		return
+	}
+
+	ctx.JSON(http.StatusOK, response.BuildResponseSuccess("Config found successfully", config.ToResponse()))
+}
+
+// @Summary		Find a public config by key
+// @Description	Find a publicly visible config by key; private keys 404
+// @Tags			config
+// @Accept			json
+// @Produce		json
+// @Param			key	path		string	true	"Config Key"
+// @Success		200	{object}	response.Response{data=dto.ConfigResponse}
+// @Failure		404	{object}	response.Response
+// @Failure		500	{object}	response.Response
+// @Router			/public/config/key/{key} [get]
+func (c *configController) PublicFindByKey(ctx *gin.Context) {
+	config, err := c.configService.FindPublicByKey(ctx.Request.Context(), ctx.Param("key"))
 	if err != nil {
 		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
 		return

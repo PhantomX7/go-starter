@@ -21,9 +21,11 @@ import (
 )
 
 type mockConfigService struct {
-	indexFn     func(context.Context, *pagination.Pagination) ([]*models.Config, response.Meta, error)
-	updateFn    func(context.Context, uint, *dto.ConfigUpdateRequest) (*models.Config, error)
-	findByKeyFn func(context.Context, string) (*models.Config, error)
+	indexFn           func(context.Context, *pagination.Pagination) ([]*models.Config, response.Meta, error)
+	publicIndexFn     func(context.Context, *pagination.Pagination) ([]*models.Config, response.Meta, error)
+	updateFn          func(context.Context, uint, *dto.ConfigUpdateRequest) (*models.Config, error)
+	findByKeyFn       func(context.Context, string) (*models.Config, error)
+	findPublicByKeyFn func(context.Context, string) (*models.Config, error)
 }
 
 func (m *mockConfigService) Index(ctx context.Context, pg *pagination.Pagination) ([]*models.Config, response.Meta, error) {
@@ -31,6 +33,20 @@ func (m *mockConfigService) Index(ctx context.Context, pg *pagination.Pagination
 		panic("unexpected Index call")
 	}
 	return m.indexFn(ctx, pg)
+}
+
+func (m *mockConfigService) PublicIndex(ctx context.Context, pg *pagination.Pagination) ([]*models.Config, response.Meta, error) {
+	if m.publicIndexFn == nil {
+		panic("unexpected PublicIndex call")
+	}
+	return m.publicIndexFn(ctx, pg)
+}
+
+func (m *mockConfigService) FindPublicByKey(ctx context.Context, key string) (*models.Config, error) {
+	if m.findPublicByKeyFn == nil {
+		panic("unexpected FindPublicByKey call")
+	}
+	return m.findPublicByKeyFn(ctx, key)
 }
 
 func (m *mockConfigService) Update(ctx context.Context, configID uint, req *dto.ConfigUpdateRequest) (*models.Config, error) {

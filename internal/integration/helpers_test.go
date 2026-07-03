@@ -193,9 +193,17 @@ func newTestApp(t *testing.T) *testApp {
 	routeCtx := &routes.Context{
 		Root:   root,
 		Public: root.Group("/public"),
-		Admin:  root.Group("/admin", mw.AdminRateLimiter(), mw.RequireAuth(), mw.RequirePasswordChanged()),
-		MW:     mw,
+		Admin: root.Group("/admin",
+			mw.AdminRateLimiter(),
+			mw.RequireAuth(),
+			mw.RequireRole(models.UserRoleAdmin.ToString(), models.UserRoleRoot.ToString()),
+			mw.RequirePasswordChanged(),
+		),
+		MW: mw,
 	}
+	// Unguarded probe route: proves the group-level RequireRole boundary
+	// rejects plain users even when a route carries no permission guard.
+	routeCtx.Admin.GET("/__probe", func(c *gin.Context) { c.Status(http.StatusOK) })
 	authmodule.NewRoutes(authcontroller.NewAuthController(authService)).RegisterRoutes(routeCtx)
 	adminrolemodule.NewRoutes(adminrolecontroller.NewAdminRoleController(adminRoleService)).RegisterRoutes(routeCtx)
 	configController := configcontroller.NewConfigController(configService)
