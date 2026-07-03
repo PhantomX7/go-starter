@@ -55,7 +55,7 @@ type UserResponse struct {
 	Phone        string             `json:"phone"`
 	IsActive     bool               `json:"is_active"`
 	AdminRoleID  *uint              `json:"admin_role_id"`
-	Role         string             `json:"role"`
+	Role         string             `json:"role" enums:"user,admin,root"`
 	CreatedAt    time.Time          `json:"created_at"`
 	AdminRole    *AdminRoleResponse `json:"admin_role,omitempty"`
 }

@@ -193,7 +193,7 @@ const docTemplate = `{
                                             "additionalProperties": {
                                                 "type": "array",
                                                 "items": {
-                                                    "type": "string"
+                                                    "$ref": "#/definitions/dto.PermissionResponse"
                                                 }
                                             }
                                         }
@@ -1955,9 +1955,28 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "role": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "admin",
+                        "root"
+                    ]
                 },
                 "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PermissionResponse": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "permission": {
                     "type": "string"
                 }
             }
@@ -2067,7 +2086,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "role": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "admin",
+                        "root"
+                    ]
                 },
                 "username": {
                     "type": "string"

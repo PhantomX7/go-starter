@@ -27,3 +27,13 @@ type AdminRoleResponse struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
+
+// PermissionResponse is a single available permission, as returned (grouped by
+// resource) from the permissions catalog endpoint. It mirrors the runtime map
+// built by permissions.GetPermissionsForFrontend so the generated API contract
+// is accurate for the frontend.
+type PermissionResponse struct {
+	Permission  string `json:"permission"`
+	Action      string `json:"action"`
+	Description string `json:"description"`
+}

@@ -188,8 +188,21 @@ definitions:
       phone:
         type: string
       role:
+        enum:
+        - user
+        - admin
+        - root
         type: string
       username:
+        type: string
+    type: object
+  dto.PermissionResponse:
+    properties:
+      action:
+        type: string
+      description:
+        type: string
+      permission:
         type: string
     type: object
   dto.RefreshRequest:
@@ -264,6 +277,10 @@ definitions:
       phone:
         type: string
       role:
+        enum:
+        - user
+        - admin
+        - root
         type: string
       username:
         type: string
@@ -522,7 +539,7 @@ paths:
                 data:
                   additionalProperties:
                     items:
-                      type: string
+                      $ref: '#/definitions/dto.PermissionResponse'
                     type: array
                   type: object
               type: object

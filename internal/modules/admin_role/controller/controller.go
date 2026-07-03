@@ -217,7 +217,7 @@ func (c *adminRoleController) FindByID(ctx *gin.Context) {
 //	@Accept			json
 //	@Produce		json
 //	@Security		BearerAuth
-//	@Success		200	{object}	response.Response{data=map[string][]string}
+//	@Success		200	{object}	response.Response{data=map[string][]dto.PermissionResponse}
 //	@Router			/admin/admin-role/permissions [get]
 func (c *adminRoleController) GetAllPermissions(ctx *gin.Context) {
 	permissions := c.adminRoleService.GetAllPermissions(ctx.Request.Context())
