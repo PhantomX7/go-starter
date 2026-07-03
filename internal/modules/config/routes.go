@@ -4,6 +4,7 @@ package config
 import (
 	"github.com/PhantomX7/athleton/internal/modules/config/controller"
 	"github.com/PhantomX7/athleton/internal/routes"
+	"github.com/PhantomX7/athleton/pkg/constants/permissions"
 )
 
 type adminRoutes struct {
@@ -15,12 +16,14 @@ func NewAdminRoutes(controller controller.ConfigController) routes.Registrar {
 	return &adminRoutes{controller: controller}
 }
 
-// RegisterRoutes mounts the admin configuration endpoints.
+// RegisterRoutes mounts the admin configuration endpoints. Reads and updates
+// are permission-guarded like every other admin module; root bypasses the
+// checks, and admins need an explicit config:* grant.
 func (r *adminRoutes) RegisterRoutes(ctx *routes.Context) {
 	cfg := ctx.Admin.Group("/config")
-	cfg.GET("", r.controller.Index)
-	cfg.GET("/key/:key", r.controller.FindByKey)
-	cfg.PATCH("/:id", ctx.MW.RequireRole("root"), r.controller.Update)
+	cfg.GET("", ctx.MW.RequirePermission(permissions.ConfigRead), r.controller.Index)
+	cfg.GET("/key/:key", ctx.MW.RequirePermission(permissions.ConfigRead), r.controller.FindByKey)
+	cfg.PATCH("/:id", ctx.MW.RequirePermission(permissions.ConfigUpdate), r.controller.Update)
 }
 
 type publicRoutes struct {

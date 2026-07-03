@@ -242,7 +242,7 @@ func TestAdminRoleServiceIndexReturnsRolesWithPermissions(t *testing.T) {
 	casbinClient := &mockCasbinClient{
 		getRolePermissionsFn: func(roleID uint) []string {
 			if roleID == 1 {
-				return []string{permissions.ProductRead.String()}
+				return []string{permissions.LogRead.String()}
 			}
 			return []string{permissions.UserRead.String()}
 		},
@@ -255,7 +255,7 @@ func TestAdminRoleServiceIndexReturnsRolesWithPermissions(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, roles, 2)
-	require.Equal(t, []string{permissions.ProductRead.String()}, roles[0].Permissions)
+	require.Equal(t, []string{permissions.LogRead.String()}, roles[0].Permissions)
 	require.Equal(t, []string{permissions.UserRead.String()}, roles[1].Permissions)
 	require.Equal(t, int64(2), meta.Total)
 }
@@ -292,12 +292,12 @@ func TestAdminRoleServiceCreateReturnsRoleAndAuditLog(t *testing.T) {
 	casbinClient := &mockCasbinClient{
 		addRolePermissionsFn: func(roleID uint, perms []string) error {
 			require.Equal(t, uint(8), roleID)
-			require.Equal(t, []string{permissions.ProductRead.String()}, perms)
+			require.Equal(t, []string{permissions.LogRead.String()}, perms)
 			return nil
 		},
 		getRolePermissionsFn: func(roleID uint) []string {
 			require.Equal(t, uint(8), roleID)
-			return []string{permissions.ProductRead.String()}
+			return []string{permissions.LogRead.String()}
 		},
 	}
 	logRepo := &mockLogRepository{
@@ -314,13 +314,13 @@ func TestAdminRoleServiceCreateReturnsRoleAndAuditLog(t *testing.T) {
 	role, err := svc.Create(ctx, &dto.CreateAdminRoleRequest{
 		Name:        "Manager",
 		Description: "Can manage products",
-		Permissions: []string{permissions.ProductRead.String()},
+		Permissions: []string{permissions.LogRead.String()},
 	})
 
 	require.NoError(t, err)
 	require.NotNil(t, role)
 	require.Equal(t, uint(8), role.ID)
-	require.Equal(t, []string{permissions.ProductRead.String()}, role.Permissions)
+	require.Equal(t, []string{permissions.LogRead.String()}, role.Permissions)
 
 	select {
 	case entry := <-logCh:
@@ -360,12 +360,12 @@ func TestAdminRoleServiceUpdateUpdatesRoleInTransactionAndSyncsCasbinAfterCommit
 			// transaction has completed.
 			require.True(t, dbUpdated, "casbin sync must run after the DB update")
 			require.Equal(t, uint(8), roleID)
-			require.Equal(t, []string{permissions.ProductRead.String()}, perms)
+			require.Equal(t, []string{permissions.LogRead.String()}, perms)
 			return nil
 		},
 		getRolePermissionsFn: func(roleID uint) []string {
 			require.Equal(t, uint(8), roleID)
-			return []string{permissions.ProductRead.String()}
+			return []string{permissions.LogRead.String()}
 		},
 	}
 	logRepo := &mockLogRepository{
@@ -390,13 +390,13 @@ func TestAdminRoleServiceUpdateUpdatesRoleInTransactionAndSyncsCasbinAfterCommit
 	role, err := svc.Update(ctx, 8, &dto.UpdateAdminRoleRequest{
 		Name:        &name,
 		Description: &description,
-		Permissions: []string{permissions.ProductRead.String()},
+		Permissions: []string{permissions.LogRead.String()},
 	})
 
 	require.NoError(t, err)
 	require.Same(t, current, role)
 	require.Equal(t, 1, txCalls)
-	require.Equal(t, []string{permissions.ProductRead.String()}, role.Permissions)
+	require.Equal(t, []string{permissions.LogRead.String()}, role.Permissions)
 
 	select {
 	case entry := <-logCh:
@@ -432,7 +432,7 @@ func TestAdminRoleServiceUpdateReturnsErrorWhenCasbinSyncFails(t *testing.T) {
 	svc := service.NewAdminRoleService(repo, &mockLogRepository{}, casbinClient, passthroughTxManager())
 
 	role, err := svc.Update(context.Background(), 8, &dto.UpdateAdminRoleRequest{
-		Permissions: []string{permissions.ProductRead.String()},
+		Permissions: []string{permissions.LogRead.String()},
 	})
 
 	require.Nil(t, role)

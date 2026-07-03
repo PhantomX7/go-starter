@@ -162,13 +162,13 @@ func TestRequireAnyPermissionAllowsWhenOneGranted(t *testing.T) {
 	setupLogger(t)
 	casbinClient := &mockCasbinClient{
 		checkPermissionFn: func(_ uint, permission string) (bool, error) {
-			return permission == permissions.ProductRead.String(), nil
+			return permission == permissions.LogRead.String(), nil
 		},
 	}
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)),
-		m.RequireAnyPermission(permissions.UserRead, permissions.ProductRead)))
+		m.RequireAnyPermission(permissions.UserRead, permissions.LogRead)))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 }
@@ -183,7 +183,7 @@ func TestRequireAnyPermissionRejectsWhenNoneGranted(t *testing.T) {
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)),
-		m.RequireAnyPermission(permissions.UserRead, permissions.ProductRead)))
+		m.RequireAnyPermission(permissions.UserRead, permissions.LogRead)))
 
 	require.Equal(t, http.StatusForbidden, rec.Code)
 }
@@ -208,7 +208,7 @@ func TestRequireAllPermissionsAllowsWhenAllGranted(t *testing.T) {
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)),
-		m.RequireAllPermissions(permissions.UserRead, permissions.ProductRead)))
+		m.RequireAllPermissions(permissions.UserRead, permissions.LogRead)))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 }
@@ -223,7 +223,7 @@ func TestRequireAllPermissionsRejectsWhenOneMissing(t *testing.T) {
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)),
-		m.RequireAllPermissions(permissions.UserRead, permissions.ProductRead)))
+		m.RequireAllPermissions(permissions.UserRead, permissions.LogRead)))
 
 	require.Equal(t, http.StatusForbidden, rec.Code)
 }
@@ -238,7 +238,7 @@ func TestRequireAnyPermissionFailsClosedWhenAllChecksError(t *testing.T) {
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)),
-		m.RequireAnyPermission(permissions.UserRead, permissions.ProductRead)))
+		m.RequireAnyPermission(permissions.UserRead, permissions.LogRead)))
 
 	// An infrastructure outage must surface as a 500, not masquerade as an
 	// authorization denial.
@@ -258,7 +258,7 @@ func TestRequireAnyPermissionStillAllowsWhenOneErrorsButAnotherGrants(t *testing
 	m := newMiddleware(casbinClient)
 
 	rec := serve(newAuthRouter(casbinClient, withContextValues(adminValues(3)),
-		m.RequireAnyPermission(permissions.UserRead, permissions.ProductRead)))
+		m.RequireAnyPermission(permissions.UserRead, permissions.LogRead)))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 }
