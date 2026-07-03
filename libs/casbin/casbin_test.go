@@ -119,6 +119,40 @@ func TestSetRolePermissionsReplacesExisting(t *testing.T) {
 	require.True(t, allowed)
 }
 
+// TestSetRolePermissionsDiffsOverlap exercises the diff path: an overlapping
+// grant is preserved, a dropped grant is removed, and a new grant is added.
+func TestSetRolePermissionsDiffsOverlap(t *testing.T) {
+	c := newClient(t)
+
+	require.NoError(t, c.AddRolePermissions(12, []string{"post:create", "post:read"}))
+	// post:read overlaps (kept), post:create is dropped, user:update is new.
+	require.NoError(t, c.SetRolePermissions(12, []string{"post:read", "user:update"}))
+
+	require.ElementsMatch(t, []string{"post:read", "user:update"}, c.GetRolePermissions(12))
+
+	for perm, want := range map[string]bool{
+		"post:read":   true,
+		"user:update": true,
+		"post:create": false,
+	} {
+		allowed, err := c.CheckPermission(12, perm)
+		require.NoError(t, err)
+		require.Equal(t, want, allowed, "permission %q", perm)
+	}
+}
+
+// Re-applying the same permission set must be a no-op (no add, no remove) and
+// leave the role's grants intact.
+func TestSetRolePermissionsIdempotent(t *testing.T) {
+	c := newClient(t)
+
+	perms := []string{"post:create", "post:read"}
+	require.NoError(t, c.AddRolePermissions(13, perms))
+	require.NoError(t, c.SetRolePermissions(13, perms))
+
+	require.ElementsMatch(t, perms, c.GetRolePermissions(13))
+}
+
 func TestSetRolePermissionsWithEmptyListClearsRole(t *testing.T) {
 	c := newClient(t)
 

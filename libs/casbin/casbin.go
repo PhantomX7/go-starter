@@ -143,16 +143,73 @@ func (c *client) RemoveRolePermissions(roleID uint, permissions []string) error 
 	return nil
 }
 
-// SetRolePermissions replaces all permissions for a role
+// SetRolePermissions replaces all permissions for a role.
+//
+// It diffs the desired set against the current one and applies only the
+// difference via casbin's batch policy APIs, rather than deleting every grant
+// and re-adding one at a time. This matters for two reasons:
+//   - No zero-permission window: unchanged grants are never touched, so a
+//     concurrent Enforce never sees the role momentarily stripped of a
+//     permission it should keep.
+//   - Atomic bulk ops: AddPolicies/RemovePolicies each persist all-or-nothing,
+//     so a failure cannot leave the role with a half-applied permission set.
+//
+// New grants are added before stale ones are removed, so a failure between the
+// two steps can only ever leave the role briefly over-permissioned (logged via
+// the returned error), never missing a permission it should have.
 func (c *client) SetRolePermissions(roleID uint, permissions []string) error {
-	// First, remove all existing permissions for this role
-	if err := c.DeleteRole(roleID); err != nil {
-		return err
+	subject := roleSubject(roleID)
+
+	// Build the desired rule set, validating every permission up front so a bad
+	// entry fails the whole operation before any write happens.
+	desiredSet := make(map[string]struct{}, len(permissions))
+	desiredRules := make(map[string][]string, len(permissions))
+	for _, perm := range permissions {
+		resource, action, err := parsePermission(perm)
+		if err != nil {
+			return err
+		}
+		key := resource + ":" + action
+		if _, dup := desiredSet[key]; dup {
+			continue
+		}
+		desiredSet[key] = struct{}{}
+		desiredRules[key] = []string{subject, resource, action}
 	}
 
-	// Then add new permissions
-	if len(permissions) > 0 {
-		return c.AddRolePermissions(roleID, permissions)
+	current, err := c.enforcer.GetFilteredPolicy(0, subject)
+	if err != nil {
+		return fmt.Errorf("failed to read current permissions for role %d: %w", roleID, err)
+	}
+	currentSet := make(map[string]struct{}, len(current))
+	var toRemove [][]string
+	for _, p := range current {
+		if len(p) < 3 {
+			continue
+		}
+		key := p[1] + ":" + p[2]
+		currentSet[key] = struct{}{}
+		if _, keep := desiredSet[key]; !keep {
+			toRemove = append(toRemove, []string{p[0], p[1], p[2]})
+		}
+	}
+
+	var toAdd [][]string
+	for key, rule := range desiredRules {
+		if _, exists := currentSet[key]; !exists {
+			toAdd = append(toAdd, rule)
+		}
+	}
+
+	if len(toAdd) > 0 {
+		if _, err := c.enforcer.AddPolicies(toAdd); err != nil {
+			return fmt.Errorf("failed to add permissions for role %d: %w", roleID, err)
+		}
+	}
+	if len(toRemove) > 0 {
+		if _, err := c.enforcer.RemovePolicies(toRemove); err != nil {
+			return fmt.Errorf("failed to remove stale permissions for role %d: %w", roleID, err)
+		}
 	}
 
 	return nil
