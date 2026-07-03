@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -71,6 +72,37 @@ func setupDB(t *testing.T) *gorm.DB {
 
 func newProductRepo(db *gorm.DB) *productRepo {
 	return &productRepo{BaseRepository: repository.NewBaseRepository[testProduct](db)}
+}
+
+// setupTranslateDB mirrors setupDB but enables TranslateError, matching the
+// production gorm.Config so a unique-constraint violation is normalized to
+// gorm.ErrDuplicatedKey.
+func setupTranslateDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		Logger:         gormlogger.Default.LogMode(gormlogger.Silent),
+		TranslateError: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&testOwner{}, &testProduct{}))
+	return db
+}
+
+// A unique-constraint violation must surface as a 409 Conflict, not a 500:
+// testOwner.Name is a unique index, so the second insert conflicts.
+func TestCreate_DuplicateKeyReturnsConflict(t *testing.T) {
+	db := setupTranslateDB(t)
+	r := repository.NewBaseRepository[testOwner](db)
+
+	require.NoError(t, r.Create(context.Background(), &testOwner{Name: "acme"}))
+
+	err := r.Create(context.Background(), &testOwner{Name: "acme"})
+	require.Error(t, err)
+	require.ErrorIs(t, err, cerrors.ErrConflict)
+
+	var ae *cerrors.AppError
+	require.ErrorAs(t, err, &ae)
+	require.Equal(t, http.StatusConflict, ae.Code)
 }
 
 func mustSeedProducts(t *testing.T, db *gorm.DB, rows ...testProduct) {

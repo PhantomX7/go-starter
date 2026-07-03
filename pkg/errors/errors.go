@@ -34,6 +34,7 @@ var (
 	ErrUnauthorized   = errors.New("unauthorized")
 	ErrInternalServer = errors.New("internal server error")
 	ErrForbidden      = errors.New("forbidden")
+	ErrConflict       = errors.New("resource conflict")
 )
 
 // NewAppError creates an AppError with an explicit status code and wrapped cause.
@@ -78,6 +79,16 @@ func NewForbiddenError(message string) *AppError {
 		Code:    http.StatusForbidden,
 		Message: message,
 		Err:     ErrForbidden,
+	}
+}
+
+// NewConflictError creates a 409-conflict AppError, used when a write violates
+// a uniqueness constraint (a client-caused conflict, not a server fault).
+func NewConflictError(message string) *AppError {
+	return &AppError{
+		Code:    http.StatusConflict,
+		Message: message,
+		Err:     ErrConflict,
 	}
 }
 

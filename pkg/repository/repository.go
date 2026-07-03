@@ -150,9 +150,7 @@ func (r *BaseRepository[T]) Create(ctx context.Context, entity *T) error {
 	r.LogSlowWrite(ctx, "Create", time.Since(start))
 
 	if err != nil {
-		return cerrors.NewInternalServerError(
-			fmt.Sprintf("failed to create %s record", r.entityName), err,
-		)
+		return r.writeError("create", err)
 	}
 	return nil
 }
@@ -166,11 +164,23 @@ func (r *BaseRepository[T]) Update(ctx context.Context, entity *T) error {
 	r.LogSlowWrite(ctx, "Update", time.Since(start))
 
 	if err != nil {
-		return cerrors.NewInternalServerError(
-			fmt.Sprintf("failed to update %s record", r.entityName), err,
-		)
+		return r.writeError("update", err)
 	}
 	return nil
+}
+
+// writeError maps a failed write to an AppError. A unique-constraint violation
+// is a client-caused conflict (409), not a server fault (500) — surfacing it as
+// the latter turns a duplicate registration that races past the pre-check into a
+// misleading 500. Requires gorm.Config.TranslateError so the driver error is
+// normalized to gorm.ErrDuplicatedKey. Every other write failure stays a 500.
+func (r *BaseRepository[T]) writeError(op string, err error) error {
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return cerrors.NewConflictError(fmt.Sprintf("%s already exists", r.entityName))
+	}
+	return cerrors.NewInternalServerError(
+		fmt.Sprintf("failed to %s %s record", op, r.entityName), err,
+	)
 }
 
 // Delete removes entity by its primary key. Classic API — see note above.

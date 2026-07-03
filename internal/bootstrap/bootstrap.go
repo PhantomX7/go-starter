@@ -287,6 +287,10 @@ func SetUpDatabase(lc fx.Lifecycle, cfg *config.Config) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(cfg.GetDatabaseURL()), &gorm.Config{
 		SkipDefaultTransaction: true,
 		Logger:                 gormLogger,
+		// Translate driver errors to gorm sentinels (gorm.ErrDuplicatedKey, ...)
+		// so the repository layer can map a unique-constraint violation to a 409
+		// Conflict instead of a generic 500.
+		TranslateError: true,
 	})
 	if err != nil {
 		logger.Error("Failed to open database connection", zap.Error(err))
