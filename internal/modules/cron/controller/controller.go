@@ -20,10 +20,13 @@ func NewCron(cronService service.CronService) (gocron.Scheduler, error) {
 	}
 
 	// Hourly cleanup: removes expired/revoked refresh tokens (and any future
-	// cleanup jobs added to RunAllCleanupJobs).
+	// cleanup jobs added to RunAllCleanupJobs). Singleton mode skips a tick
+	// that fires while the previous run is still going, so a cleanup that ever
+	// overruns its interval cannot run concurrently against the same tables.
 	_, err = s.NewJob(
 		gocron.DurationJob(1*time.Hour),
 		gocron.NewTask(cronService.RunAllCleanupJobs),
+		gocron.WithSingletonMode(gocron.LimitModeReschedule),
 	)
 	if err != nil {
 		// Best effort: don't leak the scheduler we just created.
