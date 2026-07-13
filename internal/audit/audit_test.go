@@ -206,6 +206,63 @@ func TestRecordRepoErrorDoesNotPanic(t *testing.T) {
 	require.Equal(t, "Failed to create audit log", entries[0].Message)
 }
 
+func TestRecordSurvivesPanickingWriter(t *testing.T) {
+	// A panic inside the background write runs on a detached goroutine, so it
+	// bypasses the HTTP recovery middleware — unrecovered it would crash the
+	// whole process. Record must contain it and log the panic instead.
+	core, observed := observer.New(zapcore.ErrorLevel)
+	logged := make(chan struct{}, 1)
+	prev := logger.Log
+	logger.Log = zap.New(core, zap.Hooks(func(zapcore.Entry) error {
+		select {
+		case logged <- struct{}{}:
+		default:
+		}
+		return nil
+	}))
+	t.Cleanup(func() { logger.Log = prev })
+
+	repo := &logmocks.LogRepositoryMock{
+		CreateFunc: func(context.Context, *models.Log) error {
+			panic("audit writer exploded")
+		},
+	}
+
+	audit.Record(context.Background(), repo, audit.Entry{
+		Action:     models.LogActionCreate,
+		EntityType: models.LogEntityTypeUser,
+		EntityID:   1,
+		Message:    "created",
+	})
+
+	// The panicking goroutine must still complete from Drain's point of view.
+	drainCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, audit.Drain(drainCtx))
+
+	select {
+	case <-logged:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for panic to be logged")
+	}
+	entries := observed.All()
+	require.NotEmpty(t, entries)
+	require.Contains(t, entries[0].Message, "panic")
+}
+
+func TestGoSurvivesPanickingFunc(t *testing.T) {
+	setupLogger(t)
+
+	require.NotPanics(t, func() {
+		audit.Go(func() {
+			panic("background job exploded")
+		})
+		drainCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		require.NoError(t, audit.Drain(drainCtx))
+	})
+}
+
 func TestUserNameReturnsNameFromContext(t *testing.T) {
 	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{
 		UserID:   1,

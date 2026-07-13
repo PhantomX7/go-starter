@@ -32,8 +32,22 @@ var pending sync.WaitGroup
 // Go runs fn in a background goroutine tracked by Drain. Use it for audit-ish
 // writes that can't go through Record (e.g. attribution known before the user
 // exists in the request context) so shutdown still waits for them.
+//
+// A panic in fn is recovered and logged: these goroutines are detached from
+// any request, so the HTTP recovery middleware cannot catch them and an
+// unrecovered panic would take down the whole process over a lost audit row.
 func Go(fn func()) {
-	pending.Go(fn)
+	pending.Go(func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Log.Error("panic in background audit write",
+					zap.Any("panic", r),
+					zap.Stack("stack"),
+				)
+			}
+		}()
+		fn()
+	})
 }
 
 // Drain blocks until every in-flight audit write has finished, or until ctx
