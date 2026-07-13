@@ -4,10 +4,8 @@ package bootstrap
 import (
 	"context"
 	"database/sql"
-	"log"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -30,7 +28,6 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 // SetUpLogger initializes the logger before fx starts.
@@ -271,17 +268,12 @@ func SetUpDatabase(lc fx.Lifecycle, cfg *config.Config) (*gorm.DB, error) {
 		zap.Int("port", cfg.Database.Port),
 	)
 
-	// Configure GORM logger to use zap
-	gormLogger := gormlogger.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags),
-		gormlogger.Config{
-			SlowThreshold:             time.Second,
-			LogLevel:                  gormlogger.Error,
-			IgnoreRecordNotFoundError: true,
-			Colorful:                  !cfg.IsProduction(),
-			ParameterizedQueries:      true,
-		},
-	)
+	// Route GORM logs through the shared zap logger so database errors and
+	// slow queries (>1s, logged at Warn) are JSON-structured, correlated by
+	// request_id, and captured by the rotated app log — the stdlib logger GORM
+	// ships writes plain text to stdout only. Bind values never reach the log
+	// (the adapter implements gorm's ParamsFilter).
+	gormLogger := logger.NewGormLogger(time.Second)
 
 	// Set up database connection
 	db, err := gorm.Open(postgres.Open(cfg.GetDatabaseURL()), &gorm.Config{
