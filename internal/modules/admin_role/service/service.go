@@ -18,6 +18,7 @@ import (
 	"github.com/PhantomX7/athleton/pkg/logger"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
+	"github.com/PhantomX7/athleton/pkg/utils"
 
 	"go.uber.org/zap"
 )
@@ -87,6 +88,12 @@ func (s *adminRoleService) Create(ctx context.Context, req *dto.CreateAdminRoleR
 		return nil, cerrors.NewBadRequestError("invalid permissions: " + strings.Join(invalidPerms, ", "))
 	}
 
+	// A new role has no current permissions, so every requested permission is a
+	// grant the caller must hold.
+	if err := s.authorizeGrant(ctx, req.Permissions, func() []string { return nil }); err != nil {
+		return nil, err
+	}
+
 	// Create admin role model. Permissions are not persisted on the row
 	// (gorm:"-"); they are owned by Casbin and synced below.
 	adminRole := &models.AdminRole{
@@ -133,6 +140,26 @@ func (s *adminRoleService) Create(ctx context.Context, req *dto.CreateAdminRoleR
 
 // Update implements AdminRoleService.
 func (s *adminRoleService) Update(ctx context.Context, roleID uint, req *dto.UpdateAdminRoleRequest) (*models.AdminRole, error) {
+	// Validate and authorize the permission change before opening the
+	// transaction: neither check needs the row lock, and rejecting here avoids
+	// holding the lock (and a DB round trip) for requests that will be denied.
+	if req.Permissions != nil {
+		invalidPerms := s.validatePermissions(req.Permissions)
+		if len(invalidPerms) > 0 {
+			return nil, cerrors.NewBadRequestError("invalid permissions: " + strings.Join(invalidPerms, ", "))
+		}
+
+		// Only permissions being ADDED to the role require the caller to hold
+		// them; the role's current permissions are resolved lazily so root
+		// callers skip the Casbin read entirely.
+		err := s.authorizeGrant(ctx, req.Permissions, func() []string {
+			return s.casbinClient.GetRolePermissions(roleID)
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Run the find→modify→update sequence inside a single transaction so a
 	// failure at any step rolls the role row back and concurrent writers cannot
 	// interleave between the read and the write.
@@ -145,14 +172,6 @@ func (s *adminRoleService) Update(ctx context.Context, roleID uint, req *dto.Upd
 		adminRole, err = s.adminRoleRepo.FindByIDForUpdate(txCtx, roleID)
 		if err != nil {
 			return err
-		}
-
-		// Validate permissions if provided
-		if req.Permissions != nil {
-			invalidPerms := s.validatePermissions(req.Permissions)
-			if len(invalidPerms) > 0 {
-				return cerrors.NewBadRequestError("invalid permissions: " + strings.Join(invalidPerms, ", "))
-			}
 		}
 
 		// Update fields
@@ -288,6 +307,53 @@ func (s *adminRoleService) validatePermissions(perms []string) []string {
 		}
 	}
 	return invalidPerms
+}
+
+// authorizeGrant rejects a role change unless the caller holds every
+// permission being newly granted to the target role. Only additions relative
+// to the role's current permissions require authority: keeping or removing
+// existing grants stays allowed, so a limited admin can still maintain a role
+// broader than their own. Without this check, anyone with admin_role:create /
+// admin_role:update could mint roles carrying permissions they were never
+// granted and escalate within the admin tier. Root bypasses the check
+// (mirroring CheckPermissionWithRoot); a missing caller identity fails closed.
+// current is resolved lazily so root callers skip the Casbin read.
+func (s *adminRoleService) authorizeGrant(ctx context.Context, requested []string, current func() []string) error {
+	if len(requested) == 0 {
+		return nil
+	}
+
+	role, ok := utils.GetRoleFromContext(ctx)
+	if !ok {
+		return cerrors.NewForbiddenError("cannot grant permissions without an authenticated caller")
+	}
+	if role == models.UserRoleRoot.ToString() {
+		return nil
+	}
+
+	currentSet := make(map[string]struct{})
+	for _, perm := range current() {
+		currentSet[perm] = struct{}{}
+	}
+
+	adminRoleID := utils.GetAdminRoleIDFromContext(ctx)
+	var denied []string
+	for _, perm := range requested {
+		if _, held := currentSet[perm]; held {
+			continue
+		}
+		allowed, err := s.casbinClient.CheckPermissionWithRoot(role, adminRoleID, perm)
+		if err != nil {
+			return cerrors.NewInternalServerError("failed to verify caller permissions", err)
+		}
+		if !allowed {
+			denied = append(denied, perm)
+		}
+	}
+	if len(denied) > 0 {
+		return cerrors.NewForbiddenError("cannot grant permissions you do not hold: " + strings.Join(denied, ", "))
+	}
+	return nil
 }
 
 // createLog creates an audit log entry for admin role operations

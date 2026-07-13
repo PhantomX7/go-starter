@@ -101,6 +101,204 @@ func TestAdminRoleServiceCreateRejectsInvalidPermissions(t *testing.T) {
 	require.True(t, errors.Is(err, cerrors.ErrInvalidInput))
 }
 
+func TestAdminRoleServiceCreateRejectsPermissionsCallerDoesNotHold(t *testing.T) {
+	setupLogger(t)
+
+	callerRoleID := uint(5)
+	casbinClient := &casbinmocks.ClientMock{
+		CheckPermissionWithRootFunc: func(userRole string, adminRoleID *uint, permission string) (bool, error) {
+			require.Equal(t, "admin", userRole)
+			require.Equal(t, callerRoleID, *adminRoleID)
+			// The caller only holds log:read.
+			return permission == permissions.LogRead.String(), nil
+		},
+	}
+	repo := &adminrolemocks.AdminRoleRepositoryMock{
+		CreateFunc: func(context.Context, *models.AdminRole) error {
+			t.Fatal("Create must not be called when the caller lacks a requested permission")
+			return nil
+		},
+	}
+
+	svc := service.NewAdminRoleService(repo, &logmocks.LogRepositoryMock{}, casbinClient, &txmocks.TransactionManagerMock{})
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{
+		UserID: 11, UserName: "Alice", Role: "admin", AdminRoleID: &callerRoleID,
+	})
+
+	role, err := svc.Create(ctx, &dto.CreateAdminRoleRequest{
+		Name:        "Manager",
+		Description: "test",
+		Permissions: []string{permissions.LogRead.String(), permissions.UserRead.String()},
+	})
+
+	require.Nil(t, role)
+	require.ErrorIs(t, err, cerrors.ErrForbidden)
+}
+
+func TestAdminRoleServiceCreateFailsClosedWithoutCallerIdentity(t *testing.T) {
+	setupLogger(t)
+
+	repo := &adminrolemocks.AdminRoleRepositoryMock{
+		CreateFunc: func(context.Context, *models.AdminRole) error {
+			t.Fatal("Create must not be called when the caller identity is missing")
+			return nil
+		},
+	}
+
+	svc := service.NewAdminRoleService(repo, &logmocks.LogRepositoryMock{}, &casbinmocks.ClientMock{}, &txmocks.TransactionManagerMock{})
+
+	// No ContextValues at all: an unauthenticated/internal context must not be
+	// able to mint roles with permissions.
+	role, err := svc.Create(context.Background(), &dto.CreateAdminRoleRequest{
+		Name:        "Manager",
+		Permissions: []string{permissions.LogRead.String()},
+	})
+
+	require.Nil(t, role)
+	require.ErrorIs(t, err, cerrors.ErrForbidden)
+}
+
+func TestAdminRoleServiceUpdateRejectsAddedPermissionsCallerDoesNotHold(t *testing.T) {
+	setupLogger(t)
+
+	callerRoleID := uint(5)
+	casbinClient := &casbinmocks.ClientMock{
+		// Target role currently holds only log:read.
+		GetRolePermissionsFunc: func(roleID uint) []string {
+			require.Equal(t, uint(8), roleID)
+			return []string{permissions.LogRead.String()}
+		},
+		CheckPermissionWithRootFunc: func(userRole string, adminRoleID *uint, permission string) (bool, error) {
+			// The caller holds nothing beyond role management.
+			return false, nil
+		},
+	}
+	repo := &adminrolemocks.AdminRoleRepositoryMock{
+		UpdateFunc: func(context.Context, *models.AdminRole) error {
+			t.Fatal("Update must not be called when the caller lacks an added permission")
+			return nil
+		},
+	}
+
+	svc := service.NewAdminRoleService(repo, &logmocks.LogRepositoryMock{}, casbinClient, passthroughTxManager())
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{
+		UserID: 11, UserName: "Alice", Role: "admin", AdminRoleID: &callerRoleID,
+	})
+
+	role, err := svc.Update(ctx, 8, &dto.UpdateAdminRoleRequest{
+		// log:read is kept (already on the role); user:read is an escalation.
+		Permissions: []string{permissions.LogRead.String(), permissions.UserRead.String()},
+	})
+
+	require.Nil(t, role)
+	require.ErrorIs(t, err, cerrors.ErrForbidden)
+}
+
+func TestAdminRoleServiceUpdateAllowsKeepingPermissionsCallerDoesNotHold(t *testing.T) {
+	setupLogger(t)
+
+	logCh := make(chan *models.Log, 1)
+	callerRoleID := uint(5)
+	// The target role already holds user:read, which the caller does not hold.
+	// Re-submitting the unchanged set grants nothing new, so a limited admin
+	// can still maintain (rename etc.) a role broader than their own.
+	currentPerms := []string{permissions.LogRead.String(), permissions.UserRead.String()}
+	casbinClient := &casbinmocks.ClientMock{
+		GetRolePermissionsFunc: func(roleID uint) []string {
+			require.Equal(t, uint(8), roleID)
+			return currentPerms
+		},
+		CheckPermissionWithRootFunc: func(string, *uint, string) (bool, error) {
+			t.Fatal("no permission check should run when no permission is added")
+			return false, nil
+		},
+		SetRolePermissionsFunc: func(roleID uint, perms []string) error {
+			require.Equal(t, uint(8), roleID)
+			require.Equal(t, currentPerms, perms)
+			return nil
+		},
+	}
+	repo := &adminrolemocks.AdminRoleRepositoryMock{
+		FindByIDForUpdateFunc: func(ctx context.Context, id uint) (*models.AdminRole, error) {
+			return &models.AdminRole{ID: 8, Name: "Manager"}, nil
+		},
+		UpdateFunc: func(context.Context, *models.AdminRole) error {
+			return nil
+		},
+	}
+	logRepo := &logmocks.LogRepositoryMock{
+		CreateFunc: func(ctx context.Context, entry *models.Log) error {
+			logCh <- entry
+			return nil
+		},
+	}
+
+	svc := service.NewAdminRoleService(repo, logRepo, casbinClient, passthroughTxManager())
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{
+		UserID: 11, UserName: "Alice", Role: "admin", AdminRoleID: &callerRoleID,
+	})
+
+	name := "Supervisor"
+	role, err := svc.Update(ctx, 8, &dto.UpdateAdminRoleRequest{
+		Name:        &name,
+		Permissions: currentPerms,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, role)
+	select {
+	case <-logCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for audit log")
+	}
+}
+
+func TestAdminRoleServiceCreateAllowsRootToGrantAnyPermission(t *testing.T) {
+	setupLogger(t)
+
+	logCh := make(chan *models.Log, 1)
+	repo := &adminrolemocks.AdminRoleRepositoryMock{
+		CreateFunc: func(ctx context.Context, role *models.AdminRole) error {
+			role.ID = 8
+			return nil
+		},
+	}
+	casbinClient := &casbinmocks.ClientMock{
+		CheckPermissionWithRootFunc: func(string, *uint, string) (bool, error) {
+			t.Fatal("root must bypass the grant check entirely")
+			return false, nil
+		},
+		AddRolePermissionsFunc: func(uint, []string) error { return nil },
+		GetRolePermissionsFunc: func(uint) []string {
+			return []string{permissions.UserRead.String()}
+		},
+	}
+	logRepo := &logmocks.LogRepositoryMock{
+		CreateFunc: func(ctx context.Context, entry *models.Log) error {
+			logCh <- entry
+			return nil
+		},
+	}
+
+	svc := service.NewAdminRoleService(repo, logRepo, casbinClient, &txmocks.TransactionManagerMock{})
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{
+		UserID: 1, UserName: "Root", Role: "root",
+	})
+
+	role, err := svc.Create(ctx, &dto.CreateAdminRoleRequest{
+		Name:        "Manager",
+		Permissions: []string{permissions.UserRead.String()},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, role)
+	select {
+	case <-logCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for audit log")
+	}
+}
+
 func TestAdminRoleServiceCreateReturnsRoleAndAuditLog(t *testing.T) {
 	setupLogger(t)
 
@@ -134,7 +332,8 @@ func TestAdminRoleServiceCreateReturnsRoleAndAuditLog(t *testing.T) {
 
 	svc := service.NewAdminRoleService(repo, logRepo, casbinClient, &txmocks.TransactionManagerMock{})
 	ctx := utils.SetRequestIDToContext(context.Background(), "req-2")
-	ctx = utils.NewContextWithValues(ctx, utils.ContextValues{UserID: 11, UserName: "Alice"})
+	// Root caller: granting permissions requires the caller to hold them.
+	ctx = utils.NewContextWithValues(ctx, utils.ContextValues{UserID: 11, UserName: "Alice", Role: "root"})
 
 	role, err := svc.Create(ctx, &dto.CreateAdminRoleRequest{
 		Name:        "Manager",
@@ -208,7 +407,8 @@ func TestAdminRoleServiceUpdateUpdatesRoleInTransactionAndSyncsCasbinAfterCommit
 	}
 
 	svc := service.NewAdminRoleService(repo, logRepo, casbinClient, txManager)
-	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{UserID: 11, UserName: "Alice"})
+	// Root caller: granting permissions requires the caller to hold them.
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{UserID: 11, UserName: "Alice", Role: "root"})
 
 	name := "Supervisor"
 	description := "new"
@@ -255,8 +455,10 @@ func TestAdminRoleServiceUpdateReturnsErrorWhenCasbinSyncFails(t *testing.T) {
 	}
 
 	svc := service.NewAdminRoleService(repo, &logmocks.LogRepositoryMock{}, casbinClient, passthroughTxManager())
+	// Root caller: granting permissions requires the caller to hold them.
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{UserID: 11, UserName: "Alice", Role: "root"})
 
-	role, err := svc.Update(context.Background(), 8, &dto.UpdateAdminRoleRequest{
+	role, err := svc.Update(ctx, 8, &dto.UpdateAdminRoleRequest{
 		Permissions: []string{permissions.LogRead.String()},
 	})
 
