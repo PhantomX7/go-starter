@@ -4,6 +4,7 @@ package bootstrap
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -22,6 +23,9 @@ import (
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/go-playground/validator/v10"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerfiles "github.com/swaggo/files"
 	ginswagger "github.com/swaggo/gin-swagger"
 	"go.uber.org/fx"
@@ -98,16 +102,28 @@ func SetupServer(cfg *config.Config, m *middlewares.Middleware, cv cvalidator.Cu
 
 	registerValidators(validators)
 
+	// Prometheus instruments live on a per-server registry, not the process
+	// global: the test harness builds many servers per process, and
+	// re-registering on the global registry panics.
+	metricsRegistry := prometheus.NewRegistry()
+	metricsRegistry.MustRegister(collectors.NewGoCollector())
+	httpMetrics := middlewares.NewHTTPMetrics(metricsRegistry)
+
 	// Apply middleware in order (ORDER IS IMPORTANT!)
 	server.Use(
 		m.RequestID(),                            // 1. Generate/extract request ID (MUST be before logger)
-		m.CORS(),                                 // 2. CORS handling
-		m.BodySizeLimit(cfg.Server.MaxBodyBytes), // 3. Reject oversized payloads
-		m.TimeoutMiddleware(cfg.Server.RequestTimeout), // 4. Request deadline via context
-		m.Logger(),       // 5. Request logging (outer, so it sees recovered panics)
-		m.Recovery(),     // 6. Panic recovery → JSON envelope (inner, so Logger still logs the 500)
-		m.ErrorHandler(), // 7. Error handling (MUST be last)
+		httpMetrics.Handler(),                    // 2. Request counter + latency histogram (outermost timing)
+		m.CORS(),                                 // 3. CORS handling
+		m.BodySizeLimit(cfg.Server.MaxBodyBytes), // 4. Reject oversized payloads
+		m.TimeoutMiddleware(cfg.Server.RequestTimeout), // 5. Request deadline via context
+		m.Logger(),       // 6. Request logging (outer, so it sees recovered panics)
+		m.Recovery(),     // 7. Panic recovery → JSON envelope (inner, so Logger still logs the 500)
+		m.ErrorHandler(), // 8. Error handling (MUST be last)
 	)
+
+	// Prometheus scrape surface. Like the health probes it is unauthenticated;
+	// deployments should keep it reachable from the scraper network only.
+	server.GET("/metrics", gin.WrapH(promhttp.HandlerFor(metricsRegistry, promhttp.HandlerOpts{})))
 
 	// Uniform JSON envelope for unmatched paths and methods so clients see the
 	// same shape as handler errors. HandleMethodNotAllowed is off by default in
@@ -147,30 +163,44 @@ func SetupServer(cfg *config.Config, m *middlewares.Middleware, cv cvalidator.Cu
 	return server
 }
 
-// registerHealthRoutes exposes liveness and readiness probes for load balancers
-// and orchestrators. /livez and /healthz are cheap pings; /readyz also verifies
-// the database is reachable, so it can fail even while the process is alive.
+// registerHealthRoutes exposes the three probes with distinct meanings:
+// /livez is pure process liveness (never checks dependencies, so a DB outage
+// cannot get the pod restarted), /readyz is traffic-readiness (fails when the
+// database is unreachable so load balancers drain the instance), and /healthz
+// is a human/monitoring summary reporting each dependency check by name.
 func registerHealthRoutes(server *gin.Engine, db *gorm.DB) {
+	pingDatabase := func(c *gin.Context) error {
+		if db == nil {
+			return errors.New("database not initialized")
+		}
+		sqlDB, err := db.DB()
+		if err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+		return sqlDB.PingContext(ctx)
+	}
+
 	server.GET("/livez", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 	server.GET("/healthz", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		if err := pingDatabase(c); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "degraded",
+				"checks": gin.H{"database": "unavailable"},
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"status": "ok",
+			"checks": gin.H{"database": "ok"},
+		})
 	})
 	server.GET("/readyz", func(c *gin.Context) {
-		if db == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable", "reason": "database not initialized"})
-			return
-		}
-		sqlDB, err := db.DB()
-		if err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable", "reason": "database handle unavailable"})
-			return
-		}
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
-		defer cancel()
-		if err := sqlDB.PingContext(ctx); err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable", "reason": "database ping failed"})
+		if err := pingDatabase(c); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable", "reason": "database unreachable"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})

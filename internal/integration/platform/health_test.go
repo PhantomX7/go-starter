@@ -15,11 +15,17 @@ import (
 func TestHealthEndpoints(t *testing.T) {
 	app := harness.New(t)
 
-	for _, path := range []string{"/livez", "/healthz", "/readyz"} {
+	// /healthz differs from the cheap probes: it reports each dependency
+	// check by name (the database ping runs against the real in-memory DB).
+	for path, want := range map[string]string{
+		"/livez":   `{"status":"ok"}`,
+		"/healthz": `{"status":"ok","checks":{"database":"ok"}}`,
+		"/readyz":  `{"status":"ok"}`,
+	} {
 		t.Run(path, func(t *testing.T) {
 			rec := app.Request(t, http.MethodGet, path, nil, "")
 			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-			require.JSONEq(t, `{"status":"ok"}`, rec.Body.String())
+			require.JSONEq(t, want, rec.Body.String())
 		})
 	}
 }
