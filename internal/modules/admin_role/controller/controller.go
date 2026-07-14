@@ -209,7 +209,10 @@ func (c *adminRoleController) FindByID(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(http.StatusOK, response.BuildResponseSuccess("Admin role found successfully", adminRole))
+	// Serialize through the DTO like Create/Update do, so all admin-role
+	// endpoints share one response contract and a future model field cannot
+	// silently leak here.
+	ctx.JSON(http.StatusOK, response.BuildResponseSuccess("Admin role found successfully", adminRole.ToResponse()))
 }
 
 // GetAllPermissions returns all available permissions

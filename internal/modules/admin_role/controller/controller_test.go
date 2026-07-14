@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -113,6 +115,18 @@ func TestAdminRoleControllerFindByIDReturnsSuccessResponse(t *testing.T) {
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	require.Equal(t, "Admin role found successfully", body["message"])
+
+	// Pin the response contract to the AdminRoleResponse DTO: all admin-role
+	// endpoints serialize through it, so a new model field can never leak into
+	// the API without an explicit DTO change.
+	data, ok := body["data"].(map[string]any)
+	require.True(t, ok)
+	require.ElementsMatch(t,
+		[]string{"id", "name", "description", "is_active", "permissions", "created_at", "updated_at"},
+		slices.Collect(maps.Keys(data)),
+	)
+	require.Equal(t, float64(5), data["id"])
+	require.Equal(t, "Support", data["name"])
 }
 
 func TestAdminRoleControllerGetAllPermissionsReturnsResponse(t *testing.T) {
