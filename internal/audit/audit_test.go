@@ -263,6 +263,53 @@ func TestGoSurvivesPanickingFunc(t *testing.T) {
 	})
 }
 
+func TestRecordActionPhrasesCRUDMessages(t *testing.T) {
+	setupLogger(t)
+
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{
+		UserID:   42,
+		UserName: "Alice",
+	})
+
+	cases := []struct {
+		action  models.LogAction
+		message string
+	}{
+		{models.LogActionCreate, "Alice created admin role: Manager"},
+		{models.LogActionUpdate, "Alice updated admin role: Manager"},
+		{models.LogActionDelete, "Alice deleted admin role: Manager"},
+		{models.LogActionChangePassword, "Alice changed password for: Manager"},
+	}
+	for _, tc := range cases {
+		repo, created := newMockLogRepository(nil)
+
+		audit.RecordAction(ctx, repo, tc.action, models.LogEntityTypeAdminRole, 7, "admin role", "Manager")
+
+		got := waitForCreate(t, created)
+		require.Equal(t, tc.message, got.Message)
+		require.Equal(t, tc.action, got.Action)
+		require.Equal(t, models.LogEntityTypeAdminRole, got.EntityType)
+		require.Equal(t, uint(7), got.EntityID)
+		require.NotNil(t, got.UserID)
+		require.Equal(t, uint(42), *got.UserID)
+	}
+}
+
+func TestRecordActionFallsBackForUnknownActions(t *testing.T) {
+	setupLogger(t)
+
+	repo, created := newMockLogRepository(nil)
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{
+		UserID:   42,
+		UserName: "Alice",
+	})
+
+	audit.RecordAction(ctx, repo, models.LogActionLogin, models.LogEntityTypeUser, 9, "user", "Bob")
+
+	got := waitForCreate(t, created)
+	require.Equal(t, "Alice performed login on user: Bob", got.Message)
+}
+
 func TestUserNameReturnsNameFromContext(t *testing.T) {
 	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{
 		UserID:   1,

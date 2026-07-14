@@ -607,7 +607,7 @@ func TestUserServiceChangePasswordUpdatesHashRevokesTokensAndLogs(t *testing.T) 
 		require.Equal(t, models.LogActionChangePassword, entry.Action)
 		require.Equal(t, models.LogEntityTypeUser, entry.EntityType)
 		require.Equal(t, uint(10), entry.EntityID)
-		require.Equal(t, "Root performed change_password on user: Admin User", entry.Message)
+		require.Equal(t, "Root changed password for: Admin User", entry.Message)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for audit log")
 	}

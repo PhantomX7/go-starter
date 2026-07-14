@@ -7,6 +7,7 @@ package audit
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/PhantomX7/athleton/internal/models"
@@ -83,6 +84,41 @@ func UserName(ctx context.Context) string {
 		return "Unknown"
 	}
 	return name
+}
+
+// actionVerbs maps standard actions to their past-tense message verb. Actions
+// without an entry fall back to the generic "performed <action> on" phrasing.
+var actionVerbs = map[models.LogAction]string{
+	models.LogActionCreate: "created",
+	models.LogActionUpdate: "updated",
+	models.LogActionDelete: "deleted",
+}
+
+// RecordAction writes a standard "<user> <verbed> <noun>: <name>" audit entry
+// (e.g. "Alice updated admin role: Manager"). It exists so services don't each
+// hand-roll the same action→message switch — that duplication already caused
+// the same event to be phrased differently across modules. noun is the
+// domain-language entity name ("admin role", "config", "user"); entityType is
+// the stored discriminator. Events needing bespoke phrasing should build their
+// own message and call Record directly.
+func RecordAction(ctx context.Context, repo LogWriter, action models.LogAction, entityType string, entityID uint, noun, entityName string) {
+	userName := UserName(ctx)
+	var message string
+	switch {
+	case action == models.LogActionChangePassword:
+		message = fmt.Sprintf("%s changed password for: %s", userName, entityName)
+	case actionVerbs[action] != "":
+		message = fmt.Sprintf("%s %s %s: %s", userName, actionVerbs[action], noun, entityName)
+	default:
+		message = fmt.Sprintf("%s performed %s on %s: %s", userName, action, noun, entityName)
+	}
+
+	Record(ctx, repo, Entry{
+		Action:     action,
+		EntityType: entityType,
+		EntityID:   entityID,
+		Message:    message,
+	})
 }
 
 // Record writes an audit entry in the background, attributed to the user in

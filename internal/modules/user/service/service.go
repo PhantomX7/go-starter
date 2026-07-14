@@ -3,7 +3,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -364,19 +363,5 @@ func (s *userService) ChangePassword(ctx context.Context, userID uint, req *dto.
 
 // createLog creates an audit log entry for user operations
 func (s *userService) createLog(ctx context.Context, action models.LogAction, entityID uint, entityName string) {
-	userName := audit.UserName(ctx)
-	var message string
-	switch action {
-	case models.LogActionUpdate:
-		message = fmt.Sprintf("%s updated user: %s", userName, entityName)
-	default:
-		message = fmt.Sprintf("%s performed %s on user: %s", userName, action, entityName)
-	}
-
-	audit.Record(ctx, s.logRepository, audit.Entry{
-		Action:     action,
-		EntityType: models.LogEntityTypeUser,
-		EntityID:   entityID,
-		Message:    message,
-	})
+	audit.RecordAction(ctx, s.logRepository, action, models.LogEntityTypeUser, entityID, "user", entityName)
 }

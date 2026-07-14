@@ -3,7 +3,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -205,23 +204,9 @@ func (s *authService) Logout(ctx context.Context, req *dto.LogoutRequest) error 
 	return s.authJWT.RevokeRefreshToken(ctx, req.RefreshToken, values.UserID)
 }
 
-// createLog creates an audit log entry for auth operations (admin only)
+// createLog creates an audit log entry for auth operations (admin only).
+// Login is NOT recorded here — the jwt package writes it with its own
+// phrasing at token issuance.
 func (s *authService) createLog(ctx context.Context, action models.LogAction, entityID uint, entityName string) {
-	userName := audit.UserName(ctx)
-	var message string
-	switch action {
-	case models.LogActionChangePassword:
-		message = fmt.Sprintf("%s changed password for: %s", userName, entityName)
-	case models.LogActionLogin:
-		message = fmt.Sprintf("%s logged in", entityName)
-	default:
-		message = fmt.Sprintf("%s performed %s on user: %s", userName, action, entityName)
-	}
-
-	audit.Record(ctx, s.logRepository, audit.Entry{
-		Action:     action,
-		EntityType: models.LogEntityTypeUser,
-		EntityID:   entityID,
-		Message:    message,
-	})
+	audit.RecordAction(ctx, s.logRepository, action, models.LogEntityTypeUser, entityID, "user", entityName)
 }

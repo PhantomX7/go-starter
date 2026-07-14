@@ -3,7 +3,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/PhantomX7/athleton/internal/audit"
@@ -358,23 +357,5 @@ func (s *adminRoleService) authorizeGrant(ctx context.Context, requested []strin
 
 // createLog creates an audit log entry for admin role operations
 func (s *adminRoleService) createLog(ctx context.Context, action models.LogAction, entityID uint, entityName string) {
-	userName := audit.UserName(ctx)
-	var message string
-	switch action {
-	case models.LogActionCreate:
-		message = fmt.Sprintf("%s created admin role: %s", userName, entityName)
-	case models.LogActionUpdate:
-		message = fmt.Sprintf("%s updated admin role: %s", userName, entityName)
-	case models.LogActionDelete:
-		message = fmt.Sprintf("%s deleted admin role: %s", userName, entityName)
-	default:
-		message = fmt.Sprintf("%s performed %s on admin role: %s", userName, action, entityName)
-	}
-
-	audit.Record(ctx, s.logRepository, audit.Entry{
-		Action:     action,
-		EntityType: models.LogEntityTypeAdminRole,
-		EntityID:   entityID,
-		Message:    message,
-	})
+	audit.RecordAction(ctx, s.logRepository, action, models.LogEntityTypeAdminRole, entityID, "admin role", entityName)
 }

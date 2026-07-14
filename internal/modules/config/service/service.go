@@ -3,7 +3,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/PhantomX7/athleton/internal/audit"
 	"github.com/PhantomX7/athleton/internal/dto"
@@ -122,19 +121,5 @@ func (s *configService) FindPublicByKey(ctx context.Context, configKey string) (
 
 // createLog creates an audit log entry for config operations
 func (s *configService) createLog(ctx context.Context, action models.LogAction, entityID uint, entityName string) {
-	userName := audit.UserName(ctx)
-	var message string
-	switch action {
-	case models.LogActionUpdate:
-		message = fmt.Sprintf("%s updated config: %s", userName, entityName)
-	default:
-		message = fmt.Sprintf("%s performed %s on config: %s", userName, action, entityName)
-	}
-
-	audit.Record(ctx, s.logRepository, audit.Entry{
-		Action:     action,
-		EntityType: models.LogEntityTypeConfig,
-		EntityID:   entityID,
-		Message:    message,
-	})
+	audit.RecordAction(ctx, s.logRepository, action, models.LogEntityTypeConfig, entityID, "config", entityName)
 }
