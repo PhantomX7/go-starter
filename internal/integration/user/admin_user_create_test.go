@@ -62,8 +62,7 @@ func TestAdminCanCreateAdminUserEndToEnd(t *testing.T) {
 }
 
 // TestRootAccountsCannotBeModifiedOverHTTP — no admin endpoint may touch a
-// root account: update, role assignment, and password change all 403, and
-// there is no delete endpoint at all.
+// root account: update, role assignment, password change, and delete all 403.
 func TestRootAccountsCannotBeModifiedOverHTTP(t *testing.T) {
 	app := harness.New(t)
 	rootTokens := app.LoginAs(t, harness.RootUsername, harness.TestPassword)
@@ -84,7 +83,9 @@ func TestRootAccountsCannotBeModifiedOverHTTP(t *testing.T) {
 	}, rootTokens.AccessToken)
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 
-	// No delete route exists on the user resource.
+	// The delete route exists, but the root guard rejects root targets before
+	// any other check runs.
 	rec = app.Request(t, http.MethodDelete, "/api/v1/admin/user/"+rootID, nil, rootTokens.AccessToken)
-	require.Equal(t, http.StatusMethodNotAllowed, rec.Code, rec.Body.String())
+	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "cannot delete root user")
 }

@@ -19,7 +19,7 @@ make hooks-install   # lefthook + git hooks (pre-commit, pre-push)
 ## Quick start
 
 ```bash
-cp .env.example .env          # fill in DB + S3 + JWT values
+cp .env.example .env          # fill in DB + S3 + JWT + ADMIN_* values
 make dep                      # go mod tidy
 make migrate-up               # apply schema
 make seed                     # seed the root + admin users (uses ADMIN_* env vars)
@@ -59,10 +59,14 @@ libs/             Third-party adapters
   s3/               S3 / DigitalOcean Spaces client
   transaction_manager/  DB transaction orchestration
 pkg/              Reusable, framework-agnostic primitives
-  config/ constants/ errors/ generator/ logger/ pagination/
-  repository/ response/ utils/ validator/
+  config/ constants/ errors/ generator/ ginx/ logger/
+  pagination/ repository/ response/ utils/ validator/
 docs/             Swagger output (swagger.json / swagger.yaml / docs.go)
 ```
+
+Besides the API, the server also mounts static routes from `APP_ASSETS`:
+`/assets`, `/sitemaps`, and `/sitemap.xml`
+([internal/bootstrap/bootstrap.go](internal/bootstrap/bootstrap.go)).
 
 ### Adding a new module
 
@@ -108,6 +112,7 @@ the generated tests. See
 | `make migrate-status` | Show pending vs. applied migrations |
 | `make migrate-hash` | Re-hash migration files after manual edits |
 | `make seed` | Run the seeder (`database/seeder/main.go`) |
+| `make debug name=add_foo` | Echo the migration name a `migrate-create` would use |
 
 ### Quality
 | Target | Description |
@@ -117,15 +122,19 @@ the generated tests. See
 | `make lint` | `golangci-lint run ./...` |
 | `make lint-fix` | `golangci-lint run --fix ./...` |
 | `make fmt` | `golangci-lint fmt` (gofmt + goimports) |
+| `make vuln` | `govulncheck ./...` (same scan CI runs weekly) |
 | `make hooks-install` | Install lefthook git hooks |
+| `make hooks-uninstall` | Remove lefthook git hooks |
 | `make hooks-run` | Run pre-commit checks across all files |
 
 ### Codegen
 | Target | Description |
 | --- | --- |
 | `make swag` | Regenerate Swagger docs |
+| `make swag-format` | Format Swagger annotations only (`swag fmt`) |
 | `make module module_name=foo [model=0] [dto=0] [permissions=0] [force=1]` | Scaffold a new module (+ model + DTO + permissions by default) |
 | `make gorm-gen` | Regenerate GORM CLI field helpers |
+| `make mocks` | Regenerate moq interface mocks (`go generate -run moq ./...`) |
 
 ## Testing
 
@@ -165,13 +174,13 @@ Every user row carries one of three roles:
 **Root is protected by construction.** No request field can produce a `root`
 account (registration hardcodes `user`, admin-create hardcodes `admin`), and
 every mutating user endpoint refuses a root target — update, role assignment,
-and password change all return 403, and there is no user-delete route. Root
-rotates its own password only through the self-service `/auth/change-password`.
+password change, and delete all return 403. Root rotates its own password only
+through the self-service `/auth/change-password`.
 
 **The `/admin` surface is defended in depth.** The group middleware runs
-`RequireAuth → RequireRole(admin, root) → RequirePasswordChanged` before any
-handler, so a plain user is rejected even if a route forgets its per-route
-guard. Individual routes then authorize admins with fine-grained
+`AdminRateLimiter → RequireAuth → RequireRole(admin, root) →
+RequirePasswordChanged` before any handler, so a plain user is rejected even
+if a route forgets its per-route guard. Individual routes then authorize admins with fine-grained
 `resource:action` permissions enforced via [Casbin](libs/casbin/); the registry
 lives in [pkg/constants/permissions](pkg/constants/permissions/). Managing
 *admin* accounts requires the stronger `admin_user:*` grants — `user:*` governs
@@ -191,12 +200,20 @@ field on the admin config update.
 
 All config is loaded from `.env` via [pkg/config](pkg/config/). See [.env.example](.env.example) for the full list. Key sections:
 
-- `SERVER_*` — bind host/port + timeouts
+- `SERVER_*` — bind host/port, timeouts, request-body cap
+  (`SERVER_MAX_BODY_BYTES`), trusted proxies (`SERVER_TRUSTED_PROXIES`), and
+  CORS origins (`SERVER_CORS_ALLOWED_ORIGINS`)
 - `DATABASE_*` — connection string components
-- `JWT_*` — secret, access + refresh token TTLs
-- `S3_*` — storage credentials and CDN URL
+- `JWT_*` — secret, access + refresh token TTLs, per-user session cap
+  (`JWT_MAX_ACTIVE_SESSIONS`)
+- `APP_*` — app name/version, environment, assets directory
+- `S3_*` — storage credentials, CDN URL, upload ACL (`S3_UPLOAD_ACL`)
 - `BLEVE_*` — search index path/type
 - `LOG_*` — log level, rotation, console output
+- `ADMIN_*` — **required**: `ADMIN_DEFAULT_PASSWORD` seeds the root/admin
+  accounts and has no default (weak or known values are rejected in
+  production); `ADMIN_EMAIL` is seeded into the root account. `make seed`
+  fails without them.
 
 ## Git hooks
 
