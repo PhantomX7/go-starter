@@ -64,6 +64,7 @@ type UserController interface {
 	FindByID(ctx *gin.Context)
 	AssignAdminRole(ctx *gin.Context)
 	ChangePassword(ctx *gin.Context)
+	Delete(ctx *gin.Context)
 }
 
 // userController implements the UserController interface
@@ -260,4 +261,33 @@ func (c *userController) ChangePassword(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, response.BuildResponseSuccess("Password changed successfully", nil))
+}
+
+// Delete handles soft-deleting a user account
+//
+//	@Summary		Delete a user
+//	@Description	Soft-delete a user account and revoke its sessions; deleting an admin account additionally requires the admin_user:delete permission
+//	@Tags			user
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id	path		uint	true	"User ID"
+//	@Success		200	{object}	response.Response
+//	@Failure		400	{object}	response.Response
+//	@Failure		403	{object}	response.Response
+//	@Failure		404	{object}	response.Response
+//	@Failure		500	{object}	response.Response
+//	@Router			/admin/user/{id} [delete]
+func (c *userController) Delete(ctx *gin.Context) {
+	userID, ok := ginx.ParseUintParam(ctx, "id")
+	if !ok {
+		return
+	}
+
+	if err := c.userService.Delete(ctx.Request.Context(), userID); err != nil {
+		_ = ctx.Error(err)
+		return
+	}
+
+	ctx.JSON(http.StatusOK, response.BuildResponseSuccess("User deleted successfully", nil))
 }

@@ -12,17 +12,14 @@ instead of hand-writing `WHERE username = ?`.
 
 ## 1. One-time setup
 
-```bash
-# install the CLI (idempotent)
-go install gorm.io/cli/gorm@latest
+None. The CLI is a **`tool` directive in `go.mod`** (`gorm.io/cli/gorm`), so it
+is version-pinned with the rest of the module and fetched by the ordinary
+module download — no `go install`, no GOPATH/PATH setup. To bump its version:
 
-# make sure its runtime deps (field helpers, exp/constraints, etc.) are in go.sum
+```bash
 go get gorm.io/cli/gorm@latest
 go mod tidy
 ```
-
-`$(go env GOPATH)/bin` must be on your `PATH` so the `gorm` binary is visible
-to `go generate`.
 
 ## 2. Regenerate
 
@@ -35,7 +32,7 @@ go generate ./internal/models/...
 
 The `//go:generate` directive lives at
 [internal/models/generate.go](../internal/models/generate.go) and runs
-`gorm gen -i . -o ../generated`. This reads every `.go` file under
+`go tool gorm gen -i . -o ../generated`. This reads every `.go` file under
 `internal/models/` and writes field helpers into `internal/generated/`
 (created on first run, committed to the repo). **Never hand-edit anything
 under `internal/generated/` — the next generate pass will overwrite it.**
@@ -53,7 +50,7 @@ Re-run whenever you:
 internal/
 ├── models/         hand-written GORM models — source of truth + go:generate anchor
 │   ├── user.go, admin_role.go, config.go, refresh_token.go, log.go, common.go
-│   └── generate.go    //go:generate gorm gen -i . -o ../generated
+│   └── generate.go    //go:generate go tool gorm gen -i . -o ../generated
 └── generated/      OUTPUT — do not edit, do not grep for bugs here
     └── user.go, admin_role.go, config.go, refresh_token.go, log.go, common.go
 ```
@@ -157,7 +154,7 @@ the same semantics:
 | Method | API | Why |
 | --- | --- | --- |
 | `Create` | `gorm.G[T].Create(ctx, entity)` | type-safe, no entity pointer in `.Error` plumbing |
-| `FindById(id, preloads...)` | `gorm.G[T].Where("id = ?", id).Preload(p, nil)...First(ctx)` | generics + chained preloads; the variadic takes `repository.Association`, so callers pass typed helpers like `generated.User.AdminRole` (compile-error on typos) instead of raw strings |
+| `FindByID(id, preloads...)` | `gorm.G[T].Where("id = ?", id).Preload(p, nil)...First(ctx)` | generics + chained preloads; the variadic takes `repository.Association`, so callers pass typed helpers like `generated.User.AdminRole` (compile-error on typos) instead of raw strings |
 | `FindAll(pg)` | Classic `db.Scopes(pg.Apply).Find(&entities)` | Pagination's scopes are `func(*gorm.DB) *gorm.DB`; generics' `Scopes` expects `func(*gorm.Statement)`. A "pre-apply to `*gorm.DB` then wrap with `gorm.G[T]`" bridge does **not** work either — `gorm.G[T]` calls `db.Session(&Session{NewDB: true})` on every finisher, which discards the accumulated clauses (verified by the test suite). Rewriting every pagination scope as a `func(*Statement)` is the only way to generify this, and offers no material gain |
 | `Count(pg)` | Classic `db.Scopes(pg.ApplyWithoutMeta).Model(new(T)).Count(&count)` | Same reasoning as `FindAll` |
 | `Update` | `db.Save(entity)` (classic) | `gorm.G[T]` has no `Save`. Matching it in generics would require reflecting PK columns from the schema manually — GORM already does this in `Save` |
@@ -167,7 +164,7 @@ the same semantics:
 when the context carries one, so the transaction manager keeps working
 unchanged.
 
-`FindById` returns `(nil, err)` on **any** error, including not-found, so
+`FindByID` returns `(nil, err)` on **any** error, including not-found, so
 services never accidentally dereference a zero-value entity after an `err != nil`
 check.
 
@@ -193,21 +190,21 @@ kept for the rare one-off threshold.
 
 ### Typed preloads
 
-`FindById`'s variadic is `...repository.Association`, an interface satisfied
+`FindByID`'s variadic is `...repository.Association`, an interface satisfied
 by every `field.Struct[T]` / `field.Slice[T]` the generator emits. In
 practice:
 
 ```go
 // Typed — renaming the User.AdminRole field in internal/models breaks this
 // call at compile time after the next `make gorm-gen`.
-user, err := s.userRepo.FindById(ctx, id, generated.User.AdminRole)
+user, err := s.userRepo.FindByID(ctx, id, generated.User.AdminRole)
 
 // Multiple preloads are just more arguments:
-user, err := s.userRepo.FindById(ctx, id, generated.User.AdminRole, generated.User.Logs)
+user, err := s.userRepo.FindByID(ctx, id, generated.User.AdminRole, generated.User.Logs)
 
 // Runtime-dynamic name (rare): repository.Preload wraps a raw string.
 assoc := repository.Preload(cfgDecidedAtStartup)
-user, err := s.userRepo.FindById(ctx, id, assoc)
+user, err := s.userRepo.FindByID(ctx, id, assoc)
 ```
 
 Callers never build a string literal in normal code, so a future model rename
@@ -261,7 +258,7 @@ Field helpers do **not** cover:
 
 If you hit one of these, create an `internal/queries/` package, define a Go
 interface with SQL-template comments in its method docstrings, add a
-`//go:generate gorm gen -i . -o ../generated` directive there, and register
+`//go:generate go tool gorm gen -i . -o ../generated` directive there, and register
 its name in a local `genconfig.Config{IncludeInterfaces: ...}`. The generator
 writes a concrete, type-safe implementation alongside the field helpers. A
 working starting template is in the GORM CLI README:
@@ -295,12 +292,12 @@ _ = s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `no required module provides package ".../internal/generated"` | You have not run `make gorm-gen` yet. | Run `go install gorm.io/cli/gorm@latest && make gorm-gen`. |
-| `gorm: command not found` | `$(go env GOPATH)/bin` is not on your `PATH`. | Add it to your shell profile. |
-| `missing go.sum entry for module providing package ...` when building | `gorm.io/cli/gorm`'s runtime deps (e.g. `golang.org/x/exp`) are not tracked. | `go get gorm.io/cli/gorm@latest && go mod tidy`. |
+| `no required module provides package ".../internal/generated"` | You have not run `make gorm-gen` yet. | Run `make gorm-gen`. |
+| `go: no such tool "gorm"` | The `tool` directive is missing from `go.mod` (or go.sum is stale). | `go get -tool gorm.io/cli/gorm && go mod tidy`. |
+| `missing go.sum entry for module providing package ...` when building | `gorm.io/cli/gorm`'s runtime deps (e.g. `golang.org/x/exp`) are not tracked. | `go mod tidy`. |
 | Generated file references a field you just renamed | Stale output. | `make gorm-gen`. |
 | `deleted_at` filter missing / applied twice | Manually adding `deleted_at IS NULL` on a model that embeds `gorm.DeletedAt` — GORM already does this. | Remove the manual predicate. Use `.Unscoped()` to opt out. |
-| CI compiles locally but not in CI | `internal/generated/` is not committed, or your CI image lacks the CLI. | Commit the generated code (recommended) or add `go install gorm.io/cli/gorm@latest && make gorm-gen` to the CI script before `go build`. |
+| CI compiles locally but not in CI | `internal/generated/` is not committed. | Commit the generated code (recommended) or add `make gorm-gen` to the CI script before `go build` — the CLI comes with the module via the `tool` directive, nothing to install. |
 
 ## 11. Further reading
 

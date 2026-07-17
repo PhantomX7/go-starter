@@ -23,6 +23,7 @@ func (r *routeRegistrar) RegisterRoutes(ctx *routes.Context) {
 	userRoute.POST("", ctx.MW.RequirePermission(permissions.AdminUserCreate), r.controller.Create)
 	userRoute.GET("/:id", ctx.MW.RequirePermission(permissions.UserRead), r.controller.FindByID)
 	userRoute.PATCH("/:id", ctx.MW.RequirePermission(permissions.UserUpdate), r.controller.Update)
+	userRoute.DELETE("/:id", ctx.MW.RequirePermission(permissions.UserDelete), r.controller.Delete)
 	userRoute.POST("/:id/admin-role", ctx.MW.RequirePermission(permissions.UserAssignRole), r.controller.AssignAdminRole)
 	userRoute.POST("/:id/change-password", ctx.MW.RequirePermission(permissions.AdminUserChangePassword), r.controller.ChangePassword)
 }

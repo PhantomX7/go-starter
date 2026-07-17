@@ -643,6 +643,186 @@ func TestUserServiceChangePasswordRejectsRootUser(t *testing.T) {
 	require.True(t, errors.Is(err, cerrors.ErrForbidden))
 }
 
+func TestUserServiceDeleteRejectsRootUser(t *testing.T) {
+	repo := &usermocks.UserRepositoryMock{
+		FindByIDForUpdateFunc: func(context.Context, uint) (*models.User, error) {
+			return &models.User{ID: 1, Role: models.UserRoleRoot, Name: "Root"}, nil
+		},
+	}
+
+	svc := service.NewUserService(repo, &adminrolemocks.AdminRoleRepositoryMock{}, &refreshtokenmocks.RefreshTokenRepositoryMock{}, &logmocks.LogRepositoryMock{}, &casbinmocks.ClientMock{}, passthroughTxManager(), zap.NewNop())
+
+	err := svc.Delete(context.Background(), 1)
+
+	require.Error(t, err)
+	require.True(t, errors.Is(err, cerrors.ErrForbidden))
+}
+
+func TestUserServiceDeleteRejectsSelfDeletion(t *testing.T) {
+	deleted := false
+	repo := &usermocks.UserRepositoryMock{
+		FindByIDForUpdateFunc: func(_ context.Context, id uint) (*models.User, error) {
+			return &models.User{ID: id, Role: models.UserRoleAdmin, Name: "Caller"}, nil
+		},
+		DeleteFunc: func(context.Context, *models.User) error {
+			deleted = true
+			return nil
+		},
+	}
+
+	svc := service.NewUserService(repo, &adminrolemocks.AdminRoleRepositoryMock{}, &refreshtokenmocks.RefreshTokenRepositoryMock{}, &logmocks.LogRepositoryMock{}, &casbinmocks.ClientMock{}, passthroughTxManager(), zap.NewNop())
+	// adminCallerValues has UserID 2 — target the same account.
+	ctx := utils.NewContextWithValues(context.Background(), adminCallerValues())
+
+	err := svc.Delete(ctx, 2)
+
+	require.Error(t, err)
+	require.True(t, errors.Is(err, cerrors.ErrForbidden))
+	require.False(t, deleted, "an account must not be able to delete itself")
+}
+
+func TestUserServiceDeleteRequiresAdminUserGrantForAdminTargets(t *testing.T) {
+	roleID := uint(5)
+
+	newSvc := func(granted bool, deleted *bool) service.UserService {
+		repo := &usermocks.UserRepositoryMock{
+			FindByIDForUpdateFunc: func(context.Context, uint) (*models.User, error) {
+				return &models.User{ID: 6, Name: "Other Admin", Role: models.UserRoleAdmin, AdminRoleID: &roleID}, nil
+			},
+			DeleteFunc: func(context.Context, *models.User) error {
+				*deleted = true
+				return nil
+			},
+		}
+		casbinClient := &casbinmocks.ClientMock{
+			CheckPermissionWithRootFunc: func(role string, _ *uint, perm string) (bool, error) {
+				require.Equal(t, models.UserRoleAdmin.ToString(), role)
+				require.Equal(t, permissions.AdminUserDelete.String(), perm)
+				return granted, nil
+			},
+		}
+		refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+			RevokeAllByUserIDFunc: func(context.Context, uint) error { return nil },
+		}
+		logRepo := &logmocks.LogRepositoryMock{CreateFunc: func(context.Context, *models.Log) error { return nil }}
+		return service.NewUserService(repo, &adminrolemocks.AdminRoleRepositoryMock{}, refreshRepo, logRepo, casbinClient, passthroughTxManager(), zap.NewNop())
+	}
+
+	t.Run("denied without admin_user:delete", func(t *testing.T) {
+		deleted := false
+		svc := newSvc(false, &deleted)
+		ctx := utils.NewContextWithValues(context.Background(), adminCallerValues())
+
+		err := svc.Delete(ctx, 6)
+
+		require.True(t, errors.Is(err, cerrors.ErrForbidden))
+		require.False(t, deleted, "the row must not be deleted when the grant is missing")
+	})
+
+	t.Run("allowed with admin_user:delete", func(t *testing.T) {
+		deleted := false
+		svc := newSvc(true, &deleted)
+		ctx := utils.NewContextWithValues(context.Background(), adminCallerValues())
+
+		err := svc.Delete(ctx, 6)
+
+		require.NoError(t, err)
+		require.True(t, deleted)
+	})
+}
+
+func TestUserServiceDeleteSoftDeletesRevokesTokensAndLogs(t *testing.T) {
+	logCh := make(chan *models.Log, 1)
+	current := &models.User{ID: 6, Name: "Plain User", Username: "plain", Role: models.UserRoleUser}
+	deleted := false
+	repo := &usermocks.UserRepositoryMock{
+		FindByIDForUpdateFunc: func(ctx context.Context, id uint) (*models.User, error) {
+			require.Equal(t, "req-4", utils.GetRequestIDFromContext(ctx))
+			require.Equal(t, uint(6), id)
+			return current, nil
+		},
+		DeleteFunc: func(ctx context.Context, entity *models.User) error {
+			require.Equal(t, "req-4", utils.GetRequestIDFromContext(ctx))
+			require.Same(t, current, entity)
+			deleted = true
+			return nil
+		},
+	}
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		RevokeAllByUserIDFunc: func(ctx context.Context, userID uint) error {
+			require.Equal(t, "req-4", utils.GetRequestIDFromContext(ctx))
+			require.Equal(t, uint(6), userID)
+			require.True(t, deleted, "sessions are revoked in the same transaction, after the delete")
+			return nil
+		},
+	}
+	logRepo := &logmocks.LogRepositoryMock{
+		CreateFunc: func(_ context.Context, entry *models.Log) error {
+			logCh <- entry
+			return nil
+		},
+	}
+	txCalls := 0
+	txManager := &txmocks.TransactionManagerMock{
+		ExecuteInTransactionFunc: func(ctx context.Context, fn func(context.Context) error) error {
+			txCalls++
+			return fn(ctx)
+		},
+	}
+
+	svc := service.NewUserService(repo, &adminrolemocks.AdminRoleRepositoryMock{}, refreshRepo, logRepo, &casbinmocks.ClientMock{}, txManager, zap.NewNop())
+	ctx := utils.SetRequestIDToContext(context.Background(), "req-4")
+	ctx = utils.NewContextWithValues(ctx, utils.ContextValues{UserID: 1, UserName: "Root", Role: models.UserRoleRoot.ToString()})
+
+	err := svc.Delete(ctx, 6)
+
+	require.NoError(t, err)
+	require.True(t, deleted)
+	require.Equal(t, 1, txCalls)
+	select {
+	case entry := <-logCh:
+		require.Equal(t, models.LogActionDelete, entry.Action)
+		require.Equal(t, models.LogEntityTypeUser, entry.EntityType)
+		require.Equal(t, uint(6), entry.EntityID)
+	case <-time.After(2 * time.Second):
+		t.Fatal("deleting a user must produce an audit log")
+	}
+}
+
+func TestUserServiceDeleteFailsWhenTokenRevocationFails(t *testing.T) {
+	expectedErr := errors.New("revoke failed")
+	repo := &usermocks.UserRepositoryMock{
+		FindByIDForUpdateFunc: func(context.Context, uint) (*models.User, error) {
+			return &models.User{ID: 6, Role: models.UserRoleUser}, nil
+		},
+		DeleteFunc: func(context.Context, *models.User) error { return nil },
+	}
+	refreshRepo := &refreshtokenmocks.RefreshTokenRepositoryMock{
+		RevokeAllByUserIDFunc: func(context.Context, uint) error { return expectedErr },
+	}
+
+	svc := service.NewUserService(repo, &adminrolemocks.AdminRoleRepositoryMock{}, refreshRepo, &logmocks.LogRepositoryMock{}, &casbinmocks.ClientMock{}, passthroughTxManager(), zap.NewNop())
+	ctx := utils.NewContextWithValues(context.Background(), utils.ContextValues{UserID: 1, UserName: "Root", Role: models.UserRoleRoot.ToString()})
+
+	err := svc.Delete(ctx, 6)
+
+	require.ErrorIs(t, err, expectedErr)
+}
+
+func TestUserServiceDeletePropagatesFindError(t *testing.T) {
+	repo := &usermocks.UserRepositoryMock{
+		FindByIDForUpdateFunc: func(context.Context, uint) (*models.User, error) {
+			return nil, cerrors.NewNotFoundError("user with id 99 not found")
+		},
+	}
+
+	svc := service.NewUserService(repo, &adminrolemocks.AdminRoleRepositoryMock{}, &refreshtokenmocks.RefreshTokenRepositoryMock{}, &logmocks.LogRepositoryMock{}, &casbinmocks.ClientMock{}, passthroughTxManager(), zap.NewNop())
+
+	err := svc.Delete(context.Background(), 99)
+
+	require.True(t, errors.Is(err, cerrors.ErrNotFound))
+}
+
 func TestUserServiceIndexReturnsRepositoryError(t *testing.T) {
 	expectedErr := errors.New("find all failed")
 	repo := &usermocks.UserRepositoryMock{

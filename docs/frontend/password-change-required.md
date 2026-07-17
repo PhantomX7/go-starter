@@ -78,8 +78,8 @@ if (data.data.must_change_password) {
 
 Also handle the 403 (for any gated request that slips through, e.g. a deep link
 straight into `/admin`). `403` is overloaded: a permission denial also returns
-`403`, but with a different message (`"you don't have permission to access this
-resource"`). **Distinguish by the `message` field**, not by status alone.
+`403`, but with a different message (`"insufficient permissions"`).
+**Distinguish by the `message` field**, not by status alone.
 
 ```ts
 const PASSWORD_CHANGE_REQUIRED = "password change required";

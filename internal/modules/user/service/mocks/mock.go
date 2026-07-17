@@ -33,6 +33,9 @@ var _ service.UserService = &UserServiceMock{}
 //			CreateFunc: func(ctx context.Context, req *dto.AdminUserCreateRequest) (*models.User, error) {
 //				panic("mock out the Create method")
 //			},
+//			DeleteFunc: func(ctx context.Context, userID uint) error {
+//				panic("mock out the Delete method")
+//			},
 //			FindByIDFunc: func(ctx context.Context, userID uint) (*models.User, error) {
 //				panic("mock out the FindByID method")
 //			},
@@ -57,6 +60,9 @@ type UserServiceMock struct {
 
 	// CreateFunc mocks the Create method.
 	CreateFunc func(ctx context.Context, req *dto.AdminUserCreateRequest) (*models.User, error)
+
+	// DeleteFunc mocks the Delete method.
+	DeleteFunc func(ctx context.Context, userID uint) error
 
 	// FindByIDFunc mocks the FindByID method.
 	FindByIDFunc func(ctx context.Context, userID uint) (*models.User, error)
@@ -94,6 +100,13 @@ type UserServiceMock struct {
 			// Req is the req argument value.
 			Req *dto.AdminUserCreateRequest
 		}
+		// Delete holds details about calls to the Delete method.
+		Delete []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// UserID is the userID argument value.
+			UserID uint
+		}
 		// FindByID holds details about calls to the FindByID method.
 		FindByID []struct {
 			// Ctx is the ctx argument value.
@@ -121,6 +134,7 @@ type UserServiceMock struct {
 	lockAssignAdminRole sync.RWMutex
 	lockChangePassword  sync.RWMutex
 	lockCreate          sync.RWMutex
+	lockDelete          sync.RWMutex
 	lockFindByID        sync.RWMutex
 	lockIndex           sync.RWMutex
 	lockUpdate          sync.RWMutex
@@ -239,6 +253,42 @@ func (mock *UserServiceMock) CreateCalls() []struct {
 	mock.lockCreate.RLock()
 	calls = mock.calls.Create
 	mock.lockCreate.RUnlock()
+	return calls
+}
+
+// Delete calls DeleteFunc.
+func (mock *UserServiceMock) Delete(ctx context.Context, userID uint) error {
+	if mock.DeleteFunc == nil {
+		panic("UserServiceMock.DeleteFunc: method is nil but UserService.Delete was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		UserID uint
+	}{
+		Ctx:    ctx,
+		UserID: userID,
+	}
+	mock.lockDelete.Lock()
+	mock.calls.Delete = append(mock.calls.Delete, callInfo)
+	mock.lockDelete.Unlock()
+	return mock.DeleteFunc(ctx, userID)
+}
+
+// DeleteCalls gets all the calls that were made to Delete.
+// Check the length with:
+//
+//	len(mockedUserService.DeleteCalls())
+func (mock *UserServiceMock) DeleteCalls() []struct {
+	Ctx    context.Context
+	UserID uint
+} {
+	var calls []struct {
+		Ctx    context.Context
+		UserID uint
+	}
+	mock.lockDelete.RLock()
+	calls = mock.calls.Delete
+	mock.lockDelete.RUnlock()
 	return calls
 }
 

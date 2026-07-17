@@ -39,6 +39,7 @@ type UserService interface {
 	FindByID(ctx context.Context, userID uint) (*models.User, error)
 	AssignAdminRole(ctx context.Context, userID uint, req *dto.UserAssignAdminRoleRequest) (*models.User, error)
 	ChangePassword(ctx context.Context, userID uint, req *dto.ChangeAdminPasswordRequest) error
+	Delete(ctx context.Context, userID uint) error
 }
 
 // userService implements the UserService interface
@@ -357,6 +358,56 @@ func (s *userService) ChangePassword(ctx context.Context, userID uint, req *dto.
 	}
 
 	s.createLog(ctx, models.LogActionChangePassword, user.ID, user.Name)
+
+	return nil
+}
+
+// Delete soft-deletes a user account. The model's partial unique indexes
+// (WHERE deleted_at IS NULL) already free the username/email for reuse.
+func (s *userService) Delete(ctx context.Context, userID uint) error {
+	// Run the find→guard→delete→revoke sequence inside a single transaction
+	// with the user row locked, so a concurrent user-mutating flow cannot
+	// interleave and a partial failure cannot leave a deleted user with live
+	// sessions (mirrors ChangePassword's reasoning).
+	var user *models.User
+	err := s.txManager.ExecuteInTransaction(ctx, func(txCtx context.Context) error {
+		var err error
+		user, err = s.userRepository.FindByIDForUpdate(txCtx, userID)
+		if err != nil {
+			return err
+		}
+
+		// Prevent deleting root users — same guard as every other mutating flow.
+		if user.Role == models.UserRoleRoot {
+			logger.CtxWith(ctx, s.log, zap.Uint("user_id", userID)).Warn("Attempted to delete root user")
+			return cerrors.NewForbiddenError("cannot delete root user")
+		}
+
+		// Prevent self-deletion: with admin_user:delete an admin could otherwise
+		// remove their own account mid-session.
+		if values, err := utils.ValuesFromContext(ctx); err == nil && values.UserID == user.ID {
+			logger.CtxWith(ctx, s.log, zap.Uint("user_id", userID)).Warn("Attempted self-deletion")
+			return cerrors.NewForbiddenError("cannot delete your own account")
+		}
+
+		// Deleting another admin account requires the stronger grant.
+		if err := s.requireAdminUserGrant(txCtx, user, permissions.AdminUserDelete); err != nil {
+			return err
+		}
+
+		if err := s.userRepository.Delete(txCtx, user); err != nil {
+			return err
+		}
+
+		// Revoke all refresh tokens so the deleted account cannot keep an
+		// active session alive through token refresh.
+		return s.refreshTokenRepo.RevokeAllByUserID(txCtx, userID)
+	})
+	if err != nil {
+		return err
+	}
+
+	s.createLog(ctx, models.LogActionDelete, user.ID, user.Name)
 
 	return nil
 }

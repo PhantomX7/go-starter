@@ -38,6 +38,7 @@ const (
 	AdminUserCreate         Permission = "admin_user:create"
 	AdminUserRead           Permission = "admin_user:read"
 	AdminUserUpdate         Permission = "admin_user:update"
+	AdminUserDelete         Permission = "admin_user:delete"
 	AdminUserChangePassword Permission = "admin_user:change_password"
 )
 
@@ -94,6 +95,7 @@ var AllPermissions = map[string][]PermissionInfo{
 		{AdminUserCreate, ResourceAdminUser, ActionCreate, "Create admin users"},
 		{AdminUserRead, ResourceAdminUser, ActionRead, "View admin users"},
 		{AdminUserUpdate, ResourceAdminUser, ActionUpdate, "Update admin users"},
+		{AdminUserDelete, ResourceAdminUser, ActionDelete, "Delete admin users"},
 		{AdminUserChangePassword, ResourceAdminUser, "change_password", "Change admin user password"},
 	},
 	ResourceAdminRole: {

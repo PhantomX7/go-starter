@@ -211,6 +211,75 @@ func TestUserControllerAssignAdminRoleRejectsInvalidID(t *testing.T) {
 	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
 }
 
+func TestUserControllerDeleteReturnsSuccessResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := &userservicemocks.UserServiceMock{
+		DeleteFunc: func(ctx context.Context, userID uint) error {
+			require.NotNil(t, ctx)
+			require.Equal(t, uint(6), userID)
+			return nil
+		},
+	}
+
+	ctrl := controller.NewUserController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/admin/user/6", nil)
+	ctx.Params = gin.Params{{Key: "id", Value: "6"}}
+
+	ctrl.Delete(ctx)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, "User deleted successfully", body["message"])
+}
+
+func TestUserControllerDeleteRejectsInvalidID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := &userservicemocks.UserServiceMock{
+		DeleteFunc: func(context.Context, uint) error {
+			t.Fatal("Delete should not be called for invalid ids")
+			return nil
+		},
+	}
+
+	ctrl := controller.NewUserController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/admin/user/bad", nil)
+	ctx.Params = gin.Params{{Key: "id", Value: "bad"}}
+
+	ctrl.Delete(ctx)
+
+	require.Len(t, ctx.Errors, 1)
+	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+}
+
+func TestUserControllerDeletePropagatesServiceError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	expectedErr := errors.New("delete failed")
+	svc := &userservicemocks.UserServiceMock{
+		DeleteFunc: func(context.Context, uint) error {
+			return expectedErr
+		},
+	}
+
+	ctrl := controller.NewUserController(svc)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/admin/user/6", nil)
+	ctx.Params = gin.Params{{Key: "id", Value: "6"}}
+
+	ctrl.Delete(ctx)
+
+	require.Len(t, ctx.Errors, 1)
+	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
+}
+
 func TestUserControllerChangePasswordReturnsSuccessResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
