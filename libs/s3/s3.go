@@ -422,17 +422,17 @@ func (s3c *s3Client) UploadImagesParallel(
 
 	for i, file := range files {
 		g.Go(func() error {
-			// Skip if the request was already cancelled; the nil slot below is
-			// counted as a failure so the whole batch rolls back.
-			if ctx.Err() != nil {
-				return nil
+			// Errors are not propagated to the errgroup: an empty results[i]
+			// slot is the failure signal, so the whole batch can be inspected
+			// (and rolled back) after Wait instead of aborting on the first
+			// failed file. A cancelled request skips the upload, and
+			// UploadImage logs its own failures — either way the slot stays
+			// nil and is counted below.
+			if ctx.Err() == nil {
+				if result, err := s3c.UploadImage(ctx, file, folder); err == nil {
+					results[i] = result
+				}
 			}
-			// UploadImage logs its own failures; a nil slot signals the error.
-			result, err := s3c.UploadImage(ctx, file, folder)
-			if err != nil {
-				return nil
-			}
-			results[i] = result
 			return nil
 		})
 	}

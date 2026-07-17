@@ -20,6 +20,7 @@ import (
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/admin_role/controller"
 	adminroleservicemocks "github.com/PhantomX7/athleton/internal/modules/admin_role/service/mocks"
+	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 )
@@ -89,7 +90,7 @@ func TestAdminRoleControllerDeleteRejectsInvalidID(t *testing.T) {
 	ctrl.Delete(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+	require.ErrorIs(t, ctx.Errors[0].Err, cerrors.ErrInvalidInput)
 }
 
 func TestAdminRoleControllerFindByIDReturnsSuccessResponse(t *testing.T) {
@@ -220,7 +221,6 @@ func TestAdminRoleControllerCreatePropagatesServiceError(t *testing.T) {
 	ctrl.Create(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
 	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
 }
 
@@ -268,7 +268,7 @@ func TestAdminRoleControllerUpdateRejectsInvalidID(t *testing.T) {
 	ctrl.Update(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+	require.ErrorIs(t, ctx.Errors[0].Err, cerrors.ErrInvalidInput)
 }
 
 func TestAdminRoleControllerUpdatePropagatesServiceError(t *testing.T) {
@@ -289,7 +289,6 @@ func TestAdminRoleControllerUpdatePropagatesServiceError(t *testing.T) {
 	ctrl.Update(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
 	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
 }
 
@@ -311,6 +310,5 @@ func TestAdminRoleControllerIndexPropagatesServiceError(t *testing.T) {
 	ctrl.Index(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
 	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
 }

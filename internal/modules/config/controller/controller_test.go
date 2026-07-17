@@ -16,6 +16,7 @@ import (
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/config/controller"
 	configservicemocks "github.com/PhantomX7/athleton/internal/modules/config/service/mocks"
+	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 )
@@ -152,7 +153,7 @@ func TestConfigControllerUpdateRejectsInvalidID(t *testing.T) {
 	ctrl.Update(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+	require.ErrorIs(t, ctx.Errors[0].Err, cerrors.ErrInvalidInput)
 }
 
 func TestConfigControllerFindByKeyReturnsSuccessResponse(t *testing.T) {
@@ -202,6 +203,5 @@ func TestConfigControllerIndexPropagatesServiceError(t *testing.T) {
 	ctrl.Index(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
 	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
 }

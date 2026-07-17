@@ -40,7 +40,6 @@ func TestParseUintParamInvalid(t *testing.T) {
 	require.False(t, ok)
 	require.Equal(t, uint(0), id)
 	require.Len(t, c.Errors, 1, "a malformed param must record a gin error for the middleware")
-	require.Equal(t, gin.ErrorTypePublic, c.Errors[0].Type)
 
 	// A malformed path param is a client mistake: the recorded error must be
 	// an AppError carrying 400 so the error-handler middleware doesn't fall

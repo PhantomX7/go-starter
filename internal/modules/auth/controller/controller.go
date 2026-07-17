@@ -53,7 +53,7 @@ func (c *authController) Register(ctx *gin.Context) {
 
 	res, err := c.authService.Register(ctx.Request.Context(), &req)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 
@@ -75,7 +75,7 @@ func (c *authController) Register(ctx *gin.Context) {
 func (c *authController) GetMe(ctx *gin.Context) {
 	res, err := c.authService.GetMe(ctx.Request.Context())
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 
@@ -103,7 +103,7 @@ func (c *authController) Refresh(ctx *gin.Context) {
 
 	res, err := c.authService.Refresh(ctx.Request.Context(), &req)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 
@@ -132,7 +132,7 @@ func (c *authController) ChangePassword(ctx *gin.Context) {
 
 	err := c.authService.ChangePassword(ctx.Request.Context(), &req)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 
@@ -161,7 +161,7 @@ func (c *authController) Logout(ctx *gin.Context) {
 
 	err := c.authService.Logout(ctx.Request.Context(), &req)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 

@@ -185,6 +185,8 @@ import (
     "github.com/PhantomX7/athleton/internal/modules/{snake_case_name}/controller"
     "github.com/PhantomX7/athleton/internal/modules/{snake_case_name}/repository"
     "github.com/PhantomX7/athleton/internal/modules/{snake_case_name}/service"
+    "github.com/PhantomX7/athleton/internal/routes"
+
     "go.uber.org/fx"
 )
 
@@ -193,9 +195,19 @@ var Module = fx.Options(
         controller.New{PascalCase}Controller,
         service.New{PascalCase}Service,
         repository.New{PascalCase}Repository,
+        fx.Annotate(
+            NewRoutes,
+            fx.As(new(routes.Registrar)),
+            fx.ResultTags(`group:"routes"`),
+        ),
     ),
 )
 ```
+
+The fourth provider is what mounts the module's routes: `NewRoutes` is
+registered into the `group:"routes"` fx group as a `routes.Registrar`, and the
+router iterates that group at startup. Without it the module compiles but
+serves nothing.
 
 ### Controller (`internal/modules/{name}/controller/controller.go`)
 

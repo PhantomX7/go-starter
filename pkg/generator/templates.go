@@ -125,7 +125,7 @@ func (c *{{.CamelCase}}Controller) Index(ctx *gin.Context) {
 		New{{.PascalCase}}Pagination(ctx.Request.URL.Query()),
 	)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 	ctx.JSON(http.StatusOK, response.BuildPaginationResponse({{.LowerCase}}s, meta))
@@ -141,7 +141,7 @@ func (c *{{.CamelCase}}Controller) Create(ctx *gin.Context) {
 
 	{{.LowerCase}}, err := c.{{.CamelCase}}Service.Create(ctx.Request.Context(), &req)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 
@@ -163,7 +163,7 @@ func (c *{{.CamelCase}}Controller) Update(ctx *gin.Context) {
 
 	{{.LowerCase}}, err := c.{{.CamelCase}}Service.Update(ctx.Request.Context(), {{.LowerCase}}ID, &req)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 
@@ -178,7 +178,7 @@ func (c *{{.CamelCase}}Controller) Delete(ctx *gin.Context) {
 	}
 
 	if err := c.{{.CamelCase}}Service.Delete(ctx.Request.Context(), {{.LowerCase}}ID); err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 
@@ -194,7 +194,7 @@ func (c *{{.CamelCase}}Controller) FindByID(ctx *gin.Context) {
 
 	{{.LowerCase}}, err := c.{{.CamelCase}}Service.FindByID(ctx.Request.Context(), {{.LowerCase}}ID)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 
@@ -351,6 +351,7 @@ import (
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/{{.SnakeCase}}/controller"
 	{{.LowerCase}}service "github.com/PhantomX7/athleton/internal/modules/{{.SnakeCase}}/service"
+	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 )
@@ -450,7 +451,6 @@ func Test{{.PascalCase}}ControllerIndexPropagatesServiceError(t *testing.T) {
 	ctrl.Index(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
 	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
 }
 
@@ -560,7 +560,7 @@ func Test{{.PascalCase}}ControllerUpdateRejectsInvalidID(t *testing.T) {
 	ctrl.Update(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+	require.ErrorIs(t, ctx.Errors[0].Err, cerrors.ErrInvalidInput)
 }
 
 func Test{{.PascalCase}}ControllerDeleteReturnsSuccessResponse(t *testing.T) {
@@ -632,7 +632,7 @@ func Test{{.PascalCase}}ControllerFindByIDRejectsInvalidID(t *testing.T) {
 	ctrl.FindByID(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+	require.ErrorIs(t, ctx.Errors[0].Err, cerrors.ErrInvalidInput)
 }
 `
 

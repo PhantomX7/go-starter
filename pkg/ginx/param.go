@@ -11,7 +11,7 @@ import (
 )
 
 // ParseUintParam reads an unsigned-integer path parameter (e.g. :id) and
-// returns it as a uint. On a malformed value it records a public gin error —
+// returns it as a uint. On a malformed value it records a 400 AppError —
 // letting the error middleware shape the response — and returns ok=false, so
 // the caller's whole error branch collapses to:
 //
@@ -27,8 +27,7 @@ func ParseUintParam(ctx *gin.Context, name string) (uint, bool) {
 	if err != nil {
 		// A malformed path param is the client's mistake: record a 400
 		// AppError so the error middleware doesn't classify it as a 500.
-		_ = ctx.Error(cerrors.NewBadRequestError(fmt.Sprintf("invalid %s parameter", name))).
-			SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(cerrors.NewBadRequestError(fmt.Sprintf("invalid %s parameter", name)))
 		return 0, false
 	}
 	return uint(v), true

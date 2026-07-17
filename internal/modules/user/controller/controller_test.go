@@ -18,6 +18,7 @@ import (
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/user/controller"
 	userservicemocks "github.com/PhantomX7/athleton/internal/modules/user/service/mocks"
+	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 )
@@ -208,7 +209,7 @@ func TestUserControllerAssignAdminRoleRejectsInvalidID(t *testing.T) {
 	ctrl.AssignAdminRole(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+	require.ErrorIs(t, ctx.Errors[0].Err, cerrors.ErrInvalidInput)
 }
 
 func TestUserControllerDeleteReturnsSuccessResponse(t *testing.T) {
@@ -255,7 +256,7 @@ func TestUserControllerDeleteRejectsInvalidID(t *testing.T) {
 	ctrl.Delete(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
+	require.ErrorIs(t, ctx.Errors[0].Err, cerrors.ErrInvalidInput)
 }
 
 func TestUserControllerDeletePropagatesServiceError(t *testing.T) {
@@ -366,7 +367,6 @@ func TestUserControllerAssignAdminRolePropagatesServiceError(t *testing.T) {
 	ctrl.AssignAdminRole(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
 	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
 }
 
@@ -388,7 +388,6 @@ func TestUserControllerChangePasswordPropagatesServiceError(t *testing.T) {
 	ctrl.ChangePassword(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
 	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
 }
 

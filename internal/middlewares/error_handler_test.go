@@ -68,7 +68,7 @@ func TestErrorHandlerFormatsValidationErrors(t *testing.T) {
 
 func TestErrorHandlerMapsNotFoundAppErrors(t *testing.T) {
 	r := newErrorHandlerRouter(func(c *gin.Context) {
-		_ = c.Error(cerrors.NewNotFoundError("post not found")).SetType(gin.ErrorTypePublic)
+		_ = c.Error(cerrors.NewNotFoundError("post not found"))
 	})
 
 	rec := httptest.NewRecorder()
@@ -84,7 +84,7 @@ func TestErrorHandlerMapsNotFoundAppErrors(t *testing.T) {
 
 func TestErrorHandlerUsesAppErrorStatusCode(t *testing.T) {
 	r := newErrorHandlerRouter(func(c *gin.Context) {
-		_ = c.Error(cerrors.NewUnauthorizedError("invalid credentials")).SetType(gin.ErrorTypePublic)
+		_ = c.Error(cerrors.NewUnauthorizedError("invalid credentials"))
 	})
 
 	rec := httptest.NewRecorder()
@@ -117,7 +117,7 @@ func TestErrorHandlerMapsMaxBytesErrorTo413(t *testing.T) {
 
 func TestErrorHandlerHidesUnexpectedErrorDetails(t *testing.T) {
 	r := newErrorHandlerRouter(func(c *gin.Context) {
-		_ = c.Error(errors.New("pq: connection refused")).SetType(gin.ErrorTypePrivate)
+		_ = c.Error(errors.New("pq: connection refused"))
 	})
 
 	rec := httptest.NewRecorder()

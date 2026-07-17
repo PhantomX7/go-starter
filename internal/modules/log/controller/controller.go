@@ -100,7 +100,7 @@ func (c *logController) Index(ctx *gin.Context) {
 		newLogPagination(ctx.Request.URL.Query()),
 	)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 	ctx.JSON(http.StatusOK,
@@ -126,7 +126,7 @@ func (c *logController) FindByID(ctx *gin.Context) {
 
 	log, err := c.logService.FindByID(ctx.Request.Context(), logID)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 

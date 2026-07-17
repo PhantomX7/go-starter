@@ -15,6 +15,7 @@ import (
 	"github.com/PhantomX7/athleton/internal/models"
 	"github.com/PhantomX7/athleton/internal/modules/log/controller"
 	logservicemocks "github.com/PhantomX7/athleton/internal/modules/log/service/mocks"
+	cerrors "github.com/PhantomX7/athleton/pkg/errors"
 	"github.com/PhantomX7/athleton/pkg/pagination"
 	"github.com/PhantomX7/athleton/pkg/response"
 )
@@ -140,8 +141,7 @@ func TestLogControllerFindByIDRejectsInvalidParam(t *testing.T) {
 	ctrl.FindByID(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
-	require.Error(t, ctx.Errors[0].Err)
+	require.ErrorIs(t, ctx.Errors[0].Err, cerrors.ErrInvalidInput)
 	require.Equal(t, 0, rec.Body.Len())
 }
 
@@ -164,7 +164,6 @@ func TestLogControllerIndexPropagatesServiceError(t *testing.T) {
 	ctrl.Index(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
 	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
 	require.Equal(t, 0, rec.Body.Len())
 }

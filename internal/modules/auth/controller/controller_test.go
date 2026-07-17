@@ -213,7 +213,6 @@ func TestAuthControllerRefreshPropagatesServiceError(t *testing.T) {
 	ctrl.Refresh(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
 	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
 }
 
@@ -235,7 +234,6 @@ func TestAuthControllerChangePasswordPropagatesServiceError(t *testing.T) {
 	ctrl.ChangePassword(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
 	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
 }
 
@@ -256,7 +254,6 @@ func TestAuthControllerLogoutPropagatesServiceError(t *testing.T) {
 	ctrl.Logout(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
 	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
 }
 
@@ -278,6 +275,5 @@ func TestAuthControllerGetMePropagatesServiceError(t *testing.T) {
 	ctrl.GetMe(ctx)
 
 	require.Len(t, ctx.Errors, 1)
-	require.True(t, ctx.Errors[0].IsType(gin.ErrorTypePublic))
 	require.ErrorIs(t, ctx.Errors[0].Err, expectedErr)
 }

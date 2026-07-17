@@ -221,7 +221,7 @@ func (c *userController) AssignAdminRole(ctx *gin.Context) {
 
 	user, err := c.userService.AssignAdminRole(ctx.Request.Context(), userID, &req)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 
@@ -256,7 +256,7 @@ func (c *userController) ChangePassword(ctx *gin.Context) {
 	}
 
 	if err := c.userService.ChangePassword(ctx.Request.Context(), userID, &req); err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 

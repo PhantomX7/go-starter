@@ -45,7 +45,7 @@ A type-safe, injection-proof query pagination and filtering library for [GORM](h
 ## Installation
 
 ```bash
-go get <your-module-path>/pagination
+go get github.com/PhantomX7/athleton/pkg/pagination
 ```
 
 The library depends on:

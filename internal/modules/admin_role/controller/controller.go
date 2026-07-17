@@ -82,7 +82,7 @@ func (c *adminRoleController) Index(ctx *gin.Context) {
 		newAdminRolePagination(ctx.Request.URL.Query()),
 	)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 	ctx.JSON(http.StatusOK, response.BuildPaginationResponse(roles, meta))
@@ -110,7 +110,7 @@ func (c *adminRoleController) Create(ctx *gin.Context) {
 
 	adminRole, err := c.adminRoleService.Create(ctx.Request.Context(), &req)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 
@@ -149,7 +149,7 @@ func (c *adminRoleController) Update(ctx *gin.Context) {
 
 	adminRole, err := c.adminRoleService.Update(ctx.Request.Context(), roleID, &req)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 
@@ -177,7 +177,7 @@ func (c *adminRoleController) Delete(ctx *gin.Context) {
 	}
 
 	if err := c.adminRoleService.Delete(ctx.Request.Context(), roleID); err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 
@@ -205,7 +205,7 @@ func (c *adminRoleController) FindByID(ctx *gin.Context) {
 
 	adminRole, err := c.adminRoleService.FindByID(ctx.Request.Context(), roleID)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 

@@ -13,7 +13,15 @@ import (
 
 // ErrorHandler is a middleware to handle errors encountered during requests
 // It intercepts validation errors from Gin's binding operations and provides
-// structured error responses with appropriate HTTP status codes
+// structured error responses with appropriate HTTP status codes.
+//
+// Convention: controllers record errors with a plain ctx.Error(err) and let
+// the error VALUE drive classification here (validator.ValidationErrors,
+// *AppError, *http.MaxBytesError). The only gin error type that carries
+// meaning is ErrorTypeBind, tagged on ShouldBind failures so malformed input
+// that isn't a validator error still maps to 400 instead of 500. Do not tag
+// errors with ErrorTypePublic/ErrorTypePrivate — this handler ignores them,
+// and an untagged error is private by gin's default anyway.
 func (m *Middleware) ErrorHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next()

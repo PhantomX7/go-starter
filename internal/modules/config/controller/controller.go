@@ -74,7 +74,7 @@ func (c *configController) Index(ctx *gin.Context) {
 		newConfigPagination(ctx.Request.URL.Query()),
 	)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 	ctx.JSON(http.StatusOK,
@@ -99,7 +99,7 @@ func (c *configController) PublicIndex(ctx *gin.Context) {
 		newConfigPagination(ctx.Request.URL.Query()),
 	)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 	ctx.JSON(http.StatusOK,
@@ -133,7 +133,7 @@ func (c *configController) Update(ctx *gin.Context) {
 
 	config, err := c.configService.Update(ctx.Request.Context(), configID, &req)
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 
@@ -155,7 +155,7 @@ func (c *configController) Update(ctx *gin.Context) {
 func (c *configController) FindByKey(ctx *gin.Context) {
 	config, err := c.configService.FindByKey(ctx.Request.Context(), ctx.Param("key"))
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 
@@ -175,7 +175,7 @@ func (c *configController) FindByKey(ctx *gin.Context) {
 func (c *configController) PublicFindByKey(ctx *gin.Context) {
 	config, err := c.configService.FindPublicByKey(ctx.Request.Context(), ctx.Param("key"))
 	if err != nil {
-		_ = ctx.Error(err).SetType(gin.ErrorTypePublic)
+		_ = ctx.Error(err)
 		return
 	}
 
